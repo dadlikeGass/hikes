@@ -255,6 +255,59 @@ class PeakItem(BaseModel):
     rise: int = Field(description="自上一个山顶（或起点）的爬升")
 
 
+class PointBrief(BaseModel):
+    id: int
+    code: str
+    type: Literal["peak", "junction", "trailhead"]
+    name: str
+    route_name: str | None = None
+    level: Literal["easy", "mid", "hard", "hidden"]
+    altitude: int | None = None
+    status: Literal["draft", "published"]
+    visit_count: int
+
+
+@app.get("/api/points", response_model=list[PointBrief], tags=["点位"],
+         summary="点位台账（维护台用）")
+def list_points(limit: int = 200):
+    rows = q("""SELECT pt.id, pt.code, pt.type, pt.name, r.name AS route_name, pt.level,
+                       pt.altitude, pt.status,
+                       (SELECT count(*) FROM visits v WHERE v.point_id = pt.id) AS visit_count
+                FROM points pt LEFT JOIN routes r ON r.id = pt.route_id
+                ORDER BY pt.id LIMIT :limit""", limit=limit)
+    return [PointBrief(**dict(r)) for r in rows]
+
+
+class PointPatch(BaseModel):
+    name: str | None = None
+    level: Literal["easy", "mid", "hard", "hidden"] | None = None
+    altitude: int | None = None
+    guide: dict[str, Any] | None = Field(default=None, description="{arrow,title,desc,next}")
+    status: Literal["draft", "published"] | None = None
+
+
+@app.patch("/api/points/{point_id}", response_model=PointDetail, tags=["点位"],
+           responses={**ERR_401, **ERR_404},
+           summary="改点位内容。编号不可改——标牌已经印出去了")
+def patch_point(point_id: int, body: PointPatch, uid: int = Depends(require_user)):
+    if not q1("SELECT 1 AS x FROM points WHERE id = :id", id=point_id):
+        err(404, "POINT_NOT_FOUND", "点位不存在")
+    sets, params = [], {"id": point_id}
+    for k, v in body.model_dump(exclude_none=True).items():
+        if k == "guide":
+            sets.append("guide = CAST(:guide AS jsonb)")
+            params["guide"] = json.dumps(v, ensure_ascii=False)
+        else:
+            sets.append(f"{k} = :{k}")
+            params[k] = v
+    if not sets:
+        err(400, "NOTHING_TO_UPDATE", "没有要改的字段")
+    with engine.begin() as conn:
+        conn.execute(text(f"UPDATE points SET {', '.join(sets)}, version = version + 1 "
+                          f"WHERE id = :id"), params)
+    return get_point(q1("SELECT code FROM points WHERE id=:i", i=point_id)["code"])
+
+
 @app.get("/api/peaks", response_model=list[PeakItem], tags=["点位"],
          summary="全部山顶，按海拔排序（来自 GPX 自动识别）")
 def list_peaks(limit: int = 200, route: str | None = None):

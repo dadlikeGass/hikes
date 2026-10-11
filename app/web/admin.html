@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>维护台 · 到此一游</title>
+<style>
+:root{--bg:#F7F3EC;--ink:#22242E;--ink2:#6B6E7E;--ink3:#9A9CAA;--line:#E9E2D5;--hair:#F4F0E7;
+  --blue:#3455F5;--coral:#FF714E;--paper:#fff;
+  --hard:#E4453A;--mid:#F2B62C;--easy:#2563EB;
+  --sh:0 1px 2px rgba(34,36,46,.05),0 8px 24px rgba(34,36,46,.07)}
+*{box-sizing:border-box}
+body{margin:0;background:#EFEAE0;color:var(--ink);
+  font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+header{background:var(--ink);color:#fff;padding:14px 24px;display:flex;align-items:baseline;gap:12px}
+header b{font-size:17px}header span{font-size:12px;color:#A9ADBE}
+.wrap{max-width:1180px;margin:0 auto;padding:22px 24px 40px;display:grid;
+  grid-template-columns:1fr 340px;gap:20px;align-items:start}
+.panel{background:#fff;border-radius:14px;box-shadow:var(--sh);overflow:hidden}
+.panel h3{margin:0;padding:14px 18px;font-size:14px;border-bottom:1px solid var(--hair)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-weight:700;font-size:11.5px;color:var(--ink2);padding:9px 18px;
+  border-bottom:1px solid var(--hair);background:#FCFAF6}
+td{padding:10px 18px;border-bottom:1px solid var(--hair);vertical-align:middle}
+tr{cursor:pointer}tr:hover td{background:#FCFAF6}
+tr.sel td{background:#F1F4FF}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:11.5px}
+.pill{font-size:10.5px;font-weight:700;border-radius:6px;padding:2px 7px;white-space:nowrap}
+.pill.live{background:#E6F5E2;color:#2F7A2A}
+.pill.draft{background:#FDF2D6;color:#8A6410}
+.sq{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px}
+.fld{margin-bottom:12px}
+.fld label{display:block;font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:5px}
+.fld input,.fld select,.fld textarea{width:100%;border:1.5px solid var(--line);border-radius:9px;
+  padding:9px 11px;font:inherit;font-size:13px;outline:none;background:#fff}
+.fld input:focus,.fld select:focus{border-color:var(--blue)}
+.btn{border:none;border-radius:9px;padding:10px 16px;font:inherit;font-size:13px;font-weight:700;
+  cursor:pointer;background:var(--coral);color:#fff;width:100%}
+.btn.ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
+.btn:disabled{opacity:.5;cursor:default}
+.note{font-size:11.5px;color:var(--ink3);line-height:1.6}
+.sign{display:flex;gap:14px;align-items:center;padding:14px 18px;background:#FCFAF6;
+  border-radius:12px;margin:0 0 12px}
+.sign .shape{width:52px;height:52px;flex:0 0 auto}
+.sign .code{font-family:ui-monospace,Menlo,monospace;font-size:13px;font-weight:700;margin-top:5px}
+.sign .org{font-size:9px;font-weight:700;letter-spacing:1.6px;color:var(--ink3)}
+.qr{width:64px;height:64px;border:1px solid var(--line);border-radius:9px;margin-left:auto;
+  display:grid;place-items:center;font-size:9.5px;color:var(--ink3);text-align:center;line-height:1.3}
+.pad{padding:16px 18px}
+.link{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--blue);word-break:break-all}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:rgba(28,26,42,.92);
+  color:#fff;font-size:13px;font-weight:600;padding:10px 18px;border-radius:999px;display:none}
+</style>
+</head>
+<body>
+<header><b>到此一游 · 维护台</b><span>点位台账 / 二维码 / 内容管理</span></header>
+<div class="wrap">
+  <div class="panel">
+    <h3>点位（<span id="cnt">—</span>）</h3>
+    <table><thead><tr><th>编号</th><th>名称</th><th>类型</th><th>难度</th><th>海拔</th>
+      <th>状态</th><th>打卡</th></tr></thead><tbody id="rows"></tbody></table>
+  </div>
+  <div class="panel" id="edit"><h3>选中一个点位</h3>
+    <div class="pad note">左侧点一行开始编辑。</div></div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+var C = { easy: '#2563EB', mid: '#F2B62C', hard: '#E4453A', hidden: '#22242E' };
+var N = { easy: '简单', mid: '中等', hard: '困难', hidden: '隐藏' };
+var TYPE = { peak: '山顶打卡点', junction: '岔路路书点', trailhead: '线路起点' };
+var SH = {
+  easy: function (c) { return '<circle cx="50" cy="50" r="41" fill="' + c + '"/>'; },
+  mid: function (c) { return '<polygon points="50,10 92,87 8,87" fill="' + c + '"/>'; },
+  hard: function (c) { return '<polygon points="50,6 94,50 50,94 6,50" fill="' + c + '"/>'; },
+  hidden: function (c) { return '<polygon points="50,5 89,27 89,73 50,95 11,73 11,27" fill="' + c + '"/>'; }
+};
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+  return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+async function j(u, o) { var r = await fetch(u, o); if (!r.ok) throw new Error(r.status); return r.json(); }
+function toast(m) {
+  var t = document.getElementById('toast');
+  t.textContent = m; t.style.display = 'block';
+  setTimeout(function () { t.style.display = 'none'; }, 2000);
+}
+var TOKEN = null, LIST = [], SEL = null;
+function shortLink(code) { return location.origin + '/p/' + code; }
+
+async function load() {
+  LIST = await j('/api/points?limit=200');
+  document.getElementById('cnt').textContent = LIST.length;
+  document.getElementById('rows').innerHTML = LIST.map(function (p) {
+    return '<tr data-id="' + p.id + '"' + (SEL === p.id ? ' class="sel"' : '') + '>' +
+      '<td class="mono">' + esc(p.code) + '</td><td>' + esc(p.name) + '</td>' +
+      '<td>' + TYPE[p.type] + '</td>' +
+      '<td><span class="sq" style="background:' + C[p.level] + '"></span>' + N[p.level] + '</td>' +
+      '<td>' + (p.altitude || '—') + '</td>' +
+      '<td><span class="pill ' + (p.status === 'published' ? 'live' : 'draft') + '">' +
+      (p.status === 'published' ? '已发布' : '草稿') + '</span></td>' +
+      '<td>' + p.visit_count + '</td></tr>';
+  }).join('');
+  document.querySelectorAll('#rows tr').forEach(function (tr) {
+    tr.onclick = function () { open(+tr.dataset.id); };
+  });
+}
+
+async function open(id) {
+  SEL = id;
+  document.querySelectorAll('#rows tr').forEach(function (tr) {
+    tr.classList.toggle('sel', +tr.dataset.id === id);
+  });
+  var p = await j('/api/points/' + LIST.filter(function (x) { return x.id === id; })[0].code);
+  var c = C[p.level];
+  document.getElementById('edit').innerHTML =
+    '<h3>' + esc(p.name) + ' · <span class="mono">' + esc(p.code) + '</span></h3><div class="pad">' +
+    '<div class="sign"><span class="shape"><svg viewBox="0 0 100 100">' + SH[p.level](c) +
+    '</svg></span><span><span style="font-weight:800;display:block">' + TYPE[p.type] + '</span>' +
+    '<span class="code">DCYY | ' + (p.altitude ? p.altitude + 'M' : '—') + '</span>' +
+    '<span class="org">I HAVE BEEN HERE</span></span>' +
+    '<span class="qr">二维码<br>待接入</span></div>' +
+    '<div class="fld"><label>短链（二维码里印的就是它）</label>' +
+    '<div class="link">' + shortLink(p.code) + '</div>' +
+    '<div class="note" style="margin-top:6px">编号不可改——标牌已经印出去了。' +
+    '页面内容随时可改，不用重印。</div></div>' +
+    '<div class="fld"><label>名称</label><input id="f-name" value="' + esc(p.name) + '"></div>' +
+    '<div class="fld"><label>难度（标牌上的图形）</label><select id="f-level">' +
+    ['easy', 'mid', 'hard', 'hidden'].map(function (k) {
+      return '<option value="' + k + '"' + (p.level === k ? ' selected' : '') + '>' + N[k] + '</option>';
+    }).join('') + '</select></div>' +
+    '<div class="fld"><label>海拔（米）</label><input id="f-alt" value="' + (p.altitude || '') + '"></div>' +
+    '<div class="fld"><label>往哪走 · 第一句</label><input id="f-gt" value="' +
+    esc((p.guide || {}).title || '') + '"></div>' +
+    '<div class="fld"><label>补充说明</label><input id="f-gd" value="' +
+    esc((p.guide || {}).desc || '') + '"></div>' +
+    '<div class="fld"><label>下一段</label><input id="f-gn" value="' +
+    esc((p.guide || {}).next || '') + '"></div>' +
+    '<button class="btn" id="save">保存并发布</button>' +
+    '<button class="btn ghost" style="margin-top:8px" id="draft">存为草稿</button>' +
+    '<div class="note" style="margin-top:10px">保存后版本号 +1，页面即时生效。</div>' +
+    '</div>';
+  document.getElementById('save').onclick = function () { save(id, 'published'); };
+  document.getElementById('draft').onclick = function () { save(id, 'draft'); };
+}
+
+async function save(id, status) {
+  var v = function (k) { return document.getElementById(k).value.trim(); };
+  var body = {
+    name: v('f-name'), level: v('f-level'), status: status,
+    altitude: v('f-alt') ? +v('f-alt') : null,
+    guide: { title: v('f-gt'), desc: v('f-gd'), next: v('f-gn') }
+  };
+  try {
+    await j('/api/points/' + id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN },
+      body: JSON.stringify(body)
+    });
+    toast(status === 'published' ? '已发布 · 页面即时生效' : '已存为草稿');
+    await load(); await open(id);
+  } catch (e) { toast('保存失败：' + e.message); }
+}
+
+(async function () {
+  try {
+    TOKEN = (await j('/api/auth/dev-login?user_id=1', { method: 'POST' })).token;
+    await load();
+  } catch (e) {
+    document.getElementById('rows').innerHTML =
+      '<tr><td colspan="7" style="color:#B3261E">加载失败：' + esc(e.message) + '</td></tr>';
+  }
+})();
+</script>
+</body>
+</html>
