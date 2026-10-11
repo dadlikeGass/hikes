@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>山头与岔路 · 到此一游</title>
+<link rel="stylesheet" href="/theme/app.css">
+<style>
+body{background:#E7E1D6}
+.wrap{max-width:430px;margin:0 auto;background:var(--bg);min-height:100dvh;padding-bottom:26px}
+.pk{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--hair)}
+.pk:last-child{border-bottom:none}
+.pk .no{width:20px;font-size:12px;font-weight:800;color:#B8B3A6;text-align:center;flex:0 0 auto}
+.pk .nm{flex:1;min-width:0}
+.pk .nm b{display:block;font-size:14px}
+.pk .nm em{font-style:normal;font-size:11.5px;color:var(--ink3)}
+.pk .alt{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;flex:0 0 auto}
+.pk .alt span{font-size:10.5px;color:var(--ink3);font-weight:400}
+.skel{background:linear-gradient(90deg,#EFEAE0,#F7F3EC,#EFEAE0);border-radius:12px;height:52px;margin-bottom:8px}
+.empty{text-align:center;color:var(--ink3);font-size:13.5px;padding:34px 12px;line-height:1.7}
+.empty .big{font-size:30px;display:block;margin-bottom:10px;opacity:.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar" style="padding:16px">
+    <div class="row-between" style="align-items:center">
+      <div><span class="brand mini" style="display:block"><b>到此一游</b></span>
+        <div class="page-title">山头与岔路</div></div>
+    </div>
+  </div>
+  <div style="padding:0 16px">
+    <div class="seg" id="seg">
+      <button data-k="peak" class="on">山头</button>
+      <button data-k="junction">岔路</button>
+    </div>
+    <div id="view"></div>
+  </div>
+</div>
+<script>
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+  return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+async function j(u) { var r = await fetch(u); if (!r.ok) throw new Error(r.status); return r.json(); }
+var view = document.getElementById('view'), kind = 'peak', seg = document.getElementById('seg');
+
+seg.addEventListener('click', function (e) {
+  var b = e.target.closest('button'); if (!b) return;
+  kind = b.dataset.k;
+  seg.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
+  route();
+});
+
+async function peaks() {
+  view.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
+  var list = await j('/api/peaks?limit=200');
+  view.innerHTML =
+    '<div class="sec-head"><h3>全部山头</h3><span class="more">' + list.length + ' 个</span></div>' +
+    '<div class="hint" style="margin-top:-6px">来自 12 条线路的 GPX 自动识别，' +
+    '按海拔排序。相对高度 ≥30 m 才算一个独立山顶。</div>' +
+    '<div class="card tight">' + list.map(function (p, i) {
+      return '<div class="pk"><span class="no">' + (i + 1) + '</span>' +
+        '<span class="nm"><b>' + esc(p.route_name) + '</b>' +
+        '<em>' + p.km + ' km 处 · 自上一顶爬升 ' + p.rise + ' m</em></span>' +
+        '<span class="alt">' + p.altitude + '<span> m</span></span></div>';
+    }).join('') + '</div>' +
+    '<div class="hint" style="text-align:center;margin-top:14px">' +
+      '点位的编号、二维码、现场照片需要实地标定后补充</div>';
+}
+
+function junctions() {
+  view.innerHTML =
+    '<div class="sec-head"><h3>岔路口</h3><span class="more">待标定</span></div>' +
+    '<div class="card"><div class="empty"><span class="big">⛰</span>' +
+    '还没有岔路点位<br>' +
+    '<span style="font-size:12.5px">岔路口不能从 GPX 自动生成——<br>' +
+    '它需要人到现场定坐标、拍照、编号，<br>' +
+    '再由维护人确认「往哪走」的那句话。</span></div>' +
+    '<button class="btn ghost" style="margin-top:6px" disabled>等第一条岔路数据</button>' +
+    '</div>' +
+    '<div class="card" style="background:var(--blue-bg);box-shadow:none">' +
+    '<div style="font-size:12px;font-weight:800;color:var(--blue);margin-bottom:6px">岔路页长什么样</div>' +
+    '<div style="font-size:12.5px;color:var(--blue-deep);line-height:1.7">' +
+    '「你在这里 · 往哪走」方向指引（来向照片 + 箭头 + 下一段距离爬升）<br>' +
+    '岔路情报卡流：已核验 / 待核验 + 确认人数<br>' +
+    '上报一条情报 · 顺路打卡</div></div>';
+}
+
+function route() {
+  (kind === 'peak' ? peaks() : Promise.resolve(junctions())).catch(function (e) {
+    view.innerHTML = '<div class="card" style="background:var(--coral-bg);box-shadow:none">' +
+      '加载失败：' + esc(e.message) + '</div>';
+  });
+}
+route();
+</script>
+</body>
+</html>

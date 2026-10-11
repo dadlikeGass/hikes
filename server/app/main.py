@@ -245,6 +245,27 @@ def get_route(slug: str):
 
 # ==================== 点位 ====================
 
+class PeakItem(BaseModel):
+    id: int
+    route_slug: str
+    route_name: str
+    idx: int
+    km: float
+    altitude: int
+    rise: int = Field(description="自上一个山顶（或起点）的爬升")
+
+
+@app.get("/api/peaks", response_model=list[PeakItem], tags=["点位"],
+         summary="全部山顶，按海拔排序（来自 GPX 自动识别）")
+def list_peaks(limit: int = 200, route: str | None = None):
+    sql = """SELECT p.id, r.slug AS route_slug, r.name AS route_name, p.idx, p.km,
+                    p.altitude, p.rise
+             FROM route_peaks p JOIN routes r ON r.id = p.route_id"""
+    if route:
+        sql += " WHERE r.slug = :route"
+    sql += " ORDER BY p.altitude DESC, r.slug LIMIT :limit"
+    return [PeakItem(**dict(r)) for r in q(sql, limit=limit, route=route)]
+
 @app.get("/api/points/{code}", response_model=PointDetail, tags=["点位"], responses=ERR_404)
 def get_point(code: str):
     p = q1("""SELECT pt.*, r.name AS route_name FROM points pt
