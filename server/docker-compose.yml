@@ -1,0 +1,36 @@
+name: hikes
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: hikes
+      POSTGRES_PASSWORD: hikes
+      POSTGRES_DB: hikes
+    ports: ["5432:5432"]
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+      - ./db/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hikes -d hikes"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://hikes:hikes@db:5432/hikes
+      JWT_SECRET: dev-only-change-me
+    ports: ["8000:8000"]
+    volumes:
+      - ./app:/srv/app:ro
+      - ./seeds:/srv/seeds:ro
+      - ../app/js:/srv/route-data:ro   # pipeline 工程化之前，种子数据从已算好的产物读
+    depends_on:
+      db:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  dbdata:
