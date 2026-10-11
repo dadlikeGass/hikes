@@ -3,13 +3,16 @@
 实现在 docs/API.md 里定义的契约。全部返回体声明 response_model，错误响应也列出，
 否则 /docs 里响应是空的，前端没法照着联调。
 """
+import json
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
 import jwt
 from fastapi import Depends, FastAPI, Header, HTTPException, Path
+from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
@@ -242,7 +245,7 @@ def get_point(code: str):
     if not p:
         err(404, "POINT_NOT_FOUND", "点位不存在")
     top = q1("""SELECT c.id, c.text, c.like_count, c.bad_count, c.status, c.created_at,
-                       u.nickname, (pt.maintainer_id = c.user_id) AS is_maintainer
+                       u.nickname, coalesce(pt.maintainer_id = c.user_id, false) AS is_maintainer
                 FROM comments c
                 JOIN users u   ON u.id = c.user_id
                 JOIN points pt ON pt.id = c.point_id
@@ -284,6 +287,123 @@ def do_visit(body: VisitIn, point_id: int = Path(ge=1), uid: int = Depends(requi
               uid=uid, pid=point_id)
     return VisitOut(seq=row[0], isFirstVisit=is_first, myVisitCount=mine["n"],
                     message=f"你是第 {row[0]} 位在这里留下痕迹的人")
+
+
+# ==================== 留言 ====================
+
+class CommentIn(BaseModel):
+    text: str = Field(min_length=1, max_length=200, description="纯文本，v1 不收图片")
+
+
+class CommentListOut(BaseModel):
+    items: list[CommentOut]
+    nextCursor: int | None = None
+
+
+class VoteIn(BaseModel):
+    value: Literal["like", "bad"] | None = Field(default=None, description="null 表示取消投票")
+
+
+_COMMENT_SQL = """SELECT c.id, c.text, c.like_count, c.bad_count, c.status, c.created_at,
+                         u.nickname, coalesce(pt.maintainer_id = c.user_id, false) AS is_maintainer
+                  FROM comments c
+                  JOIN users  u  ON u.id = c.user_id
+                  JOIN points pt ON pt.id = c.point_id
+                  WHERE c.point_id = :pid AND c.status <> 'hidden'"""
+
+# 排序固定：维护人置顶 → 净分(赞-踩) → 时间。前端不要再排。
+_COMMENT_ORDER = """ ORDER BY is_maintainer DESC, (c.like_count - c.bad_count) DESC,
+                              c.created_at DESC, c.id DESC """
+
+
+def _comment_by_id(cid: int) -> "CommentOut":
+    row = q1("""SELECT c.id, c.text, c.like_count, c.bad_count, c.status, c.created_at,
+                       u.nickname, coalesce(pt.maintainer_id = c.user_id, false) AS is_maintainer
+                FROM comments c
+                JOIN users  u  ON u.id = c.user_id
+                JOIN points pt ON pt.id = c.point_id
+                WHERE c.id = :cid""", cid=cid)
+    if not row:
+        err(404, "COMMENT_NOT_FOUND", "留言不存在")
+    return CommentOut(**dict(row))
+
+
+@app.get("/api/points/{point_id}/comments", response_model=CommentListOut, tags=["留言"],
+         summary="留言列表（维护人置顶 → 净分 → 时间）")
+def list_comments(point_id: int, limit: int = 20, cursor: int | None = None):
+    sql = _COMMENT_SQL + (" AND c.id < :cursor" if cursor else "") + _COMMENT_ORDER + " LIMIT :limit"
+    rows = q(sql, pid=point_id, limit=limit, cursor=cursor)
+    items = [CommentOut(**dict(r)) for r in rows]
+    return CommentListOut(items=items, nextCursor=items[-1].id if len(items) == limit else None)
+
+
+@app.post("/api/points/{point_id}/comments", response_model=CommentOut, tags=["留言"],
+          status_code=201, responses={**ERR_401, **ERR_404})
+def add_comment(body: CommentIn, point_id: int = Path(ge=1), uid: int = Depends(require_user)):
+    if not q1("SELECT 1 AS x FROM points WHERE id = :id", id=point_id):
+        err(404, "POINT_NOT_FOUND", "点位不存在")
+    with engine.begin() as conn:
+        cid = conn.execute(text("""INSERT INTO comments (point_id, user_id, text)
+            VALUES (:pid, :uid, :txt) RETURNING id"""),
+            {"pid": point_id, "uid": uid, "txt": body.text.strip()}).scalar()
+    return _comment_by_id(cid)
+
+
+@app.post("/api/comments/{comment_id}/vote", response_model=CommentOut, tags=["留言"],
+          responses={**ERR_401, **ERR_404},
+          summary="赞 / 踩 / 取消。bad>=3 且 bad>like 时置 flagged（只灰不删）")
+def vote(comment_id: int, body: VoteIn, uid: int = Depends(require_user)):
+    if not q1("SELECT 1 AS x FROM comments WHERE id = :id", id=comment_id):
+        err(404, "COMMENT_NOT_FOUND", "留言不存在")
+    with engine.begin() as conn:
+        if body.value is None:
+            conn.execute(text("DELETE FROM comment_votes WHERE comment_id=:cid AND user_id=:uid"),
+                         {"cid": comment_id, "uid": uid})
+        else:
+            conn.execute(text("""INSERT INTO comment_votes (comment_id, user_id, value)
+                VALUES (:cid, :uid, :v)
+                ON CONFLICT (comment_id, user_id) DO UPDATE SET value = EXCLUDED.value"""),
+                {"cid": comment_id, "uid": uid, "v": body.value})
+        conn.execute(text("""UPDATE comments SET
+              like_count = (SELECT count(*) FROM comment_votes WHERE comment_id=:cid AND value='like'),
+              bad_count  = (SELECT count(*) FROM comment_votes WHERE comment_id=:cid AND value='bad')
+            WHERE id=:cid"""), {"cid": comment_id})
+        conn.execute(text("""UPDATE comments SET status =
+              CASE WHEN bad_count >= 3 AND bad_count > like_count THEN 'flagged' ELSE 'normal' END
+            WHERE id=:cid AND status <> 'hidden'"""), {"cid": comment_id})
+    return _comment_by_id(comment_id)
+
+
+# ==================== 短链 ====================
+
+@app.get("/p/{code}", tags=["短链"], summary="二维码里印的就是它",
+         responses={404: {"description": "编号不存在"}})
+def short_link(code: str, request: Request):
+    """按 UA 分流。现在两端都回 H5 落地页；小程序上线后微信内优先跳小程序。"""
+    row = q1("SELECT point_id FROM short_links WHERE code = :c", c=code)
+    if not row:
+        err(404, "POINT_NOT_FOUND", f"编号 {code} 不存在")
+    ua = request.headers.get("user-agent", "")
+    with engine.begin() as conn:
+        conn.execute(text("""INSERT INTO scans (point_id, code, ua)
+            VALUES (:pid, :code, :ua)"""), {"pid": row["point_id"], "code": code, "ua": ua[:300]})
+    return RedirectResponse(url=f"/?code={code}", status_code=302)
+
+
+# ==================== 埋点 ====================
+
+@app.post("/api/events", status_code=202, tags=["埋点"],
+          summary="扫码 / 打卡 / 留言 / 打开，三个验证指标都从这里出")
+def track(payload: dict | list[dict]):
+    rows = payload if isinstance(payload, list) else [payload]
+    with engine.begin() as conn:
+        for e in rows:
+            name = str(e.get("name") or "").strip()
+            if not name:
+                err(400, "BAD_EVENT", "事件缺少 name")
+            conn.execute(text("""INSERT INTO events (name, props) VALUES (:n, :p)"""),
+                         {"n": name, "p": json.dumps(e.get("props") or {}, ensure_ascii=False)})
+    return {"accepted": len(rows)}
 
 
 # ==================== 静态页面 ====================
