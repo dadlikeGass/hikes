@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>到此一游</title>
+<link rel="stylesheet" href="/theme/app.css">
+<style>
+body{background:#E7E1D6}
+.wrap{max-width:430px;margin:0 auto;background:var(--bg);min-height:100dvh;padding-bottom:26px;overflow:hidden}
+.sc{flex:0 0 250px}
+.sc .ph{flex:0 0 132px;height:132px}
+.sc .sb{display:block;padding:11px 13px 13px}
+.sc h4{font-size:15.5px;font-weight:800;margin-bottom:3px}
+.sc .st{font-size:11.5px;color:var(--ink2)}
+.sc .row{display:flex;gap:10px;margin-top:9px;padding-top:9px;border-top:1px solid var(--hair)}
+.sc .row div{flex:1}
+.sc .row span{display:block;font-size:10px;color:var(--ink3)}
+.sc .row b{font-size:13px;font-weight:800;font-variant-numeric:tabular-nums}
+.sc .row b.cal{color:var(--coral)}
+.entry{display:flex;gap:11px}
+.entry a{flex:1;background:#fff;border-radius:18px;padding:15px 14px;box-shadow:var(--shadow);color:inherit}
+.entry .ic{font-size:19px}
+.entry b{display:block;font-size:14px;font-weight:800;margin:7px 0 2px}
+.entry span{font-size:11.5px;color:var(--ink3);line-height:1.45}
+.cmitem{display:flex;gap:10px;background:#fff;border-radius:16px;padding:13px 15px;margin-bottom:10px;
+  box-shadow:var(--shadow)}
+.cmitem .av{width:26px;height:26px;border-radius:50%;background:#4F6BD8;color:#fff;display:grid;
+  place-items:center;font-size:11px;font-weight:700;flex:0 0 auto}
+.cmitem p{margin:0;font-size:13px;color:#33364A}
+.cmitem .w{font-size:11.5px;color:var(--ink3);margin-bottom:4px}
+.skel{background:linear-gradient(90deg,#EFEAE0,#F7F3EC,#EFEAE0);border-radius:14px;height:96px;margin-bottom:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar home" style="padding:16px 16px 8px">
+    <span class="brand"><b>到此一游</b><em>HIKERS</em></span>
+  </div>
+  <div style="padding:0 16px">
+    <a class="scanstrip" href="/routes.html" style="margin:2px 0 16px;display:flex">
+      <svg viewBox="0 0 24 24" style="width:19px;height:19px;stroke:#fff;fill:none;stroke-width:1.9"
+        stroke-linecap="round"><path d="M4 9V5.6A1.6 1.6 0 0 1 5.6 4H9"/>
+        <path d="M15 4h3.4A1.6 1.6 0 0 1 20 5.6V9"/>
+        <path d="M20 15v3.4a1.6 1.6 0 0 1-1.6 1.6H15"/>
+        <path d="M9 20H5.6A1.6 1.6 0 0 1 4 18.4V15"/>
+        <rect x="10" y="10" width="4" height="4" rx="1.2"/></svg>
+      扫码，留下我来过<span>→</span></a>
+    <div id="carousel"></div>
+    <div class="sec-head" style="margin-top:14px"><h3>想看的都在这</h3></div>
+    <div class="entry">
+      <a href="/routes.html"><span class="ic">📖</span><b>路书</b>
+        <span>12 条北京线路<br>难度 · 用时 · 消耗</span></a>
+      <a href="/?code=QS-TEST01"><span class="ic">⛰</span><b>扫码打卡</b>
+        <span>留下到访<br>看别人说了什么</span></a>
+    </div>
+    <div class="sec-head"><h3>山友刚说的</h3><span class="more">实时</span></div>
+    <div id="feed"><div class="skel"></div></div>
+    <div class="hint" style="text-align:center;margin-top:14px">
+      概念产品 · 线路数据来自真实 GPX · 用时与消耗为估算</div>
+  </div>
+</div>
+<script>
+var C = { easy: '#2563EB', mid: '#F2B62C', hard: '#E4453A', hidden: '#22242E' };
+var N = { easy: '简单', mid: '中等', hard: '困难', hidden: '隐藏' };
+var SH = {
+  easy: function (c) { return '<circle cx="50" cy="50" r="41" fill="' + c + '"/>'; },
+  mid: function (c) { return '<polygon points="50,10 92,87 8,87" fill="' + c + '"/>'; },
+  hard: function (c) { return '<polygon points="50,6 94,50 50,94 6,50" fill="' + c + '"/>'; },
+  hidden: function (c) { return '<polygon points="50,5 89,27 89,73 50,95 11,73 11,27" fill="' + c + '"/>'; }
+};
+function badge(lv) {
+  var c = C[lv] || '#22242E';
+  return '<span class="badge" style="background:' + c + '22;color:' + c + '">' +
+    '<span class="lvmark"><span class="lvshape"><svg viewBox="0 0 100 100">' +
+    SH[lv](c) + '</svg></span>' + N[lv] + '</span></span>';
+}
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+  return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function scene(seed) {
+  var h = 0; for (var i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 997;
+  var pal = [['#FFE9C8', '#FFD09A', '#F4A97E', '#C4869A', '#6E6394'],
+    ['#EAF2F8', '#D3E2EC', '#AEC3D6', '#8897B2', '#5E6C8C'],
+    ['#EDF4E7', '#D6E7CC', '#B2CCA4', '#89A87E', '#628067'],
+    ['#FFDCC6', '#F5AE93', '#CE8189', '#8E5F80', '#4E3D66']][h % 4];
+  var u = 'g' + h, o = '<svg viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice">';
+  o += '<defs><linearGradient id="' + u + '" x1="0" y1="0" x2="0" y2="1">';
+  pal.forEach(function (c, i) { o += '<stop offset="' + (i * 25) + '%" stop-color="' + c + '"/>'; });
+  o += '</linearGradient></defs><rect width="400" height="300" fill="url(#' + u + ')"/>';
+  o += '<circle cx="' + (90 + h % 200) + '" cy="86" r="24" fill="#FFE0A0" opacity=".9"/>';
+  o += '<path d="M0 300 L0 175 L70 118 L140 188 L210 128 L290 198 L400 148 L400 300Z" fill="#524C72" opacity=".85"/>';
+  o += '<path d="M0 300 L0 228 L90 188 L180 243 L280 193 L400 248 L400 300Z" fill="#33304A"/>';
+  return o + '</svg>';
+}
+async function j(u) { var r = await fetch(u); if (!r.ok) throw new Error(r.status); return r.json(); }
+
+(async function () {
+  var car = document.getElementById('carousel'), feed = document.getElementById('feed');
+  try {
+    var d = await j('/api/routes?limit=50');
+    var hot = d.items.filter(function (r) { return r.km >= 12; }).slice(0, 6);
+    car.innerHTML = '<div class="sec-head"><h3>值得走一趟</h3>' +
+      '<a class="more" href="/routes.html">全部 ' + d.items.length + ' 条 ›</a></div>' +
+      '<div class="carousel">' + hot.map(function (r) {
+        return '<a class="slide sc" href="/routes.html#' + r.slug + '">' +
+          '<div class="ph">' + scene(r.slug) + '<div class="scrim"></div>' +
+          '<div class="ovl tl"><h4>' + esc(r.name) + '</h4>' +
+          '<div class="st">' + r.km + ' km · ↗ ' + r.up + ' m</div></div>' +
+          '<div class="ovl br">' + badge(r.hardest_level) + '</div></div>' +
+          '<div class="sb"><div class="row">' +
+          '<div><span>平均用时</span><b>' + r.hours + ' h</b></div>' +
+          '<div><span>消耗</span><b class="cal">' + r.kcal + '</b></div>' +
+          '</div></div></a>';
+      }).join('') + '</div>' +
+      '<div class="hint" style="text-align:center;margin:-4px 0 0">' +
+      '难度徽标 = 这条线路里最难的那一段</div>';
+
+    var cm = await j('/api/points/1/comments?limit=6');
+    feed.innerHTML = cm.items.length ? cm.items.map(function (c) {
+      return '<div class="cmitem"><span class="av">' + esc((c.nickname || '山友')[0]) + '</span>' +
+        '<div><div class="w">' + esc(c.nickname || '山友') +
+        (c.is_maintainer ? ' · 维护人' : '') + '</div>' +
+        '<p>' + esc(c.text) + '</p></div></div>';
+    }).join('') : '<div class="card muted tiny">还没有人留言。</div>';
+  } catch (e) {
+    car.innerHTML = '<div class="card" style="background:var(--coral-bg);box-shadow:none">' +
+      '加载失败：' + esc(e.message) + '</div>';
+    feed.innerHTML = '';
+  }
+})();
+</script>
+</body>
+</html>
