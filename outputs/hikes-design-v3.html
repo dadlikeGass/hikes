@@ -1,0 +1,1262 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>hikes · v3 页面结构 · UI 设计 · 子页面布局</title>
+<style>
+:root{
+  --bg:#F7F3EC; --paper:#fff; --ink:#22242E; --ink2:#6B6E7E; --ink3:#9A9CAA;
+  --line:#E9E2D5; --blue:#3455F5; --coral:#FF714E; --violet:#7B6CE8; --violet-bg:#ECE9FB;
+  --easy:#52B44A; --mid:#F2B62C; --hard:#E4453A;
+  --shadow:0 1px 2px rgba(34,36,46,.05), 0 8px 24px rgba(34,36,46,.07);
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:#EFEAE0;color:var(--ink);
+  font:15px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+h1,h2,h3,h4{margin:0;line-height:1.3;letter-spacing:-.2px}
+p{margin:0 0 10px}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1560px;margin:0 auto;padding:0 32px}
+
+/* ---------- doc chrome ---------- */
+header.top{background:var(--ink);color:#fff;padding:26px 0}
+header.top .brand{font-size:22px;font-weight:700;letter-spacing:.5px}
+header.top .brand span{font-weight:400;font-size:13px;color:#B9BCCB;margin-left:10px;letter-spacing:1px}
+header.top .sub{color:#A9ADBE;font-size:13px;margin-top:6px}
+nav.toc{display:flex;gap:8px;flex-wrap:wrap;padding:14px 32px 0;max-width:1560px;margin:0 auto}
+nav.toc a{background:#fff;border:1px solid var(--line);border-radius:999px;padding:7px 15px;font-size:13px;color:#4A4D5C}
+main{padding-bottom:40px}
+section{padding:34px 0 6px}
+.sec-title{display:flex;align-items:baseline;gap:14px;border-bottom:2px solid var(--ink);padding-bottom:10px;margin-bottom:22px}
+.sec-title .n{font-size:12px;font-weight:700;color:#fff;background:var(--ink);border-radius:6px;padding:2px 8px;letter-spacing:1px}
+.sec-title h2{font-size:22px}
+.sec-title .hint{color:var(--ink2);font-size:13px;margin-left:auto}
+.panel{background:#fff;border-radius:18px;padding:26px 28px;box-shadow:var(--shadow);margin-bottom:18px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:1000px){.grid2{grid-template-columns:1fr}}
+
+/* ---------- phones ---------- */
+.screens{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.phone-wrap{margin:0}
+.phone{width:390px;background:var(--bg);border-radius:40px;border:1px solid #E3DCCD;
+  box-shadow:0 20px 50px rgba(34,36,46,.13);overflow:hidden;font-size:15px;color:var(--ink)}
+.statusbar{display:flex;justify-content:space-between;align-items:center;padding:12px 24px 2px;
+  font-size:12.5px;font-weight:600;color:#3A3C48;letter-spacing:.4px}
+.statusbar .icons{display:flex;gap:3px;align-items:flex-end}
+.statusbar .icons i{display:block;background:#3A3C48;border-radius:2px}
+.ph-body{padding:10px 16px 18px}
+
+/* sunset scene */
+.scene{position:relative;overflow:hidden;border-radius:16px;
+  background:linear-gradient(180deg,#FFE6BE 0%,#FFCB91 20%,#F4A075 40%,#B87E92 60%,#6A5F8C 80%,#3A3556 100%)}
+.scene::before{content:"";position:absolute;left:0;right:0;bottom:0;height:58%;background:#4E4A70;opacity:.9;
+  clip-path:polygon(0 100%,0 54%,13% 26%,26% 50%,37% 20%,51% 46%,63% 24%,77% 48%,89% 32%,100% 60%,100% 100%)}
+.scene::after{content:"";position:absolute;left:0;right:0;bottom:0;height:34%;background:#2C2942;
+  clip-path:polygon(0 100%,0 60%,10% 38%,22% 64%,36% 36%,50% 60%,62% 40%,76% 66%,88% 44%,100% 68%,100% 100%)}
+.scene .sun{position:absolute;left:63%;top:40%;width:30px;height:30px;border-radius:50%;background:#FFDC93;
+  box-shadow:0 0 38px 15px rgba(255,206,132,.6);z-index:1}
+.scene.flat{border-radius:0}
+.scene.cool{background:linear-gradient(180deg,#CFE0EA 0%,#B9CFDE 25%,#93A9BE 50%,#6C7C99 75%,#3E4463 100%)}
+.scene.cool::before{background:#5A6180}
+.scene.cool::after{background:#343A54}
+.scene.cool .sun{background:#E9F1F7;box-shadow:0 0 34px 13px rgba(226,238,246,.55)}
+.scene .cap{position:absolute;right:12px;bottom:10px;z-index:2;color:#fff;font-size:12px;line-height:1.5;
+  text-align:right;text-shadow:0 1px 6px rgba(20,18,40,.6);opacity:.95}
+
+/* brand bar */
+.brandbar{display:flex;justify-content:space-between;align-items:center;padding:6px 2px 12px}
+.brandbar .logo{font-size:20px;font-weight:800;letter-spacing:-.5px;line-height:1.1}
+.brandbar .logo em{display:block;font-style:normal;font-size:8.5px;font-weight:600;letter-spacing:2.4px;color:var(--coral)}
+.brandbar .home-hint{font-size:10px;color:var(--ink3);margin-left:7px;font-weight:600;letter-spacing:.5px}
+.iconbtn{width:34px;height:34px;border-radius:50%;background:#fff;display:grid;place-items:center;
+  box-shadow:var(--shadow);flex:0 0 auto}
+.ico{width:20px;height:20px;fill:none;stroke:#2A2C38;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+/* scan strip */
+.scanstrip{display:flex;align-items:center;gap:9px;height:46px;padding:0 15px;border-radius:15px;
+  background:var(--coral);color:#fff;font-size:14px;font-weight:700;margin-bottom:16px;
+  box-shadow:0 8px 20px rgba(255,113,78,.3)}
+.scanstrip svg{width:19px;height:19px;stroke:#fff;fill:none;stroke-width:1.9;stroke-linecap:round}
+.scanstrip span{margin-left:auto;opacity:.85;font-weight:600;font-size:12.5px}
+
+/* carousel */
+.carousel{display:flex;align-items:flex-start;gap:12px;overflow-x:auto;margin:0 -16px 4px;padding:2px 16px 6px;
+  scroll-snap-type:x mandatory}
+.carousel::-webkit-scrollbar{display:none}
+.slide{flex:0 0 250px;scroll-snap-align:start;border-radius:20px;overflow:hidden;background:#fff;
+  box-shadow:var(--shadow);position:relative;display:flex;flex-direction:column}
+.slide .ph{flex:0 0 128px;height:128px;position:relative}
+.slide .ph .badge{position:absolute;left:10px;top:10px;z-index:2}
+.slide .sb{flex:1 1 auto}
+.fav{position:absolute;right:9px;top:9px;width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.92);
+  display:grid;place-items:center;font-size:14px;color:var(--coral);font-style:normal;z-index:2}
+.slide .sb{padding:11px 13px 13px}
+.slide h4{font-size:15.5px;font-weight:800;margin-bottom:3px;line-height:1.35}
+.slide .stat{font-size:12px;color:var(--ink2)}
+.slide .hot{font-size:11.5px;color:var(--coral);font-weight:700;margin-top:7px}
+.dots{display:flex;gap:5px;justify-content:center;margin:10px 0 18px}
+.dots i{width:6px;height:6px;border-radius:50%;background:#D6D0C1}
+.dots i.on{width:16px;border-radius:3px;background:var(--blue)}
+
+/* cards */
+.card{background:var(--paper);border-radius:22px;padding:18px;box-shadow:var(--shadow);margin-bottom:14px}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:7px}
+.badge.easy{background:#E6F5E2;color:#2F7A2A}
+.badge.mid{background:#FDF2D6;color:#8A6410}
+.badge.hard{background:#FCE7E5;color:#A83027}
+.av{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:11.5px;font-weight:700;flex:0 0 auto}
+.av.a1{background:#4F6BD8}.av.a2{background:#E08A5C}.av.a3{background:#6EA36A}.av.a4{background:#9B7BD4}
+.btn{display:block;width:100%;border:none;font:inherit;font-size:15.5px;font-weight:700;border-radius:14px;
+  padding:13px;cursor:pointer;letter-spacing:.2px}
+.btn.coral{background:var(--coral);color:#fff;box-shadow:0 6px 16px rgba(255,113,78,.32)}
+.btn.blue{background:var(--blue);color:#fff}
+.btn.ghost{background:transparent;color:#3E4150;border:1.5px solid var(--line);margin-top:9px;font-weight:600}
+.btn.white{background:#fff;color:var(--blue)}
+.btn.mini{width:auto;font-size:13px;padding:8px 15px;border-radius:999px;display:inline-block}
+.sec-head{display:flex;justify-content:space-between;align-items:baseline;margin:2px 2px 11px}
+.sec-head h3{font-size:16.5px;font-weight:800}
+.sec-head span{font-size:12.5px;color:var(--ink2)}
+.sec-head small{font-size:11.5px;color:var(--ink3);font-weight:400;margin-left:6px}
+
+/* activity card */
+.act{display:flex;gap:12px;background:#fff;border-radius:20px;padding:14px;box-shadow:var(--shadow);
+  border-left:4px solid var(--coral);margin-bottom:18px;align-items:flex-start}
+.act .date{flex:0 0 50px;text-align:center;background:#FFF1EC;border-radius:12px;padding:7px 0 8px}
+.act .date b{display:block;font-size:19px;font-weight:900;color:var(--coral);line-height:1.05}
+.act .date span{font-size:10px;color:#C2563A;font-weight:700}
+.act h4{font-size:14.5px;font-weight:800;margin-bottom:5px}
+.act .meta{font-size:12px;color:var(--ink2);margin-bottom:9px;line-height:1.5}
+.act .foot{display:flex;align-items:center;gap:9px}
+.avstack{display:flex;align-items:center}
+.avstack .av{width:20px;height:20px;font-size:9px;margin-left:-7px;border:1.5px solid #fff}
+.avstack .av:first-child{margin-left:0}
+.act .cnt{font-size:11.5px;color:var(--ink2)}
+
+/* waterfall */
+.falls{column-count:2;column-gap:12px}
+.item{break-inside:avoid;margin:0 0 12px;background:#fff;border-radius:18px;overflow:hidden;box-shadow:var(--shadow)}
+.item .ph{height:var(--h,150px);position:relative}
+.item .seq{position:absolute;left:9px;top:9px;background:rgba(20,18,40,.42);color:#fff;font-size:10.5px;
+  font-weight:700;border-radius:7px;padding:2px 7px;z-index:2;backdrop-filter:blur(4px)}
+.item .body{padding:11px 12px 12px}
+.item .who{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink2);margin-bottom:7px}
+.item .who .av{width:19px;height:19px;font-size:9px}
+.item .txt{font-size:13px;line-height:1.55;margin-bottom:8px}
+.item .place{font-size:11.5px;color:var(--blue);font-weight:700;margin-bottom:8px}
+.item .foot{display:flex;gap:11px;font-size:11.5px;color:var(--ink2);padding-top:8px;border-top:1px solid #F4F0E7}
+.item .foot b{color:var(--ink)}
+
+/* rank */
+.rank{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid #F4F0E7}
+.rank:last-of-type{border-bottom:none}
+.rank .pos{width:18px;text-align:center;font:800 13px/1.4 -apple-system,sans-serif;color:#B8B3A6}
+.rank.p1 .pos{color:var(--coral)}
+.rank .thumb{width:34px;height:34px;border-radius:10px;flex:0 0 auto}
+.rank .nm{flex:1;min-width:0}
+.rank .nm b{display:block;font-size:13.5px}
+.rank .nm em{font-style:normal;font-size:11.5px;color:var(--ink3)}
+.rank .tm{font:800 14.5px/1 -apple-system,sans-serif}
+.rank.me{background:#F1F4FF;border-radius:12px;padding:9px 10px;border-bottom:none;margin-top:3px}
+.rank.me .tm{color:var(--blue)}
+.rank-note{font-size:11.5px;color:var(--ink2);margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
+.safehint{font-size:11.5px;color:#9A9CAA;margin-top:8px}
+
+/* guide block (岔路) */
+.guide{background:#F1F4FF;border-radius:20px;padding:16px;margin-bottom:14px}
+.guide .tag{font-size:12px;font-weight:800;color:var(--blue);letter-spacing:.5px;margin-bottom:11px}
+.guide .row{display:flex;gap:11px;align-items:center}
+.guide .shot{width:74px;height:60px;border-radius:12px;flex:0 0 auto}
+.guide .dir{font-size:22px;color:var(--blue);font-weight:900;flex:0 0 auto}
+.guide .txt b{display:block;font-size:14.5px;margin-bottom:3px}
+.guide .txt span{font-size:12px;color:var(--ink2)}
+.guide .next{margin-top:13px;padding-top:12px;border-top:1px dashed #C9D2F8;font-size:12.5px;color:#2A3A9E;font-weight:600}
+
+/* intel card */
+.intel{background:#fff;border-radius:18px;padding:14px 15px;margin-bottom:11px;box-shadow:var(--shadow);
+  border-left:4px solid var(--mid)}
+.intel.ok{border-left-color:var(--easy)}
+.intel .hd{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ink3);margin-bottom:8px}
+.intel .hd .av{width:19px;height:19px;font-size:9px}
+.intel .hd .tag{margin-left:auto;font-size:10.5px;font-weight:700;border-radius:6px;padding:2px 7px}
+.tag.ok{background:#E6F5E2;color:#2F7A2A}
+.tag.wait{background:#FDF2D6;color:#8A6410}
+.intel b.t{display:block;font-size:14px;margin-bottom:4px;letter-spacing:-.2px}
+.intel p{margin:0;font-size:12.5px;color:#3C3F4E;line-height:1.55}
+
+/* segmented */
+.seg{display:flex;background:#EDE7DA;border-radius:13px;padding:3px;margin-bottom:16px}
+.seg span{flex:1;text-align:center;font-size:13.5px;font-weight:700;padding:8px;border-radius:11px;color:var(--ink2)}
+.seg span.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(34,36,46,.1)}
+
+/* search */
+.searchbar{display:flex;align-items:center;gap:9px;background:#fff;border-radius:14px;padding:12px 15px;
+  font-size:13.5px;color:var(--ink3);box-shadow:var(--shadow);margin-bottom:14px}
+.searchbar svg{width:17px;height:17px;stroke:var(--ink3);fill:none;stroke-width:1.9;stroke-linecap:round}
+.chips{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.chip{font-size:12.5px;font-weight:700;padding:7px 13px;border-radius:999px;background:#fff;color:var(--ink2);
+  box-shadow:var(--shadow)}
+.chip.on{background:var(--ink);color:#fff}
+
+/* 我 tab */
+.profile{display:flex;align-items:center;gap:13px;margin-bottom:18px}
+.profile .big{width:54px;height:54px;border-radius:50%;background:linear-gradient(140deg,#7E9AE8,#4F6BD8);
+  display:grid;place-items:center;color:#fff;font-size:20px;font-weight:800}
+.profile b{display:block;font-size:18px;font-weight:800}
+.profile span{font-size:12.5px;color:var(--ink2)}
+.rowlink{display:flex;align-items:center;gap:12px;background:#fff;border-radius:18px;padding:15px 16px;
+  margin-bottom:11px;box-shadow:var(--shadow)}
+.rowlink .em{font-size:19px;width:26px;text-align:center;flex:0 0 auto}
+.rowlink .tx{flex:1;min-width:0}
+.rowlink .tx b{display:block;font-size:14.5px}
+.rowlink .tx span{font-size:12px;color:var(--ink3)}
+.rowlink .ar{color:#C9C3B4;font-size:15px}
+.rowlink.warn{border-left:4px solid var(--coral)}
+.puzzle{display:grid;grid-template-columns:repeat(8,1fr);gap:5px;margin-bottom:14px}
+.puzzle i{aspect-ratio:1;border-radius:7px;background:#E4DED0}
+.puzzle i.done{background:linear-gradient(140deg,#7E9AE8,#5468D0)}
+.puzzle i.peak{background:linear-gradient(140deg,#F2A26B,#DE6F4C)}
+.progress{height:7px;border-radius:4px;background:#EDE7DA;overflow:hidden;margin:10px 0 6px}
+.progress i{display:block;height:100%;width:50%;background:var(--blue);border-radius:4px}
+
+/* 消息 */
+.msg{display:flex;gap:11px;background:#fff;border-radius:18px;padding:14px 15px;margin-bottom:11px;box-shadow:var(--shadow)}
+.msg .av{width:36px;height:36px;font-size:13px}
+.msg .tx{flex:1;min-width:0}
+.msg .tx b{font-size:14px}
+.msg .tx em{font-style:normal;font-size:11.5px;color:var(--ink3);margin-left:6px}
+.msg .tx p{margin:3px 0 0;font-size:13px;color:var(--ink2)}
+.msg .ctx{margin-top:8px;display:inline-block;font-size:11.5px;color:var(--blue);font-weight:700;
+  background:#F1F4FF;border-radius:8px;padding:3px 9px}
+.msg .mini-actions{display:flex;gap:8px;margin-top:10px}
+.pill-btn{font-size:12.5px;font-weight:700;padding:6px 14px;border-radius:999px}
+.pill-btn.acc{background:var(--blue);color:#fff}
+.pill-btn.ign{background:#F2EFE8;color:var(--ink2)}
+.urgent{font-size:11px;color:var(--coral);font-weight:700;margin-top:8px}
+.group-label{font-size:12px;font-weight:800;color:var(--ink3);letter-spacing:1px;margin:18px 2px 9px}
+
+/* tabbar */
+.tabbar{display:flex;align-items:flex-end;justify-content:space-around;background:#fff;padding:9px 6px 20px;
+  border-top:1px solid #F1EDE3;box-shadow:0 -6px 20px rgba(34,36,46,.05)}
+.tabbar a{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;color:#9A9CAA;font-weight:600;flex:1}
+.tabbar a.on{color:var(--blue)}
+.tabbar a.on svg{stroke:var(--blue)}
+.tabbar .scan{transform:translateY(-16px)}
+.scan-btn{width:50px;height:50px;border-radius:50%;background:var(--blue);display:grid;place-items:center;
+  box-shadow:0 8px 18px rgba(52,85,245,.4)}
+.scan-btn svg{stroke:#fff;width:24px;height:24px}
+.tabbar .scan em{font-style:normal;color:var(--blue);font-weight:700;font-size:10.5px}
+
+/* arrival */
+.arrive-top{height:230px;position:relative;overflow:hidden}
+.arrive-top .nav-top{position:absolute;top:12px;left:14px;right:14px;z-index:3;display:flex;
+  justify-content:space-between;align-items:center;color:#fff;font-size:13px;font-weight:600}
+.arrive-top .nav-top .pill{background:rgba(20,18,40,.35);backdrop-filter:blur(6px);border-radius:999px;padding:5px 11px}
+.sheet{margin-top:-22px;position:relative;background:var(--bg);border-radius:24px 24px 0 0;padding:20px 16px 18px}
+.seal{display:inline-block;border:2.5px solid var(--coral);color:var(--coral);border-radius:10px;padding:2px 10px;
+  font:800 20px/1.35 -apple-system,sans-serif;transform:rotate(-3deg);background:#FFF6F2}
+.arrive-h{font-size:25px;font-weight:900;letter-spacing:-.6px;margin:14px 0 2px}
+.arrive-p{font-size:13.5px;color:var(--ink2);margin-bottom:16px}
+.arrive-p b{color:var(--coral);font-weight:800}
+.mini3{display:flex;gap:9px;margin:14px 0 16px}
+.mini3 div{flex:1;background:#fff;border-radius:14px;padding:10px 8px;text-align:center;box-shadow:var(--shadow)}
+.mini3 b{display:block;font-size:15px;font-weight:800;margin-top:3px}
+.mini3 span{font-size:10.5px;color:var(--ink2)}
+.boardline{display:flex;align-items:center;gap:8px;background:#F1F4FF;border-radius:14px;padding:11px 14px;
+  font-size:12.5px;color:#2A3A9E;font-weight:600;margin-bottom:14px}
+.boardline b{color:var(--blue)}
+.boardline span{margin-left:auto;color:var(--blue)}
+.letter{background:var(--violet-bg);border:1px dashed #C6BCF0;position:relative;overflow:hidden;
+  border-radius:22px;padding:18px;margin-bottom:14px}
+.letter .tag{font-size:12px;font-weight:800;color:var(--violet);letter-spacing:.5px}
+.letter .line{font-size:16.5px;font-weight:700;color:#3A3560;margin:7px 0 6px}
+.letter .sub{font-size:12.5px;color:#6E68A0}
+.letter .stampmark{position:absolute;right:14px;top:14px;width:42px;height:34px;border-radius:5px;
+  background:linear-gradient(140deg,#B9AFF0,#8E80E2);opacity:.5}
+.comment{background:#fff;border-radius:16px;padding:13px 15px;margin-bottom:10px;box-shadow:var(--shadow)}
+.comment .ph{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink2);margin-bottom:7px}
+.comment p{font-size:13.5px;margin:0;color:#33364A}
+.more{background:#fff;border-radius:16px;padding:14px 16px;font-size:13.5px;color:var(--ink2);box-shadow:var(--shadow);
+  display:flex;gap:14px;flex-wrap:wrap;font-weight:600}
+.more span::before{content:"+ ";color:var(--violet);font-weight:800}
+.photowall{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.photowall .scene{height:88px;border-radius:13px}
+
+/* ---------- tables / spec ---------- */
+table.fn{width:100%;border-collapse:collapse;font-size:13.5px}
+table.fn th{text-align:left;font-size:12px;color:var(--ink2);font-weight:700;padding:0 12px 8px 0;
+  border-bottom:1.5px solid var(--ink)}
+table.fn td{padding:10px 12px 10px 0;border-bottom:1px solid #F4F0E7;vertical-align:top}
+table.fn td:first-child{font-weight:700}
+table.fn .where{color:var(--blue);font-weight:600}
+.swatches{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:6px}
+.sw{border-radius:14px;padding:16px;font-size:12.5px;font-weight:600;min-height:92px;display:flex;flex-direction:column;justify-content:flex-end}
+.sw small{opacity:.75;font-weight:500;font-size:11px;display:block}
+.kv{display:grid;grid-template-columns:130px 1fr;gap:6px 16px;font-size:13.5px}
+.kv dt{color:var(--ink2)}
+.kv dd{margin:0}
+.callout{background:#FFF6F2;border-left:4px solid var(--coral);border-radius:12px;padding:14px 18px;font-size:13.5px;margin-bottom:12px}
+.callout b{color:#D9502C}
+.callout.blue{background:#F1F4FF;border-left-color:var(--blue)}
+.callout.blue b{color:var(--blue)}
+.callout.violet{background:var(--violet-bg);border-left-color:var(--violet)}
+.callout.violet b{color:#5C4FC7}
+.callout.green{background:#F2F5F0;border-left-color:var(--easy)}
+.callout.green b{color:#2F7A2A}
+.tree{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.node{background:#fff;border-radius:18px;padding:20px;box-shadow:var(--shadow);border-top:5px solid var(--blue)}
+.node.coral{border-top-color:var(--coral)}
+.node.violet{border-top-color:var(--violet)}
+.node.gray{border-top-color:#C9C3B4}
+.node h4{font-size:16px;font-weight:800;margin-bottom:4px}
+.node .cap{font-size:12px;color:var(--ink3);margin-bottom:12px}
+.node ul{margin:0;padding:0;list-style:none}
+.node li{font-size:13.5px;padding:6px 0;border-bottom:1px solid #F4F0E7;color:#3C3F4E}
+.node li:last-child{border-bottom:none}
+.node li em{font-style:normal;color:var(--ink3);font-size:12px}
+.root{background:var(--ink);color:#fff;border-radius:16px;padding:16px 22px;margin-bottom:18px}
+.root b{font-size:16px}
+.root span{color:#A9ADBE;font-size:12.5px;display:block;margin-top:2px}
+.navmap{display:flex;gap:6px;background:#fff;border-radius:20px;padding:14px;box-shadow:var(--shadow);
+  align-items:center;justify-content:space-around;margin-bottom:14px}
+.navmap div{text-align:center;font-size:12px;color:var(--ink2);font-weight:600;flex:1}
+.navmap div b{display:block;font-size:13.5px;color:var(--ink);margin-top:3px}
+.navmap div.center{flex:0 0 76px}
+.navmap .dot{width:38px;height:38px;border-radius:50%;background:var(--blue);margin:0 auto 4px;
+  display:grid;place-items:center;box-shadow:0 6px 14px rgba(52,85,245,.35)}
+.navmap .dot svg{width:19px;height:19px;stroke:#fff;fill:none;stroke-width:1.9;stroke-linecap:round}
+.navmap .home{color:var(--coral)}
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;margin:10px 0}
+.flow span{background:#F1F4FF;color:#2A3A9E;border-radius:999px;padding:6px 12px;font-weight:600}
+.flow i{font-style:normal;color:var(--ink3)}
+footer{color:var(--ink2);font-size:12.5px;text-align:center;padding:26px 0 40px}
+figure{margin:0}
+figcaption{font-size:13px;color:var(--ink2);margin-top:12px;text-align:center}
+figcaption b{color:var(--ink)}
+@media(max-width:1080px){.redline{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header class="top"><div class="wrap">
+  <div class="brand">hikes <span>山里见 · SEE YOU OUTSIDE</span></div>
+  <div class="sub">v3 · 页面结构 / UI 设计 / 子页面布局 —— 4 个 tab＋扫一扫，首页走左上角 · 概念数据，非上线服务</div>
+</div></header>
+
+<nav class="toc">
+  <a href="#positioning">① 定位与四个决定</a>
+  <a href="#nav">② 底部导航</a>
+  <a href="#screens1">③ 首页与路书</a>
+  <a href="#screens2">④ 山头与我</a>
+  <a href="#pages">⑤ 子页面布局</a>
+  <a href="#tree">⑥ 页面结构</a>
+  <a href="#ui">⑦ UI 规范</a>
+  <a href="#fun">⑧ 趣味功能归属</a>
+  <a href="#rules">⑨ 关键交互规则</a>
+</nav>
+
+<main>
+
+<!-- ================= 01 定位 ================= -->
+<section id="positioning"><div class="wrap">
+  <div class="sec-title"><span class="n">01</span><h2>定位与四个决定</h2>
+    <span class="hint">你定的，我只是整理</span></div>
+  <div class="grid2">
+    <div class="panel">
+      <p style="font-size:20px;font-weight:800;line-height:1.5;letter-spacing:-.4px;margin-bottom:14px">
+        给每一个岔路口一个路书，<br>给每一个山峰一个打卡点。</p>
+      <div class="kv">
+        <dt>品牌语</dt><dd>每一次上山，都算数。</dd>
+        <dt>副线</dt><dd>山里，总有人与你同频。</dd>
+        <dt>英文</dt><dd>SEE YOU OUTSIDE</dd>
+        <dt>首页入口</dt><dd>左上角品牌 logo（不是 tab）</dd>
+        <dt>底部导航</dt><dd>路书 / 山头·岔路 / 扫一扫 / 消息 / 我</dd>
+      </div>
+    </div>
+    <div class="panel">
+      <h3 style="font-size:16px;margin-bottom:12px">这一版按你的四个决定改的</h3>
+      <p style="font-size:13.5px;margin-bottom:9px">
+        <b>1.</b> 首页从 tab 里拿掉，改由<b>左上角 logo</b> 进入；底部保持 4 个 tab＋中间扫一扫。</p>
+      <p style="font-size:13.5px;margin-bottom:9px">
+        <b>2.</b> 用时榜改成<b>每条热门线路各自的最快记录</b>，不再跨线路比较。</p>
+      <p style="font-size:13.5px;margin-bottom:9px">
+        <b>3.</b> 「最美的线路」<b>本轮直接删除</b>，不占位置。</p>
+      <p style="font-size:13.5px;margin-bottom:0">
+        <b>4.</b> 岔路的留言板改成<b>情报卡流</b>（方向、路况、核验状态），和山头的情绪留言板彻底分开。</p>
+    </div>
+  </div>
+</div></section>
+
+<!-- ================= 02 导航 ================= -->
+<section id="nav"><div class="wrap">
+  <div class="sec-title"><span class="n">02</span><h2>底部导航与首页入口</h2>
+    <span class="hint">4 个 tab，扫一扫在正中</span></div>
+
+  <div class="navmap">
+    <div>路书<b>找线路</b></div>
+    <div>山头·岔路<b>找地点</b></div>
+    <div class="center"><span class="dot"><svg viewBox="0 0 24 24"><path d="M4 9V5.6A1.6 1.6 0 0 1 5.6 4H9"/><path d="M15 4h3.4A1.6 1.6 0 0 1 20 5.6V9"/><path d="M20 15v3.4a1.6 1.6 0 0 1-1.6 1.6H15"/><path d="M9 20H5.6A1.6 1.6 0 0 1 4 18.4V15"/><rect x="10" y="10" width="4" height="4" rx="1.2"/></svg></span><b>扫一扫</b></div>
+    <div>消息<b>谁回应了我</b></div>
+    <div>我<b>我去过哪</b></div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h3 style="font-size:16px;margin-bottom:10px">首页为什么可以不做 tab</h3>
+      <p style="font-size:13.5px;color:var(--ink2)">
+        首页是「热门轮播 + 打卡瀑布流 + 周末活动」，它是一个内容流，不是一个需要反复回访的目的地；
+        而 4 个 tab 每一个都是用户带着明确目的去的（找线路 / 找地点 / 看回应 / 看自己）。
+        把首页放进 tab 会占掉一个高价值格子，还让四个 tab 变成五个。</p>
+      <p style="font-size:13.5px;color:var(--ink2);margin-bottom:0">
+        代价是回首页要多一步，所以要做三件事补偿：<b>左上角 logo 常驻且可点</b>（所有一级页面都一样）、
+        <b>点当前 tab 图标回到该 tab 顶部</b>、以及<b>冷启动永远落在首页</b>。</p>
+    </div>
+    <div class="panel">
+      <h3 style="font-size:16px;margin-bottom:10px">扫一扫的醒目度</h3>
+      <p style="font-size:13.5px;color:var(--ink2)">
+        底部正中凸起 50px 钴蓝实心圆，比其余四个图标高 16px，是全站唯一一个饱和实心的常驻控件；
+        其余图标一律线性灰色。</p>
+      <p style="font-size:13.5px;color:var(--ink2);margin-bottom:0">
+        另外在首页顶部保留一条 46px 的橙色窄条「我在山脚了 · 扫一扫 →」。
+        <b>只有这两处</b>——第三处会让产品看起来只会扫码，也会抢掉瀑布流的注意力。</p>
+    </div>
+  </div>
+</div></section>
+
+<!-- ================= 03 首页 + 路书 ================= -->
+<section id="screens1"><div class="wrap">
+  <div class="sec-title"><span class="n">03</span><h2>首页 · 路书 · 山头·岔路 · 到达页</h2>
+    <span class="hint">390 × 844 画布 · 概念数据</span></div>
+
+  <div class="screens">
+
+  <!-- P1 首页 -->
+  <figure class="phone-wrap">
+    <div class="phone">
+      <div class="statusbar"><span>7:42</span><span class="icons"><i style="width:15px;height:8px"></i><i style="width:11px;height:8px;border-radius:50% 50% 0 0"></i><i style="width:20px;height:9px;border-radius:3px"></i></span></div>
+      <div class="ph-body">
+
+        <div class="brandbar">
+          <div class="logo">山里见<em>SEE YOU OUTSIDE</em><span class="home-hint">首页</span></div>
+          <div class="iconbtn"><svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg></div>
+        </div>
+
+        <div class="scanstrip">扫码，留下我来过<span>→</span></div>
+
+        <div class="carousel">
+          <div class="slide">
+            <div class="ph scene flat"><i class="sun"></i><span class="badge easy">● 简单</span><i class="fav">♡</i></div>
+            <div class="sb"><h4>溪谷森林步道</h4><div class="stat">5.2 km · ↗ 180 m · 约 2 小时</div>
+              <div class="hot">近 7 天 214 人到访 · 最快 01:12</div></div>
+          </div>
+          <div class="slide">
+            <div class="ph scene flat" style="filter:saturate(1.15)"><i class="sun" style="left:30%"></i><span class="badge mid">■ 中等</span><i class="fav">♡</i></div>
+            <div class="sb"><h4>青山山脊环线</h4><div class="stat">12 km · ↗ 800 m · 约 5 小时</div>
+              <div class="hot">近 7 天 96 人到访 · 最快 03:28</div></div>
+          </div>
+          <div class="slide">
+            <div class="ph scene cool flat"><i class="sun"></i><span class="badge hard">◆ 困难</span><i class="fav">♡</i></div>
+            <div class="sb"><h4>群峰长线穿越</h4><div class="stat">24 km · ↗ 1700 m · 约 11 小时</div>
+              <div class="hot">近 7 天 31 人到访 · 最快 07:05</div></div>
+          </div>
+        </div>
+        <div class="dots"><i class="on"></i><i></i><i></i></div>
+
+        <div class="sec-head"><h3>周末有人组队</h3><span>全部活动 ›</span></div>
+        <div class="act">
+          <div class="date"><b>18</b><span>周六</span></div>
+          <div style="flex:1">
+            <h4>溪谷步道 · 慢速队</h4>
+            <div class="meta">6:30 北门停车场集合 · ● 简单 · 约 3 小时<br>发起人 老周 · 可带新手</div>
+            <div class="foot">
+              <div class="avstack"><span class="av a1">川</span><span class="av a2">鱼</span><span class="av a3">周</span><span class="av a4">楠</span></div>
+              <span class="cnt">5 人已参加</span>
+              <button class="btn coral mini" style="margin-left:auto">我也去参加</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec-head"><h3>山友的今天</h3><span>全部 ›</span></div>
+        <div class="falls">
+          <div class="item">
+            <div class="ph scene" style="--h:168px"><i class="sun"></i><span class="seq">第 100 位</span></div>
+            <div class="body">
+              <div class="who"><span class="av a1">川</span>阿川 · 3 小时前</div>
+              <div class="txt">登顶打卡第 100 位，是我！</div>
+              <div class="place">青山顶 ›</div>
+              <div class="foot"><span>击掌 <b>26</b></span><span>留言 <b>8</b></span></div>
+            </div>
+          </div>
+          <div class="item">
+            <div class="ph scene" style="--h:120px"><i class="sun"></i></div>
+            <div class="body">
+              <div class="who"><span class="av a3">鱼</span>小鱼 · 2 小时前</div>
+              <div class="txt">第一次一个人上山，有点怕，但真的好看。</div>
+              <div class="place">溪谷森林步道 ›</div>
+              <div class="foot"><span>击掌 <b>12</b></span><span>留言 <b>3</b></span></div>
+            </div>
+          </div>
+          <div class="item">
+            <div class="ph scene cool" style="--h:150px"><i class="sun"></i></div>
+            <div class="body">
+              <div class="who"><span class="av a4">楠</span>阿楠 · 5 小时前</div>
+              <div class="txt">山脊上风大，石阶结露，慢慢走。</div>
+              <div class="place">青山山脊环线 ›</div>
+              <div class="foot"><span>击掌 <b>9</b></span><span>留言 <b>2</b></span></div>
+            </div>
+          </div>
+          <div class="item">
+            <div class="ph scene" style="--h:132px"><i class="sun"></i></div>
+            <div class="body">
+              <div class="who"><span class="av a2">凯</span>阿凯 · 昨天</div>
+              <div class="txt">一个人来，遇到超棒的伙伴，一起看了日出。</div>
+              <div class="place">青山顶 ›</div>
+              <div class="foot"><span>击掌 <b>17</b></span><span>留言 <b>4</b></span></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <nav class="tabbar">
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M4 4.5h7v7H4zM13 4.5h7v7h-7zM4 13.5h7v6H4zM13 13.5h7v6h-7z"/></svg>路书</a>
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M2 19.5 9 6.5l3.6 6.2 2.2-3.4 7.2 10.2z"/></svg>山头·岔路</a>
+        <a class="scan"><span class="scan-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round"><path d="M4 9V5.6A1.6 1.6 0 0 1 5.6 4H9"/><path d="M15 4h3.4A1.6 1.6 0 0 1 20 5.6V9"/><path d="M20 15v3.4a1.6 1.6 0 0 1-1.6 1.6H15"/><path d="M9 20H5.6A1.6 1.6 0 0 1 4 18.4V15"/><rect x="10" y="10" width="4" height="4" rx="1.2"/></svg></span><em>扫一扫</em></a>
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z"/></svg>消息</a>
+        <a><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20c1.3-3.6 4-5.4 7.2-5.4s5.9 1.8 7.2 5.4"/></svg>我</a>
+      </nav>
+    </div>
+    <figcaption><b>首页</b><br>左上角 logo 常驻回首页</figcaption>
+  </figure>
+
+  <!-- P2 路书 -->
+  <figure class="phone-wrap">
+    <div class="phone">
+      <div class="statusbar"><span>7:50</span><span class="icons"><i style="width:15px;height:8px"></i><i style="width:11px;height:8px;border-radius:50% 50% 0 0"></i><i style="width:20px;height:9px;border-radius:3px"></i></span></div>
+      <div class="ph-body">
+        <div class="brandbar"><div class="logo">路书<em>TRAILBOOK</em></div>
+          <div class="iconbtn"><svg class="ico" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div></div>
+
+        <div class="searchbar"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>搜索线路名称或地区</div>
+        <div class="chips"><span class="chip on">全部</span><span class="chip">● 简单</span><span class="chip">■ 中等</span><span class="chip">◆ 困难</span></div>
+
+        <div class="sec-head"><h3>热门线路最快记录</h3><span>看全部 ›</span></div>
+        <div class="carousel" style="margin-bottom:16px">
+          <div class="slide" style="flex:0 0 210px">
+            <div class="sb" style="padding:14px">
+              <span class="badge easy">● 简单</span>
+              <h4 style="margin-top:9px">溪谷森林步道</h4>
+              <div class="stat">5.2 km · ↗ 180 m</div>
+              <div class="hot">最快 01:12 · 小野</div>
+              <div class="stat" style="margin-top:5px">近 7 天 214 人到访</div>
+            </div>
+          </div>
+          <div class="slide" style="flex:0 0 210px">
+            <div class="sb" style="padding:14px">
+              <span class="badge mid">■ 中等</span>
+              <h4 style="margin-top:9px">青山山脊环线</h4>
+              <div class="stat">12 km · ↗ 800 m</div>
+              <div class="hot">最快 03:28 · 阿川</div>
+              <div class="stat" style="margin-top:5px">近 7 天 96 人到访</div>
+            </div>
+          </div>
+          <div class="slide" style="flex:0 0 210px">
+            <div class="sb" style="padding:14px">
+              <span class="badge hard">◆ 困难</span>
+              <h4 style="margin-top:9px">群峰长线穿越</h4>
+              <div class="stat">24 km · ↗ 1700 m</div>
+              <div class="hot">最快 07:05 · 老周</div>
+              <div class="stat" style="margin-top:5px">近 7 天 31 人到访</div>
+            </div>
+          </div>
+        </div>
+        <div class="callout blue" style="font-size:12.5px;padding:11px 14px;margin-bottom:18px">
+          <b>口径</b>　用时只在同一条线路上比较，每条线路各自成榜；跨线路不排名。
+        </div>
+
+        <div class="sec-head"><h3>新手小白线路<small>平缓 · 3 小时内</small></h3><span>看全部 ›</span></div>
+        <div class="card" style="padding:6px 16px">
+          <div class="rank"><span class="pos">1</span><span class="thumb scene"><i class="sun" style="left:60%;top:34%;width:14px;height:14px"></i></span>
+            <span class="nm"><b>溪谷森林步道</b><em>5.2 km · ↗ 180 m</em></span><span class="tm" style="font-size:12px">● 简单</span></div>
+          <div class="rank"><span class="pos">2</span><span class="thumb scene"><i class="sun" style="left:40%;top:30%;width:14px;height:14px"></i></span>
+            <span class="nm"><b>松林环湖小径</b><em>3.8 km · ↗ 90 m</em></span><span class="tm" style="font-size:12px">● 简单</span></div>
+          <div class="rank"><span class="pos">3</span><span class="thumb scene" style="filter:saturate(1.15)"><i class="sun" style="left:50%;top:32%;width:14px;height:14px"></i></span>
+            <span class="nm"><b>望春台短坡</b><em>6.1 km · ↗ 320 m</em></span><span class="tm" style="font-size:12px">■ 中等</span></div>
+        </div>
+
+        <div class="sec-head"><h3>最难的线路</h3><span>看全部 ›</span></div>
+        <div class="card" style="padding:6px 16px">
+          <div class="rank"><span class="pos">1</span><span class="thumb scene cool"><i class="sun" style="left:60%;top:34%;width:14px;height:14px"></i></span>
+            <span class="nm"><b>群峰长线穿越</b><em>24 km · ↗ 1700 m · 需两天</em></span><span class="tm" style="font-size:12px">◆ 困难</span></div>
+          <div class="rank"><span class="pos">2</span><span class="thumb scene cool"><i class="sun" style="left:40%;top:30%;width:14px;height:14px"></i></span>
+            <span class="nm"><b>北壁碎石坡</b><em>14 km · ↗ 1250 m</em></span><span class="tm" style="font-size:12px">◆ 困难</span></div>
+        </div>
+
+        <div class="rowlink"><span class="em">＋</span><div class="tx"><b>本周新增路线 4 条</b><span>由 6 位山友共建 · 查看</span></div><span class="ar">›</span></div>
+        <div class="rowlink"><span class="em">?</span><div class="tx"><b>难度分级怎么定的</b><span>● 简单 · ■ 中等 · ◆ 困难</span></div><span class="ar">›</span></div>
+
+      </div>
+      <nav class="tabbar">
+        <a class="on"><svg class="ico" viewBox="0 0 24 24"><path d="M4 4.5h7v7H4zM13 4.5h7v7h-7zM4 13.5h7v6H4zM13 13.5h7v6h-7z"/></svg>路书</a>
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M2 19.5 9 6.5l3.6 6.2 2.2-3.4 7.2 10.2z"/></svg>山头·岔路</a>
+        <a class="scan"><span class="scan-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round"><path d="M4 9V5.6A1.6 1.6 0 0 1 5.6 4H9"/><path d="M15 4h3.4A1.6 1.6 0 0 1 20 5.6V9"/><path d="M20 15v3.4a1.6 1.6 0 0 1-1.6 1.6H15"/><path d="M9 20H5.6A1.6 1.6 0 0 1 4 18.4V15"/><rect x="10" y="10" width="4" height="4" rx="1.2"/></svg></span><em>扫一扫</em></a>
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z"/></svg>消息</a>
+        <a><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20c1.3-3.6 4-5.4 7.2-5.4s5.9 1.8 7.2 5.4"/></svg>我</a>
+      </nav>
+    </div>
+    <figcaption><b>路书</b><br>找线路：最快记录 / 新手 / 最难</figcaption>
+  </figure>
+
+  <!-- P3 山头·岔路 -->
+  <figure class="phone-wrap">
+    <div class="phone">
+      <div class="statusbar"><span>7:55</span><span class="icons"><i style="width:15px;height:8px"></i><i style="width:11px;height:8px;border-radius:50% 50% 0 0"></i><i style="width:20px;height:9px;border-radius:3px"></i></span></div>
+      <div class="ph-body">
+        <div class="brandbar"><div class="logo">山头与岔路<em>PLACES</em></div>
+          <div class="iconbtn"><svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg></div></div>
+
+        <div class="seg"><span class="on">山头</span><span>岔路</span></div>
+
+        <div class="sec-head"><h3>山头热门排行榜</h3><span>近 30 天 ›</span></div>
+        <div class="card" style="padding:6px 16px 10px">
+          <div class="rank p1"><span class="pos">1</span><span class="thumb scene"><i class="sun" style="left:62%;top:36%;width:13px;height:13px"></i></span>
+            <span class="nm"><b>青山顶</b><em>海拔 1660 m · 近 30 天 486 人到访</em></span><span class="tm" style="font-size:12px">01:12</span></div>
+          <div class="rank"><span class="pos">2</span><span class="thumb scene" style="filter:saturate(1.15)"><i class="sun" style="left:40%;top:32%;width:13px;height:13px"></i></span>
+            <span class="nm"><b>望春台</b><em>海拔 1240 m · 近 30 天 312 人到访</em></span><span class="tm" style="font-size:12px">00:58</span></div>
+          <div class="rank"><span class="pos">3</span><span class="thumb scene cool"><i class="sun" style="left:50%;top:30%;width:13px;height:13px"></i></span>
+            <span class="nm"><b>鹰嘴崖</b><em>海拔 1880 m · 近 30 天 205 人到访</em></span><span class="tm" style="font-size:12px">02:31</span></div>
+          <div class="rank"><span class="pos">4</span><span class="thumb scene"><i class="sun" style="left:35%;top:36%;width:13px;height:13px"></i></span>
+            <span class="nm"><b>白石尖</b><em>海拔 1420 m · 近 30 天 168 人到访</em></span><span class="tm" style="font-size:12px">01:47</span></div>
+        </div>
+        <div class="safehint" style="margin:-6px 2px 18px">榜单口径：近 30 天完成到访打卡的人数 · 每人每天计一次</div>
+
+        <div class="sec-head"><h3>最近有人去过</h3><span>全部 ›</span></div>
+        <div class="card" style="padding:8px 16px">
+          <div class="rank"><span class="av a1" style="width:22px;height:22px;font-size:10px">川</span>
+            <span class="nm"><b>阿川 · 青山顶</b><em>第 100 位到访 · 3 小时前</em></span><span class="tm" style="font-size:12px;color:var(--ink3)">›</span></div>
+          <div class="rank"><span class="av a3" style="width:22px;height:22px;font-size:10px">鱼</span>
+            <span class="nm"><b>小鱼 · 溪谷森林步道</b><em>第 128 位到访 · 2 小时前</em></span><span class="tm" style="font-size:12px;color:var(--ink3)">›</span></div>
+          <div class="rank"><span class="av a4" style="width:22px;height:22px;font-size:10px">楠</span>
+            <span class="nm"><b>阿楠 · 鹰嘴崖</b><em>第 41 位到访 · 5 小时前</em></span><span class="tm" style="font-size:12px;color:var(--ink3)">›</span></div>
+        </div>
+
+        <div class="sec-head" style="margin-top:6px"><h3>岔路情报 · 最新</h3><span>全部 ›</span></div>
+        <div class="intel ok">
+          <div class="hd"><span class="av a4">周</span>老周 · 维护人<span class="tag ok">已核验 9/28</span></div>
+          <b class="t">林道岔口：左转上山，右侧是作业道</b>
+          <p>右前方那条宽路会走到林场，别跟。</p>
+        </div>
+        <div class="intel">
+          <div class="hd"><span class="av a2">凯</span>阿凯 · 昨天<span class="tag wait">待核验</span></div>
+          <b class="t">溪谷段有倒木，需要绕行</b>
+          <p>在第三个转弯处，可以贴着左侧石头过去。</p>
+        </div>
+
+      </div>
+      <nav class="tabbar">
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M4 4.5h7v7H4zM13 4.5h7v7h-7zM4 13.5h7v6H4zM13 13.5h7v6h-7z"/></svg>路书</a>
+        <a class="on"><svg class="ico" viewBox="0 0 24 24"><path d="M2 19.5 9 6.5l3.6 6.2 2.2-3.4 7.2 10.2z"/></svg>山头·岔路</a>
+        <a class="scan"><span class="scan-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round"><path d="M4 9V5.6A1.6 1.6 0 0 1 5.6 4H9"/><path d="M15 4h3.4A1.6 1.6 0 0 1 20 5.6V9"/><path d="M20 15v3.4a1.6 1.6 0 0 1-1.6 1.6H15"/><path d="M9 20H5.6A1.6 1.6 0 0 1 4 18.4V15"/><rect x="10" y="10" width="4" height="4" rx="1.2"/></svg></span><em>扫一扫</em></a>
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z"/></svg>消息</a>
+        <a><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20c1.3-3.6 4-5.4 7.2-5.4s5.9 1.8 7.2 5.4"/></svg>我</a>
+      </nav>
+    </div>
+    <figcaption><b>山头·岔路</b><br>上头看山头榜，下滑看岔路情报</figcaption>
+  </figure>
+
+  <!-- P4 到达页 -->
+  <figure class="phone-wrap">
+    <div class="phone">
+      <div class="statusbar"><span>9:24</span><span class="icons"><i style="width:15px;height:8px"></i><i style="width:11px;height:8px;border-radius:50% 50% 0 0"></i><i style="width:20px;height:9px;border-radius:3px"></i></span></div>
+      <div class="arrive-top scene">
+        <i class="sun"></i>
+        <div class="nav-top"><span class="pill">‹ 返回</span><span class="pill">青山顶 · ● 简单</span></div>
+      </div>
+      <div class="sheet">
+        <span class="seal">#100</span>
+        <h2 class="arrive-h">你到了，山友。</h2>
+        <p class="arrive-p">你是第 <b>100</b> 位在青山顶留下痕迹的人</p>
+        <button class="btn coral">留下我的到访卡</button>
+        <div class="mini3">
+          <div><span>首次登顶</span><b>✓</b></div>
+          <div><span>本次用时</span><b>01:42</b></div>
+          <div><span>山径拼图</span><b>+1</b></div>
+        </div>
+        <div class="boardline">🏆 本次 <b>01:42</b>　今日第 <b>3</b> 名<span>用时榜 ›</span></div>
+        <div class="letter">
+          <span class="stampmark"></span>
+          <div class="tag">有人给你留了一句话</div>
+          <div class="line" style="font-size:15px">来自一位先到的山友　<span style="color:var(--violet)">拆开看看 ›</span></div>
+          <div class="sub">118 天前写在这里，等下一个走到这个点位的人</div>
+        </div>
+        <div class="sec-head" style="margin-top:16px"><h3>青山顶留言板</h3><span>全部 ›</span></div>
+        <div class="comment">
+          <div class="ph"><span class="av a2" style="width:22px;height:22px;font-size:10px">鱼</span>小鱼 · 2 小时前</div>
+          <p>风很大，但真的好温柔！看到日出的一刻，觉得所有的辛苦都值得了 ❤️</p>
+        </div>
+        <div class="comment">
+          <div class="ph"><span class="av a4" style="width:22px;height:22px;font-size:10px">楠</span>阿楠 · 5 小时前</div>
+          <p>一个人来，遇到超棒的伙伴，一起看了日出。</p>
+        </div>
+        <div class="more"><span>写给未来的自己</span><span>求一张合影</span><span>一起走一段</span></div>
+      </div>
+      <nav class="tabbar">
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M4 4.5h7v7H4zM13 4.5h7v7h-7zM4 13.5h7v6H4zM13 13.5h7v6h-7z"/></svg>路书</a>
+        <a class="on"><svg class="ico" viewBox="0 0 24 24"><path d="M2 19.5 9 6.5l3.6 6.2 2.2-3.4 7.2 10.2z"/></svg>山头·岔路</a>
+        <a class="scan"><span class="scan-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round"><path d="M4 9V5.6A1.6 1.6 0 0 1 5.6 4H9"/><path d="M15 4h3.4A1.6 1.6 0 0 1 20 5.6V9"/><path d="M20 15v3.4a1.6 1.6 0 0 1-1.6 1.6H15"/><path d="M9 20H5.6A1.6 1.6 0 0 1 4 18.4V15"/><rect x="10" y="10" width="4" height="4" rx="1.2"/></svg></span><em>扫一扫</em></a>
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z"/></svg>消息</a>
+        <a><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20c1.3-3.6 4-5.4 7.2-5.4s5.9 1.8 7.2 5.4"/></svg>我</a>
+      </nav>
+    </div>
+    <figcaption><b>扫码到达页 · 山头打卡点</b><br>打在前，惊喜在后</figcaption>
+  </figure>
+
+  </div>
+</div></section>
+
+<!-- ================= 04 山头页 / 岔路页 / 消息 / 我 ================= -->
+<section id="screens2"><div class="wrap">
+  <div class="sec-title"><span class="n">04</span><h2>山头页 · 岔路页 · 消息 · 我</h2>
+    <span class="hint">两类地点两种形态，这是这版最重要的改动</span></div>
+
+  <div class="screens">
+
+  <!-- P5 山头页 -->
+  <figure class="phone-wrap">
+    <div class="phone" id="phone-mountain">
+      <div class="statusbar"><span>8:10</span><span class="icons"><i style="width:15px;height:8px"></i><i style="width:11px;height:8px;border-radius:50% 50% 0 0"></i><i style="width:20px;height:9px;border-radius:3px"></i></span></div>
+      <div class="arrive-top scene" style="height:172px">
+        <i class="sun"></i>
+        <div class="nav-top"><span class="pill">‹ 返回</span><span class="pill">山头 · 打卡点</span></div>
+      </div>
+      <div class="sheet">
+        <h2 class="arrive-h" style="margin-top:2px">青山顶</h2>
+        <p class="arrive-p">海拔 1660 m · 属于「青山山脊环线」· 近 30 天 486 人到访</p>
+
+        <div class="sec-head"><h3>用时榜</h3><span>今日 · 好友 · 我的纪录 ›</span></div>
+        <div class="card" style="padding:8px 16px 14px;margin-bottom:16px">
+          <div class="rank p1"><span class="pos">1</span><span class="av a4">野</span><span class="nm"><b>小野</b><em>今天 08:26</em></span><span class="tm">01:12</span></div>
+          <div class="rank"><span class="pos">2</span><span class="av a1">楠</span><span class="nm"><b>阿楠</b><em>今天 09:03</em></span><span class="tm">01:28</span></div>
+          <div class="rank me"><span class="pos">3</span><span class="av a3">我</span><span class="nm"><b>你</b><em>今天 09:41 · 个人最好</em></span><span class="tm">01:42</span></div>
+          <div class="safehint">共 37 人今日登顶 · 请以安全返程为第一目标</div>
+        </div>
+
+        <div class="sec-head"><h3>山顶照片墙</h3><span>214 张 ›</span></div>
+        <div class="photowall">
+          <div class="scene"><i class="sun" style="left:6px;top:8px;width:0;height:0"></i></div>
+          <div class="scene" style="filter:saturate(1.2)"><i class="sun" style="left:8px;top:10px;width:0;height:0"></i></div>
+          <div class="scene cool"><i class="sun" style="left:8px;top:10px;width:0;height:0"></i></div>
+        </div>
+
+        <div class="sec-head"><h3>留言板</h3><span>全部 ›</span></div>
+        <div class="comment">
+          <div class="ph"><span class="av a1" style="width:22px;height:22px;font-size:10px">川</span>阿川 · 3 小时前</div>
+          <p>登顶打卡第 100 位，是我！</p>
+        </div>
+        <div class="comment">
+          <div class="ph"><span class="av a3" style="width:22px;height:22px;font-size:10px">鱼</span>小鱼 · 昨天</div>
+          <p>第一次一个人上山，有点怕，但真的好看。</p>
+        </div>
+
+        <div style="display:flex;gap:9px;margin-top:16px">
+          <button class="btn ghost" style="margin:0;font-size:14px;padding:12px">收藏到想去</button>
+          <button class="btn coral" style="font-size:14px;padding:12px">我也到了</button>
+        </div>
+      </div>
+      <nav class="tabbar">
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M4 4.5h7v7H4zM13 4.5h7v7h-7zM4 13.5h7v6H4zM13 13.5h7v6h-7z"/></svg>路书</a>
+        <a class="on"><svg class="ico" viewBox="0 0 24 24"><path d="M2 19.5 9 6.5l3.6 6.2 2.2-3.4 7.2 10.2z"/></svg>山头·岔路</a>
+        <a class="scan"><span class="scan-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round"><path d="M4 9V5.6A1.6 1.6 0 0 1 5.6 4H9"/><path d="M15 4h3.4A1.6 1.6 0 0 1 20 5.6V9"/><path d="M20 15v3.4a1.6 1.6 0 0 1-1.6 1.6H15"/><path d="M9 20H5.6A1.6 1.6 0 0 1 4 18.4V15"/><rect x="10" y="10" width="4" height="4" rx="1.2"/></svg></span><em>扫一扫</em></a>
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z"/></svg>消息</a>
+        <a><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20c1.3-3.6 4-5.4 7.2-5.4s5.9 1.8 7.2 5.4"/></svg>我</a>
+      </nav>
+    </div>
+    <figcaption><b>山头页（打卡点）</b><br>用时榜 + 照片墙 + 情绪留言板</figcaption>
+  </figure>
+
+  <!-- P6 岔路页 -->
+  <figure class="phone-wrap">
+    <div class="phone">
+      <div class="statusbar"><span>8:34</span><span class="icons"><i style="width:15px;height:8px"></i><i style="width:11px;height:8px;border-radius:50% 50% 0 0"></i><i style="width:20px;height:9px;border-radius:3px"></i></span></div>
+      <div class="arrive-top scene cool" style="height:150px">
+        <i class="sun"></i>
+        <div class="nav-top"><span class="pill">‹ 返回</span><span class="pill">岔路 · 路书点</span></div>
+      </div>
+      <div class="sheet">
+        <h2 class="arrive-h" style="margin-top:2px">林道岔口</h2>
+        <p class="arrive-p">溪谷森林步道 · 第 <b style="color:var(--blue)">2</b>/5 个点位 · 点位编号 QSD-02</p>
+
+        <div class="guide">
+          <div class="tag">你在这里 · 往哪走</div>
+          <div class="row">
+            <div class="shot scene cool"><i class="sun" style="left:10px;top:12px;width:0;height:0"></i></div>
+            <span class="dir">↰</span>
+            <div class="txt"><b>左转上山，别跟右边那条宽路</b>
+              <span>右侧是林场作业道，走进去会绕远 2 公里</span></div>
+          </div>
+          <div class="next">下一段 · 溪谷平台　1.8 km · ↗ 160 m · 约 40 分钟</div>
+        </div>
+
+        <div class="sec-head"><h3>岔路情报</h3><span>按新鲜 ›</span></div>
+        <div class="intel ok">
+          <div class="hd"><span class="av a4">周</span>老周 · 维护人 · 9/28<span class="tag ok">已核验</span></div>
+          <b class="t">左转上山，右侧是作业道</b>
+          <p>路口有蓝色标牌，跟着标牌走。</p>
+        </div>
+        <div class="intel">
+          <div class="hd"><span class="av a2">凯</span>阿凯 · 昨天<span class="tag wait">待核验</span></div>
+          <b class="t">石阶有青苔，雨后很滑</b>
+          <p>建议走左侧土路，或者踩点走。</p>
+        </div>
+        <div class="intel">
+          <div class="hd"><span class="av a3">鱼</span>小鱼 · 2 小时前<span class="tag wait">待核验</span></div>
+          <b class="t">岔口往上 200 m 有水源</b>
+          <p>水流不大，可以补给，但建议先过滤。</p>
+        </div>
+
+        <button class="btn ghost" style="font-size:14px;padding:12px">上报一条情报</button>
+        <div class="safehint" style="text-align:center">路过这里也可以打卡，留下"我走过这一段"</div>
+      </div>
+      <nav class="tabbar">
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M4 4.5h7v7H4zM13 4.5h7v7h-7zM4 13.5h7v6H4zM13 13.5h7v6h-7z"/></svg>路书</a>
+        <a class="on"><svg class="ico" viewBox="0 0 24 24"><path d="M2 19.5 9 6.5l3.6 6.2 2.2-3.4 7.2 10.2z"/></svg>山头·岔路</a>
+        <a class="scan"><span class="scan-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round"><path d="M4 9V5.6A1.6 1.6 0 0 1 5.6 4H9"/><path d="M15 4h3.4A1.6 1.6 0 0 1 20 5.6V9"/><path d="M20 15v3.4a1.6 1.6 0 0 1-1.6 1.6H15"/><path d="M9 20H5.6A1.6 1.6 0 0 1 4 18.4V15"/><rect x="10" y="10" width="4" height="4" rx="1.2"/></svg></span><em>扫一扫</em></a>
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z"/></svg>消息</a>
+        <a><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20c1.3-3.6 4-5.4 7.2-5.4s5.9 1.8 7.2 5.4"/></svg>我</a>
+      </nav>
+    </div>
+    <figcaption><b>岔路页（路书点）</b><br>给方向 + 情报卡，不给情绪留言板</figcaption>
+  </figure>
+
+  <!-- P7 消息 -->
+  <figure class="phone-wrap">
+    <div class="phone">
+      <div class="statusbar"><span>8:50</span><span class="icons"><i style="width:15px;height:8px"></i><i style="width:11px;height:8px;border-radius:50% 50% 0 0"></i><i style="width:20px;height:9px;border-radius:3px"></i></span></div>
+      <div class="ph-body">
+        <div class="brandbar"><div class="logo">消息<em>MESSAGES</em></div>
+          <div class="iconbtn"><svg class="ico" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg></div></div>
+
+        <div class="group-label">互动</div>
+        <div class="msg">
+          <span class="av a2">鱼</span>
+          <div class="tx"><b>小鱼</b><em>2 小时前</em>
+            <p>击掌了你的留言，还回复了一句</p>
+            <span class="ctx">青山顶 · 留言板 ›</span></div>
+        </div>
+        <div class="msg">
+          <span class="av a1">川</span>
+          <div class="tx"><b>阿川</b><em>3 小时前</em>
+            <p>关注了你走过的那条线路</p>
+            <span class="ctx">溪谷森林步道 ›</span></div>
+        </div>
+
+        <div class="group-label">请求</div>
+        <div class="msg">
+          <span class="av a4">楠</span>
+          <div class="tx"><b>阿楠</b><em>刚刚</em>
+            <p>想和你交换一张合影 · 你们都在青山顶</p>
+            <div class="mini-actions"><span class="pill-btn acc">交换照片</span><span class="pill-btn ign">先不用</span></div>
+            <div class="urgent">现场请求还剩 12 分钟</div></div>
+        </div>
+        <div class="msg">
+          <span class="av a3">林</span>
+          <div class="tx"><b>小林</b><em>1 小时前</em>
+            <p>请求加你为好友</p>
+            <div class="mini-actions"><span class="pill-btn acc">接受</span><span class="pill-btn ign">忽略</span></div></div>
+        </div>
+
+        <div class="group-label">信件</div>
+        <div class="msg">
+          <span class="av a1">信</span>
+          <div class="tx"><b>你写给未来的自己</b><em>今天就到期了</em>
+            <p>去年今天，你在青山顶写了一封信</p>
+            <span class="ctx">山间信箱 · 拆开 ›</span></div>
+        </div>
+        <div class="msg">
+          <span class="av a4">信</span>
+          <div class="tx"><b>你留给下一位的话被拆开了</b><em>昨天</em>
+            <p>有 3 个人在溪谷岔口读到了你的留言</p>
+            <span class="ctx">林道岔口 ›</span></div>
+        </div>
+
+        <div class="group-label">系统</div>
+        <div class="msg" style="border-left:4px solid var(--coral)">
+          <span class="av" style="background:#E0714E">山</span>
+          <div class="tx"><b>你认领的青山顶已 23 天未更新</b>
+            <p>有 4 条待处理的路况情报</p>
+            <div class="mini-actions"><span class="pill-btn acc">去处理</span></div></div>
+        </div>
+
+      </div>
+      <nav class="tabbar">
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M4 4.5h7v7H4zM13 4.5h7v7h-7zM4 13.5h7v6H4zM13 13.5h7v6h-7z"/></svg>路书</a>
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M2 19.5 9 6.5l3.6 6.2 2.2-3.4 7.2 10.2z"/></svg>山头·岔路</a>
+        <a class="scan"><span class="scan-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round"><path d="M4 9V5.6A1.6 1.6 0 0 1 5.6 4H9"/><path d="M15 4h3.4A1.6 1.6 0 0 1 20 5.6V9"/><path d="M20 15v3.4a1.6 1.6 0 0 1-1.6 1.6H15"/><path d="M9 20H5.6A1.6 1.6 0 0 1 4 18.4V15"/><rect x="10" y="10" width="4" height="4" rx="1.2"/></svg></span><em>扫一扫</em></a>
+        <a class="on"><svg class="ico" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z"/></svg>消息</a>
+        <a><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20c1.3-3.6 4-5.4 7.2-5.4s5.9 1.8 7.2 5.4"/></svg>我</a>
+      </nav>
+    </div>
+    <figcaption><b>消息</b><br>互动 / 请求 / 信件 / 系统，每条都回到现场</figcaption>
+  </figure>
+
+  <!-- P8 我 -->
+  <figure class="phone-wrap">
+    <div class="phone">
+      <div class="statusbar"><span>8:58</span><span class="icons"><i style="width:15px;height:8px"></i><i style="width:11px;height:8px;border-radius:50% 50% 0 0"></i><i style="width:20px;height:9px;border-radius:3px"></i></span></div>
+      <div class="ph-body">
+        <div class="brandbar"><div class="logo">我<em>MY HIKES</em></div>
+          <div class="iconbtn"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/></svg></div></div>
+
+        <div class="profile">
+          <div class="big">我</div>
+          <div><b>阿甘</b><span>到过 12 个点位 · 认领 1 座山头</span></div>
+        </div>
+
+        <div class="card" style="padding:16px 18px">
+          <div class="sec-head" style="margin:0 0 4px"><h3>山径拼图</h3><span>3/6 座 ›</span></div>
+          <div class="progress"><i></i></div>
+          <div class="safehint" style="margin-bottom:12px">再完成 3 座，解锁「山脊行者」</div>
+          <div class="puzzle">
+            <i class="done"></i><i class="done"></i><i class="peak"></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
+        </div>
+
+        <div class="rowlink"><span class="em">✓</span><div class="tx"><b>我去过的地方 12</b><span>地图 / 拼图两种看</span></div><span class="ar">›</span></div>
+        <div class="rowlink"><span class="em">♡</span><div class="tx"><b>我想去的地方 8</b><span>3 条已有人去过，可看最新路况</span></div><span class="ar">›</span></div>
+        <div class="rowlink warn"><span class="em">⛰</span><div class="tx"><b>我的山头 · 青山顶</b><span>已 23 天未更新 · 4 条待处理情报</span></div><span class="ar">›</span></div>
+        <div class="rowlink"><span class="em">★</span><div class="tx"><b>我的纪录</b><span>青山顶 PB 01:42 · 连续 6 周上山</span></div><span class="ar">›</span></div>
+        <div class="rowlink"><span class="em">✉</span><div class="tx"><b>山间信箱 3</b><span>1 封今天到期 · 2 条留给下一位</span></div><span class="ar">›</span></div>
+        <div class="rowlink"><span class="em">＋</span><div class="tx"><b>发起周末活动</b><span>选一条路，约人一起走</span></div><span class="ar">›</span></div>
+
+      </div>
+      <nav class="tabbar">
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M4 4.5h7v7H4zM13 4.5h7v7h-7zM4 13.5h7v6H4zM13 13.5h7v6h-7z"/></svg>路书</a>
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M2 19.5 9 6.5l3.6 6.2 2.2-3.4 7.2 10.2z"/></svg>山头·岔路</a>
+        <a class="scan"><span class="scan-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round"><path d="M4 9V5.6A1.6 1.6 0 0 1 5.6 4H9"/><path d="M15 4h3.4A1.6 1.6 0 0 1 20 5.6V9"/><path d="M20 15v3.4a1.6 1.6 0 0 1-1.6 1.6H15"/><path d="M9 20H5.6A1.6 1.6 0 0 1 4 18.4V15"/><rect x="10" y="10" width="4" height="4" rx="1.2"/></svg></span><em>扫一扫</em></a>
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z"/></svg>消息</a>
+        <a class="on"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20c1.3-3.6 4-5.4 7.2-5.4s5.9 1.8 7.2 5.4"/></svg>我</a>
+      </nav>
+    </div>
+    <figcaption><b>我</b><br>去过 / 想去 / 我的山头 / 纪录 / 信箱</figcaption>
+  </figure>
+
+  </div>
+</div></section>
+
+<!-- ================= 05 子页面布局 ================= -->
+<section id="pages"><div class="wrap">
+  <div class="sec-title"><span class="n">05</span><h2>子页面布局</h2>
+    <span class="hint">每个页面的模块、顺序与交互规则</span></div>
+
+  <div class="panel">
+    <table class="fn">
+      <tr><th style="width:150px">页面</th><th style="width:400px">自上而下的模块</th><th>关键交互</th></tr>
+      <tr>
+        <td>首页<br><em style="color:var(--ink3);font-size:12px">左上角 logo 进入</em></td>
+        <td>① 品牌条（首页标识＋搜索）<br>② 扫码窄条「我在山脚了」<br>③ 热门 trail 轮播 3–4 条<br>④ 周末组队活动卡<br>⑤ 山友的今天（照片瀑布流，双列）</td>
+        <td>轮播 5 秒自动播，<b>手动滑动后停止</b>；卡片右上角♡直接收藏；点地点标签进地点页；活动卡「我也去参加」一键报名并自动建提醒，再点一次退出；瀑布流按"新鲜"排序，首页最多 1 张活动卡</td>
+      </tr>
+      <tr>
+        <td>路书</td>
+        <td>① 搜索框<br>② 难度筛选 chips<br>③ 热门线路最快记录（横滑）<br>④ 新手小白线路<br>⑤ 最难的线路<br>⑥ 最长的线路<br>⑦ 本周新增路线<br>⑧ 难度分级说明（底部）</td>
+        <td>用时只在同一条线路内比较；卡片上的难度徽标可点，跳到分级说明的对应段落；"本周新增"点进共建记录</td>
+      </tr>
+      <tr>
+        <td>山头·岔路</td>
+        <td>① 分段控件：山头 / 岔路<br>② 山头热门排行榜（近 30 天）<br>③ 最近有人去过<br>④ 岔路情报 · 最新</td>
+        <td>切到「岔路」时，主体换成情报流（按新鲜），排行榜收起；榜单口径写在榜单下方小字</td>
+      </tr>
+      <tr>
+        <td>山头页<br><em style="color:var(--ink3);font-size:12px">打卡点</em></td>
+        <td>① 山顶大图<br>② 名称 + 海拔 + 属于哪条线路 + 近 30 天到访<br>③ 用时榜（今日/好友/我的纪录）<br>④ 照片墙<br>⑤ 留言板<br>⑥ 底部：收藏到想去 / 我也到了</td>
+        <td>榜单同屏给个人纪录；「我也到了」直接进打卡；留言板是情绪内容，按新鲜排</td>
+      </tr>
+      <tr>
+        <td>岔路页<br><em style="color:var(--ink3);font-size:12px">路书点</em></td>
+        <td>① 来向视角大图<br>② 名称 + 属于哪条线路 + 第几个点位 + 编号<br>③ <b>你在这里 · 往哪走</b>（照片＋箭头＋一句话＋下一段距离爬升）<br>④ 岔路情报卡流<br>⑤ 上报一条情报<br>⑥ 顺路打卡（次要）</td>
+        <td>情报卡带「已核验／待核验」＋时间＋上报人；维护人核验后置顶；同一条情报可以被 3 个人确认后自动升级为已核验</td>
+      </tr>
+      <tr>
+        <td>消息</td>
+        <td>① 互动（击掌、留言回复、关注）<br>② 请求（合影、同行、好友）<br>③ 信件（未来信到期、留言被拆开）<br>④ 系统（维护提醒、活动提醒）</td>
+        <td>每条通知都带一个<b>地点上下文胶囊</b>，点击回到现场；现场请求 30 分钟内有效并显示倒计时；好友请求有接受/忽略</td>
+      </tr>
+      <tr>
+        <td>我</td>
+        <td>① 头像 + 到过点位 / 认领山头<br>② 山径拼图进度<br>③ 我去过的地方（地图/拼图）<br>④ 我想去的地方<br>⑤ 我的山头（维护提醒）<br>⑥ 我的纪录<br>⑦ 山间信箱<br>⑧ 发起周末活动</td>
+        <td>到访后弹一次「把这里从想去移到去过」；「我的山头」显示"已 N 天未更新"驱动回访；认领门槛＝至少提交过一次路书或情报</td>
+      </tr>
+      <tr>
+        <td>扫码到达页<br><em style="color:var(--ink3);font-size:12px">三种形态</em></td>
+        <td><b>山头</b>：第 N 位印章 → 打卡 → 三小格 → 用时榜一行 → 拆信 → 留言板 → 折叠趣味区<br><b>岔路</b>：直接进上面的岔路页，打卡降为次要<br><b>终点</b>：结束行程 → 生成整段记录 → 用时入榜</td>
+        <td>扫码后 3 秒内必须能完成打卡；免登录可玩；扫不到码时可输入点位编号</td>
+      </tr>
+    </table>
+  </div>
+</div></section>
+
+<!-- ================= 06 页面结构 ================= -->
+<section id="tree"><div class="wrap">
+  <div class="sec-title"><span class="n">06</span><h2>页面结构</h2>
+    <span class="hint">首页 + 四条主线 + 后台</span></div>
+
+  <div class="root"><b>hikes · 移动优先</b>
+    <span>入口：现场标牌扫码 · 分享链接 · 搜索 · 首页推荐　｜　首页 = 左上角品牌 logo</span></div>
+
+  <div class="tree">
+    <div class="node coral">
+      <h4>首页（非 tab）</h4>
+      <div class="cap">此刻山上有什么</div>
+      <ul>
+        <li>扫码窄条 <em>→ 扫码</em></li>
+        <li>热门 trail 轮播 <em>→ 线路页</em></li>
+        <li>周末组队活动 <em>→ 活动详情 / 报名</em></li>
+        <li>照片瀑布流 <em>→ 动态详情 → 地点页</em></li>
+        <li>搜索 <em>→ 路书</em></li>
+      </ul>
+    </div>
+    <div class="node">
+      <h4>路书</h4>
+      <div class="cap">找线路、判断能不能去</div>
+      <ul>
+        <li>搜索 / 难度筛选</li>
+        <li>热门线路最快记录 <em>每条线路各自成榜</em></li>
+        <li>新手小白 / 最难 / 最长</li>
+        <li>线路详情 <em>分段路书 · 关键点 · 装备 · 最近路况</em></li>
+        <li>本周新增路线 <em>共建成果</em></li>
+        <li>难度分级说明</li>
+      </ul>
+    </div>
+    <div class="node">
+      <h4>山头·岔路</h4>
+      <div class="cap">找地点</div>
+      <ul>
+        <li>山头热门排行榜</li>
+        <li>最近有人去过</li>
+        <li>山头页 <em>用时榜·照片墙·留言板</em></li>
+        <li>岔路页 <em>往哪走·情报卡·上报情报</em></li>
+        <li>岔路情报流</li>
+      </ul>
+    </div>
+    <div class="node violet">
+      <h4>消息</h4>
+      <div class="cap">谁回应了我</div>
+      <ul>
+        <li>互动：击掌 / 留言回复 / 关注</li>
+        <li>请求：合影 · 同行 · 好友</li>
+        <li>信件：未来信到期 / 留言被拆开</li>
+        <li>系统：维护提醒 / 活动提醒</li>
+      </ul>
+    </div>
+    <div class="node gray">
+      <h4>我</h4>
+      <div class="cap">我去过哪里</div>
+      <ul>
+        <li>到访册 · 山径拼图</li>
+        <li>我去过的地方 <em>地图 / 拼图</em></li>
+        <li>我想去的地方</li>
+        <li>我的山头 <em>维护与核验</em></li>
+        <li>我的纪录 · 山间信箱</li>
+        <li>发起周末活动</li>
+      </ul>
+    </div>
+    <div class="node coral">
+      <h4>扫一扫</h4>
+      <div class="cap">我已经到了</div>
+      <ul>
+        <li>点位识别 <em>标牌二维码 / 编号输入</em></li>
+        <li>山头打卡点 → 到达页</li>
+        <li>岔路路书点 → 岔路页</li>
+        <li>到达页：第 N 位 → 打卡 → 用时入榜</li>
+        <li>拆信 · 留言板 · 趣味折叠区</li>
+        <li>结束行程</li>
+      </ul>
+    </div>
+  </div>
+</div></section>
+
+<!-- ================= 07 UI ================= -->
+<section id="ui"><div class="wrap">
+  <div class="sec-title"><span class="n">07</span><h2>UI 设计规范</h2>
+    <span class="hint">暖白的纸 · 钴蓝的信任 · 珊瑚橙的行动</span></div>
+
+  <div class="panel">
+    <h3 style="font-size:16px;margin-bottom:14px">色板</h3>
+    <div class="swatches">
+      <div class="sw" style="background:#F7F3EC;border:1px solid #E9E2D5">暖白 · 页面底<small>#F7F3EC</small></div>
+      <div class="sw" style="background:#fff;border:1px solid #E9E2D5">纸白 · 卡片<small>#FFFFFF</small></div>
+      <div class="sw" style="background:#22242E;color:#fff">墨 · 主文字<small>#22242E</small></div>
+      <div class="sw" style="background:#6B6E7E;color:#fff">次文字<small>#6B6E7E</small></div>
+      <div class="sw" style="background:#3455F5;color:#fff">钴蓝 · 品牌 / 扫一扫<small>#3455F5</small></div>
+      <div class="sw" style="background:#FF714E;color:#fff">珊瑚橙 · 行动 / 活动<small>#FF714E</small></div>
+      <div class="sw" style="background:#7B6CE8;color:#fff">淡紫 · 信件<small>#7B6CE8</small></div>
+      <div class="sw" style="background:#ECE9FB">信纸底 / 情报底<small>#ECE9FB</small></div>
+    </div>
+    <h3 style="font-size:16px;margin:20px 0 12px">难度三色（只出现在路书与线路区域）</h3>
+    <div class="swatches">
+      <div class="sw" style="background:#E6F5E2;color:#2F7A2A;border:1px solid #CDE8C7">● 圆 · 简单<small>#52B44A</small></div>
+      <div class="sw" style="background:#FDF2D6;color:#8A6410;border:1px solid #F1E0B0">■ 方 · 中等<small>#F2B62C</small></div>
+      <div class="sw" style="background:#FCE7E5;color:#A83027;border:1px solid #F2CFCB">◆ 菱 · 困难<small>#E4453A</small></div>
+    </div>
+    <div class="callout blue" style="margin-top:16px">
+      <b>颜色分工：</b>钴蓝只代表"品牌与扫码"，珊瑚橙只代表"行动与到访"，淡紫只代表"信件与情报"。
+      一个颜色只讲一件事，用户不用学就能猜到按钮会做什么。难度的形状（圆/方/菱）永远和颜色、文字同时出现。
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h3 style="font-size:16px;margin-bottom:10px">字号与层级</h3>
+      <div class="type-row" style="display:flex;align-items:baseline;gap:16px;padding:9px 0;border-bottom:1px solid #F4F0E7">
+        <span style="font-size:25px;font-weight:900;letter-spacing:-.6px">你到了，山友。</span><code style="margin-left:auto;font-size:12px;color:var(--ink3)">25 / 900</code></div>
+      <div class="type-row" style="display:flex;align-items:baseline;gap:16px;padding:9px 0;border-bottom:1px solid #F4F0E7">
+        <span style="font-size:19px;font-weight:800">青山顶</span><code style="margin-left:auto;font-size:12px;color:var(--ink3)">19 / 800</code></div>
+      <div class="type-row" style="display:flex;align-items:baseline;gap:16px;padding:9px 0;border-bottom:1px solid #F4F0E7">
+        <span style="font-size:16.5px;font-weight:800">山头热门排行榜</span><code style="margin-left:auto;font-size:12px;color:var(--ink3)">16.5 / 800</code></div>
+      <div class="type-row" style="display:flex;align-items:baseline;gap:16px;padding:9px 0;border-bottom:1px solid #F4F0E7">
+        <span style="font-size:15px">正文：说明与留言</span><code style="margin-left:auto;font-size:12px;color:var(--ink3)">15 / 400</code></div>
+      <div class="type-row" style="display:flex;align-items:baseline;gap:16px;padding:9px 0;border-bottom:1px solid #F4F0E7">
+        <span style="font-size:13px;color:var(--ink2)">次要：时间、地名、计数</span><code style="margin-left:auto;font-size:12px;color:var(--ink3)">13 / 400</code></div>
+      <div class="callout violet" style="margin-top:16px">
+        手写体只用于信件和到访卡上的一句情绪文案，<b>不用于任何功能文字</b>。
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3 style="font-size:16px;margin-bottom:10px">形状、组件与网格</h3>
+      <dl class="kv" style="margin-bottom:16px">
+        <dt>卡片圆角</dt><dd>22 px（大卡）· 18 px（瀑布流卡）· 13–16 px（小卡与缩略图）</dd>
+        <dt>按钮</dt><dd>胶囊或 14 px 圆角，高度 ≥ 48 px，触控区 ≥ 44 px</dd>
+        <dt>底部导航</dt><dd>5 格，扫一扫 50 px 凸起圆，其余图标 22 px 线性灰</dd>
+        <dt>瀑布流</dt><dd>双列，列间距 12 px，卡片间距 12 px，封面高度 120–170 px 交错</dd>
+        <dt>阴影</dt><dd>0 1px 2px / 0 8px 24px，透明度 ≤ 7%</dd>
+        <dt>间距</dt><dd>卡片内 18 px，卡片间 11–14 px，区块间 18–24 px</dd>
+      </dl>
+      <h4 style="font-size:14px;margin-bottom:10px">核心组件</h4>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+        <span class="badge easy">● 简单</span><span class="badge mid">■ 中等</span><span class="badge hard">◆ 困难</span>
+        <span class="tag ok" style="font-size:10.5px">已核验</span><span class="tag wait" style="font-size:10.5px">待核验</span>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+        <button class="btn coral mini">我也去参加</button>
+        <button class="btn blue mini">留下我的到访卡</button>
+        <button class="btn ghost mini" style="margin:0">收藏到想去</button>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+        <span style="border:2.5px solid var(--coral);color:var(--coral);border-radius:10px;padding:2px 10px;font:800 18px/1.35 -apple-system;transform:rotate(-3deg);background:#FFF6F2">#100</span>
+        <span class="av a1">川</span><span class="av a2">鱼</span>
+        <span style="background:var(--violet-bg);border:1px dashed #C6BCF0;border-radius:10px;padding:6px 12px;font-size:12.5px;color:#5C4FC7;font-weight:700">信纸 · 淡紫虚线</span>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+<!-- ================= 08 趣味功能 ================= -->
+<section id="fun"><div class="wrap">
+  <div class="sec-title"><span class="n">08</span><h2>趣味功能归属</h2>
+    <span class="hint">十一个玩法，各自只有一个家</span></div>
+  <div class="panel">
+    <table class="fn">
+      <tr><th style="width:170px">玩法</th><th style="width:330px">主位置</th><th>次位置 / 触发</th></tr>
+      <tr><td>到访纪念卡</td><td class="where">扫一扫 → 到达页生成</td><td>我 / 我去过的地方；分享后被击掌、被留言 → 消息</td></tr>
+      <tr><td>第 N 位到访</td><td class="where">到达页印章</td><td>山头页 / 到访者列表；数字被后来者超过时可回看</td></tr>
+      <tr><td>第一次（首登标签）</td><td class="where">到达页自选标签</td><td>我 / 到访册；生成专属卡</td></tr>
+      <tr><td>山径拼图</td><td class="where">我 / 山径拼图</td><td>到访新点位自动 +1；3/6 这种进度本身就是回访理由</td></tr>
+      <tr><td><b>用时榜</b></td><td class="where">路书 / 热门线路最快记录</td><td>山头页（今日·好友·我的纪录）· 到达页一行 · 我 / 我的纪录</td></tr>
+      <tr><td>山头热门排行榜</td><td class="where">山头·岔路 / 山头榜</td><td>按近 30 天到访人数；口径写在榜单下方</td></tr>
+      <tr><td>留言板</td><td class="where">山头页</td><td>到达页；按新鲜排序的情绪内容</td></tr>
+      <tr><td><b>岔路情报卡</b></td><td class="where">岔路页</td><td>山头·岔路 tab 的「岔路」分段；上报后进维护人核验队列</td></tr>
+      <tr><td>留给下一位</td><td class="where">到达页拆信</td><td>岔路页 / 山头页；被拆开时通知你 → 消息 / 信件</td></tr>
+      <tr><td>未来信</td><td class="where">到达页写信</td><td>我 / 山间信箱；到期解锁 → 消息 / 信件</td></tr>
+      <tr><td>求一张合影 · 一起走一段</td><td class="where">到达页折叠区</td><td>消息 / 请求；现场 30 分钟有效，带倒计时</td></tr>
+      <tr><td>周末撸山活动</td><td class="where">首页活动卡</td><td>我 / 发起活动；地点页底部发起；报名后自动建提醒 → 消息 / 系统</td></tr>
+    </table>
+  </div>
+</div></section>
+
+<!-- ================= 09 规则 ================= -->
+<section id="rules"><div class="wrap">
+  <div class="sec-title"><span class="n">09</span><h2>关键交互规则</h2>
+    <span class="hint">这几条决定了产品会不会走偏</span></div>
+  <div class="grid2">
+    <div class="panel">
+      <h3 style="font-size:16px;margin-bottom:12px">四条不能松的规则</h3>
+      <div class="callout blue"><b>1. 用时只在同一条线路内比较。</b>
+        5.2 km 的步道和 24 km 穿越不能放一个榜里。每条线路各自成最快记录，
+        山头页的榜只统计通往那个山头的记录。跨线路想排名，只能叫「打卡次数榜」。</div>
+      <div class="callout green"><b>2. 岔路是情报，不是情绪。</b>
+        岔路页的留言必须回答"往哪走、能不能过"，带「已核验／待核验」和上报人。
+        三条独立确认可以自动升级为已核验；维护人核验后置顶。</div>
+      <div class="callout"><b>3. 活动只在首页出现一张。</b>
+        只显示"未来 7 天内 + 我收藏的地点或我关注的人发起"的活动，最多一张。
+        报名必须能退出，且报名即自动创建出发提醒。</div>
+      <div class="callout violet"><b>4. 每条通知都必须能回到现场。</b>
+        点「阿凯击掌了你的留言」跳到那条留言所在的地点页，而不是阿凯的主页。
+        这是地点型产品和普通社交产品的分界线。</div>
+    </div>
+
+    <div class="panel">
+      <h3 style="font-size:16px;margin-bottom:12px">回访动机与优先级</h3>
+      <p style="font-size:13.5px;color:var(--ink2)">
+        <b>① 关系型（最强）</b>　有人击掌、回复、接受了请求 → 消息红点<br>
+        <b>② 延迟回报型</b>　未来信到期、你留给下一位的话被拆开<br>
+        <b>③ 竞争型</b>　用时榜名次被超过、个人纪录被刷新<br>
+        <b>④ 责任型</b>　我认领的山头多久没更新、有几条待核验情报<br>
+        <b>⑤ 进度型</b>　山径拼图 3/6、想去清单、累计点位<br>
+        <b>⑥ 被动召回</b>　分享出去的到访卡被人击掌 / 留言</p>
+      <p style="font-size:13.5px;color:var(--ink2);margin-bottom:0">
+        第 ④ 条是这一版新加进来的：<b>「我的山头」的维护提醒</b>。
+        它让共建者有一个非情绪、非竞争的回访理由——山还在等你更新。</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3 style="font-size:16px;margin-bottom:12px">二维码与落地页</h3>
+    <div class="flow"><span>标牌短链 hikes.app/p/QSD02</span><i>→</i><span>302 跳转</span><i>→</i>
+      <span>按点位类型渲染</span><i>→</i><span>山头打卡页 / 岔路情报页</span></div>
+    <div class="grid2">
+      <div>
+        <p style="font-size:13.5px;color:var(--ink2)">
+          一个二维码 = 一个点位 = 一个稳定子页面。二维码里印短链，不印真实地址，
+          以后改页面结构不用重印所有标牌。服务端按 UA 分流：手机进点位页，
+          桌面显示"用手机扫码"页 + 编号输入框。</p>
+        <p style="font-size:13.5px;color:var(--ink2);margin-bottom:0">
+          子页面<b>免登录可玩</b>（填昵称即可打卡），登录放到打卡之后。</p>
+      </div>
+      <div>
+        <div class="callout blue" style="margin-bottom:10px"><b>微信能直接打开吗？能。</b>
+          微信扫码用的是内置浏览器，普通 https 网页可以正常打开——这是网页版优先的价值。</div>
+        <p style="font-size:13.5px;color:var(--ink2);margin-bottom:0">
+          四个坑：域名要国内备案；不要用 <code>hikes://</code> 这类 deep link 做二维码内容；
+          不做诱导分享或强制下载；页面里不要再放一个"扫一扫"，需要时降级成输入点位编号。</p>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+</main>
+
+<footer>hikes · v3 设计稿 · 页面结构 / UI 设计 / 子页面布局 · 全部线路、人物与数据均为示例</footer>
+
+<script>
+(function(){
+  /* 单节截图模式 */
+  var only=(location.hash||'').replace('#','');
+  if(only){
+    var ok=false;
+    Array.prototype.forEach.call(document.querySelectorAll('main > section'),function(s){
+      if(s.id===only){ok=true; s.hidden=false;} else {s.hidden=true;}
+    });
+    if(ok){
+      var t=document.querySelector('header.top'); if(t) t.hidden=true;
+      var n=document.querySelector('nav.toc'); if(n) n.hidden=true;
+      var f=document.querySelector('footer'); if(f) f.hidden=true;
+      document.querySelectorAll('section .wrap').forEach(function(w){w.style.paddingTop='18px'});
+      var wmap={screens1:'1780px',screens2:'1780px',tree:'1240px',ui:'1400px',pages:'1400px',nav:'1400px',positioning:'1400px',fun:'1400px',rules:'1400px'};
+      var w=document.querySelector('#'+only+' .wrap'); if(w) w.style.maxWidth=(wmap[only]||'1400px');
+    }
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,961 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>hikes · 页面结构 · 首页布局 · UI 设计 v2</title>
+<style>
+:root{
+  --bg:#F7F3EC; --paper:#fff; --ink:#22242E; --ink2:#6B6E7E; --ink3:#9A9CAA;
+  --line:#E9E2D5; --blue:#3455F5; --coral:#FF714E; --violet:#7B6CE8; --violet-bg:#ECE9FB;
+  --easy:#52B44A; --mid:#F2B62C; --hard:#E4453A;
+  --shadow:0 1px 2px rgba(34,36,46,.05), 0 8px 24px rgba(34,36,46,.07);
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:#EFEAE0;color:var(--ink);
+  font:15px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+h1,h2,h3,h4{margin:0;line-height:1.3;letter-spacing:-.2px}
+p{margin:0 0 10px}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1560px;margin:0 auto;padding:0 32px}
+
+/* ---------- doc chrome ---------- */
+header.top{background:var(--ink);color:#fff;padding:26px 0}
+header.top .brand{font-size:22px;font-weight:700;letter-spacing:.5px}
+header.top .brand span{font-weight:400;font-size:13px;color:#B9BCCB;margin-left:10px;letter-spacing:1px}
+header.top .sub{color:#A9ADBE;font-size:13px;margin-top:6px}
+nav.toc{display:flex;gap:8px;flex-wrap:wrap;padding:14px 32px 0;max-width:1560px;margin:0 auto}
+nav.toc a{background:#fff;border:1px solid var(--line);border-radius:999px;padding:7px 15px;font-size:13px;color:#4A4D5C}
+main{padding-bottom:40px}
+section{padding:34px 0 6px}
+.sec-title{display:flex;align-items:baseline;gap:14px;border-bottom:2px solid var(--ink);padding-bottom:10px;margin-bottom:22px}
+.sec-title .n{font-size:12px;font-weight:700;color:#fff;background:var(--ink);border-radius:6px;padding:2px 8px;letter-spacing:1px}
+.sec-title h2{font-size:22px}
+.sec-title .hint{color:var(--ink2);font-size:13px;margin-left:auto}
+.panel{background:#fff;border-radius:18px;padding:26px 28px;box-shadow:var(--shadow);margin-bottom:18px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:1000px){.grid2{grid-template-columns:1fr}}
+
+/* ---------- phones ---------- */
+.screens{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.phone-wrap{margin:0}
+.phone{width:390px;background:var(--bg);border-radius:40px;border:1px solid #E3DCCD;
+  box-shadow:0 20px 50px rgba(34,36,46,.13);overflow:hidden;font-size:15px;color:var(--ink)}
+.statusbar{display:flex;justify-content:space-between;align-items:center;padding:12px 24px 2px;
+  font-size:12.5px;font-weight:600;color:#3A3C48;letter-spacing:.4px}
+.statusbar .icons{display:flex;gap:3px;align-items:flex-end}
+.statusbar .icons i{display:block;background:#3A3C48;border-radius:2px}
+.ph-body{padding:10px 16px 18px}
+
+/* sunset scene */
+.scene{position:relative;overflow:hidden;border-radius:16px;
+  background:linear-gradient(180deg,#FFE6BE 0%,#FFCB91 20%,#F4A075 40%,#B87E92 60%,#6A5F8C 80%,#3A3556 100%)}
+.scene::before{content:"";position:absolute;left:0;right:0;bottom:0;height:58%;background:#4E4A70;opacity:.9;
+  clip-path:polygon(0 100%,0 54%,13% 26%,26% 50%,37% 20%,51% 46%,63% 24%,77% 48%,89% 32%,100% 60%,100% 100%)}
+.scene::after{content:"";position:absolute;left:0;right:0;bottom:0;height:34%;background:#2C2942;
+  clip-path:polygon(0 100%,0 60%,10% 38%,22% 64%,36% 36%,50% 60%,62% 40%,76% 66%,88% 44%,100% 68%,100% 100%)}
+.scene .sun{position:absolute;left:63%;top:40%;width:30px;height:30px;border-radius:50%;background:#FFDC93;
+  box-shadow:0 0 38px 15px rgba(255,206,132,.6);z-index:1}
+.scene .cap{position:absolute;right:12px;bottom:10px;z-index:2;color:#fff;font-size:12px;line-height:1.5;
+  text-align:right;text-shadow:0 1px 6px rgba(20,18,40,.6);opacity:.95}
+
+/* app bar */
+.appbar{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:6px 2px 14px}
+.logo{font-size:21px;font-weight:800;letter-spacing:-.5px}
+.logo .logo-en{display:block;font-size:9px;font-weight:600;letter-spacing:2.4px;color:var(--coral);margin-top:1px}
+.greet{font-size:14.5px;color:#3C3F4E;margin-top:8px}
+.wx{font-size:12.5px;color:var(--ink2);margin-top:2px}
+.bell{position:relative;width:34px;height:34px;border-radius:50%;background:#fff;display:grid;place-items:center;
+  box-shadow:var(--shadow);flex:0 0 auto}
+.bell .dot{position:absolute;top:6px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--coral);
+  border:1.5px solid #fff}
+.ico{width:20px;height:20px;fill:none;stroke:#2A2C38;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+/* cards */
+.card{background:var(--paper);border-radius:22px;padding:18px;box-shadow:var(--shadow);margin-bottom:14px}
+.card-tag{font-size:12px;font-weight:700;color:var(--ink2);letter-spacing:.6px;margin-bottom:12px}
+.route-row{display:flex;gap:12px;align-items:center}
+.thumb{width:88px;height:74px;flex:0 0 auto;border-radius:14px}
+.thumb .sun{left:60%;top:34%;width:18px;height:18px;box-shadow:0 0 20px 8px rgba(255,206,132,.55)}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:7px}
+.badge.easy{background:#E6F5E2;color:#2F7A2A}
+.badge.mid{background:#FDF2D6;color:#8A6410}
+.badge.hard{background:#FCE7E5;color:#A83027}
+.route-name{font-size:19px;font-weight:800;margin:5px 0 3px;letter-spacing:-.3px}
+.route-stat{font-size:13px;color:var(--ink2)}
+.who{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink2);margin:13px 0 14px;
+  padding-top:12px;border-top:1px dashed var(--line)}
+.av{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:11.5px;font-weight:700;flex:0 0 auto}
+.av.a1{background:#4F6BD8}.av.a2{background:#E08A5C}.av.a3{background:#6EA36A}.av.a4{background:#9B7BD4}
+.btn{display:block;width:100%;border:none;font:inherit;font-size:15.5px;font-weight:700;border-radius:14px;
+  padding:13px;cursor:pointer;letter-spacing:.2px}
+.btn.coral{background:var(--coral);color:#fff;box-shadow:0 6px 16px rgba(255,113,78,.32)}
+.btn.blue{background:var(--blue);color:#fff}
+.btn.ghost{background:transparent;color:#3E4150;border:1.5px solid var(--line);margin-top:9px;font-weight:600}
+.btn.white{background:#fff;color:var(--blue)}
+
+/* today card, in-progress state */
+.today.live{background:linear-gradient(160deg,#3C5CF7,#2E46D8);color:#fff;box-shadow:0 12px 30px rgba(52,85,245,.3)}
+.today.live .card-tag{color:#C3CDFF}
+.live-grid{display:flex;gap:10px;margin:2px 0 14px}
+.live-grid div{flex:1;background:rgba(255,255,255,.14);border-radius:13px;padding:9px 10px}
+.live-grid b{display:block;font-size:17px;font-weight:800;margin-top:1px}
+.live-grid span{font-size:11px;color:#C9D2FF}
+.live-note{font-size:12px;color:#C9D2FF;margin-top:10px;display:flex;gap:6px;align-items:center}
+
+/* trio */
+.trio{display:flex;gap:10px;margin:2px 0 18px}
+.trio a{flex:1;background:#fff;border-radius:16px;padding:11px 12px;font-size:12.5px;color:var(--ink2);
+  box-shadow:var(--shadow)}
+.trio b{display:block;font-size:19px;font-weight:800;color:var(--ink);letter-spacing:-.3px}
+
+/* feed */
+.sec-head{display:flex;justify-content:space-between;align-items:baseline;margin:2px 2px 11px}
+.sec-head h3{font-size:16.5px;font-weight:800}
+.sec-head span{font-size:12.5px;color:var(--ink2)}
+.post .ph{display:flex;align-items:center;gap:9px;margin-bottom:10px}
+.post .ph b{font-size:13.5px}
+.post .ph em{font-style:normal;font-size:12px;color:var(--ink3);display:block}
+.post h4{font-size:16px;font-weight:800;margin:0 0 10px;letter-spacing:-.2px}
+.post .shot{height:150px;border-radius:15px;margin-bottom:11px}
+.post .shot.short{height:96px}
+.acts{display:flex;gap:16px;font-size:12.5px;color:var(--ink2);padding-top:11px;border-top:1px solid #F1EDE3}
+.acts b{color:var(--ink);font-weight:700}
+.stamp{position:absolute;right:10px;top:8px;border:2px solid var(--blue);color:var(--blue);border-radius:8px;
+  padding:2px 8px;font:800 15px/1.3 -apple-system,sans-serif;transform:rotate(-4deg);background:rgba(255,255,255,.85)}
+
+/* rank board */
+.board .sec-head{margin:0 0 10px}
+.rank{display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid #F4F0E7}
+.rank:last-of-type{border-bottom:none}
+.rank .pos{width:18px;text-align:center;font:800 13px/1.4 -apple-system,sans-serif;color:#B8B3A6}
+.rank.p1 .pos{color:var(--coral)}
+.rank .av{width:24px;height:24px;font-size:10.5px}
+.rank .nm{flex:1;min-width:0}
+.rank .nm b{display:block;font-size:13.5px}
+.rank .nm em{font-style:normal;font-size:11.5px;color:var(--ink3)}
+.rank .tm{font:800 14.5px/1 -apple-system,sans-serif}
+.rank.me{background:#F1F4FF;border-radius:12px;padding:8px 10px;border-bottom:none;margin-top:3px}
+.rank.me .tm{color:var(--blue)}
+.rank-note{font-size:11.5px;color:var(--ink2);margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
+.boardline{display:flex;align-items:center;gap:8px;background:#F1F4FF;border-radius:14px;padding:11px 14px;
+  font-size:12.5px;color:#2A3A9E;font-weight:600;margin-bottom:14px}
+.boardline b{color:var(--blue)}
+.boardline span{margin-left:auto;color:var(--blue)}
+.safehint{font-size:11.5px;color:#9A9CAA;margin-top:8px}
+
+/* letter */
+.letter{background:var(--violet-bg);border:1px dashed #C6BCF0;position:relative;overflow:hidden}
+.letter .tag{font-size:12px;font-weight:800;color:var(--violet);letter-spacing:.5px}
+.letter .line{font-size:16.5px;font-weight:700;color:#3A3560;margin:7px 0 6px}
+.letter .sub{font-size:12.5px;color:#6E68A0}
+.letter .stampmark{position:absolute;right:14px;top:14px;width:42px;height:34px;border-radius:5px;
+  background:linear-gradient(140deg,#B9AFF0,#8E80E2);opacity:.5}
+
+/* tabbar */
+.tabbar{display:flex;align-items:flex-end;justify-content:space-around;background:#fff;padding:9px 6px 20px;
+  border-top:1px solid #F1EDE3;box-shadow:0 -6px 20px rgba(34,36,46,.05)}
+.tabbar a{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;color:#9A9CAA;font-weight:600;flex:1}
+.tabbar a.on{color:var(--blue)}
+.tabbar a.on svg{stroke:var(--blue)}
+.tabbar .scan{transform:translateY(-16px)}
+.scan-btn{width:50px;height:50px;border-radius:50%;background:var(--blue);display:grid;place-items:center;
+  box-shadow:0 8px 18px rgba(52,85,245,.4)}
+.scan-btn svg{stroke:#fff;width:24px;height:24px}
+.tabbar .scan em{font-style:normal;color:var(--blue);font-weight:700;font-size:10.5px}
+
+/* arrival */
+.arrive-top{height:250px;border-radius:0}
+.arrive-top .sun{left:66%;top:30%;width:34px;height:34px}
+.arrive-top .nav-top{position:absolute;top:12px;left:14px;right:14px;z-index:3;display:flex;
+  justify-content:space-between;align-items:center;color:#fff;font-size:13px;font-weight:600}
+.arrive-top .nav-top .pill{background:rgba(20,18,40,.35);backdrop-filter:blur(6px);border-radius:999px;padding:5px 11px}
+.sheet{margin-top:-22px;position:relative;background:var(--bg);border-radius:24px 24px 0 0;padding:20px 16px 18px}
+.seal{display:inline-block;border:2.5px solid var(--coral);color:var(--coral);border-radius:10px;padding:2px 10px;
+  font:800 20px/1.35 -apple-system,sans-serif;transform:rotate(-3deg);background:#FFF6F2}
+.arrive-h{font-size:25px;font-weight:900;letter-spacing:-.6px;margin:14px 0 2px}
+.arrive-p{font-size:13.5px;color:var(--ink2);margin-bottom:16px}
+.arrive-p b{color:var(--coral);font-weight:800}
+.mini3{display:flex;gap:9px;margin:14px 0 16px}
+.mini3 div{flex:1;background:#fff;border-radius:14px;padding:10px 8px;text-align:center;box-shadow:var(--shadow)}
+.mini3 b{display:block;font-size:15px;font-weight:800;margin-top:3px}
+.mini3 span{font-size:10.5px;color:var(--ink2)}
+.comment{background:#fff;border-radius:16px;padding:13px 15px;margin-bottom:10px;box-shadow:var(--shadow)}
+.comment .ph{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink2);margin-bottom:7px}
+.comment p{font-size:13.5px;margin:0;color:#33364A}
+.more{background:#fff;border-radius:16px;padding:14px 16px;font-size:13.5px;color:var(--ink2);box-shadow:var(--shadow);
+  display:flex;gap:14px;flex-wrap:wrap;font-weight:600}
+.more span::before{content:"+ ";color:var(--violet);font-weight:800}
+
+/* route sheet rows */
+.rowline{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid #F1EDE3;align-items:baseline}
+.rowline:last-child{border-bottom:none}
+.rowline .num{font:800 12px/1 -apple-system,sans-serif;color:#fff;background:#C9C3B4;border-radius:6px;padding:4px 7px;flex:0 0 auto}
+.rowline.on .num{background:var(--blue)}
+.rowline b{font-size:13.5px;display:block}
+.rowline small{color:var(--ink2);font-size:12px}
+.sticky-actions{display:flex;gap:9px;margin-top:16px}
+.sticky-actions .btn{font-size:14px;padding:12px}
+
+/* ---------- redline ---------- */
+.redline{display:grid;grid-template-columns:470px 1fr;gap:26px;align-items:start}
+#redlineStage{position:relative;padding-left:46px}
+#redlineStage .phone{width:390px}
+.marker{position:absolute;width:23px;height:23px;border-radius:50%;background:var(--coral);color:#fff;
+  font:800 12.5px/23px -apple-system,sans-serif;text-align:center;z-index:9;
+  box-shadow:0 3px 9px rgba(255,113,78,.4)}
+.legend{list-style:none;margin:0;padding:0;counter-reset:l}
+.legend li{background:#fff;border-radius:16px;padding:15px 18px 15px 56px;position:relative;margin-bottom:11px;box-shadow:var(--shadow)}
+.legend li b{position:absolute;left:16px;top:15px;width:25px;height:25px;border-radius:50%;background:var(--coral);
+  color:#fff;font:800 13px/25px -apple-system,sans-serif;text-align:center}
+.legend li h4{font-size:15px;font-weight:800;margin-bottom:3px}
+.legend li p{font-size:13px;color:var(--ink2);margin:0}
+.legend li .why{color:var(--blue);font-weight:600}
+
+/* ---------- structure tree ---------- */
+.tree{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.node{background:#fff;border-radius:18px;padding:20px;box-shadow:var(--shadow);border-top:5px solid var(--blue)}
+.node.gray{border-top-color:#C9C3B4}
+.node.violet{border-top-color:var(--violet)}
+.node.coral{border-top-color:var(--coral)}
+.node h4{font-size:16px;font-weight:800;margin-bottom:4px}
+.node .cap{font-size:12px;color:var(--ink3);margin-bottom:12px}
+.node ul{margin:0;padding:0;list-style:none}
+.node li{font-size:13.5px;padding:6px 0;border-bottom:1px solid #F4F0E7;color:#3C3F4E}
+.node li:last-child{border-bottom:none}
+.node li em{font-style:normal;color:var(--ink3);font-size:12px}
+.root{background:var(--ink);color:#fff;border-radius:16px;padding:16px 22px;margin-bottom:18px}
+.root b{font-size:16px}
+.root span{color:#A9ADBE;font-size:12.5px;display:block;margin-top:2px}
+
+/* ---------- ui spec ---------- */
+.swatches{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:6px}
+.sw{border-radius:14px;padding:16px;font-size:12.5px;font-weight:600;min-height:92px;display:flex;flex-direction:column;justify-content:flex-end}
+.sw small{opacity:.75;font-weight:500;font-size:11px;display:block}
+.comp-row{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.type-row{display:flex;align-items:baseline;gap:16px;padding:9px 0;border-bottom:1px solid #F4F0E7}
+.type-row code{font-size:12px;color:var(--ink3);margin-left:auto;font-family:ui-monospace,Menlo,monospace}
+.kv{display:grid;grid-template-columns:130px 1fr;gap:6px 16px;font-size:13.5px}
+.kv dt{color:var(--ink2)}
+.kv dd{margin:0}
+.callout{background:#FFF6F2;border-left:4px solid var(--coral);border-radius:12px;padding:14px 18px;font-size:13.5px;margin-bottom:12px}
+.callout b{color:#D9502C}
+.callout.blue{background:#F1F4FF;border-left-color:var(--blue)}
+.callout.blue b{color:var(--blue)}
+.callout.violet{background:var(--violet-bg);border-left-color:var(--violet)}
+.callout.violet b{color:#5C4FC7}
+table.fn{width:100%;border-collapse:collapse;font-size:13.5px}
+table.fn th{text-align:left;font-size:12px;color:var(--ink2);font-weight:700;padding:0 12px 8px 0;
+  border-bottom:1.5px solid var(--ink)}
+table.fn td{padding:10px 12px 10px 0;border-bottom:1px solid #F4F0E7;vertical-align:top}
+table.fn td:first-child{font-weight:700;white-space:nowrap}
+table.fn .where{color:var(--blue);font-weight:600}
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;margin:10px 0}
+.flow span{background:#F1F4FF;color:#2A3A9E;border-radius:999px;padding:6px 12px;font-weight:600}
+.flow i{font-style:normal;color:var(--ink3)}
+footer{color:var(--ink2);font-size:12.5px;text-align:center;padding:26px 0 40px}
+figure{margin:0}
+figcaption{font-size:13px;color:var(--ink2);margin-top:12px;text-align:center}
+figcaption b{color:var(--ink)}
+@media(max-width:1080px){.redline{grid-template-columns:1fr}#redlineStage{padding-left:40px}}
+</style>
+</head>
+<body>
+
+<header class="top"><div class="wrap">
+  <div class="brand">hikes <span>山里见 · SEE YOU OUTSIDE</span></div>
+  <div class="sub">页面结构 · 首页布局 · UI 设计 —— v3 设计稿（含扫码落地页与回访机制），概念数据，非上线服务</div>
+</div></header>
+
+<nav class="toc">
+  <a href="#positioning">① 定位与初心</a>
+  <a href="#screens">② 四屏原型</a>
+  <a href="#home-redline">③ 首页布局</a>
+  <a href="#tree">④ 页面结构</a>
+  <a href="#ui">⑤ UI 规范</a>
+  <a href="#qr">⑥ 扫码落地页与回访</a>
+  <a href="#notes">⑦ 设计判断</a>
+</nav>
+
+<main>
+
+<!-- ============ 1 定位 ============ -->
+<section id="positioning"><div class="wrap">
+  <div class="sec-title"><span class="n">01</span><h2>定位与初心</h2>
+    <span class="hint">从前两版稿子里抽取出来的同一件事</span></div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h3 style="font-size:16px;margin-bottom:10px">前两版各自留下什么</h3>
+      <p style="font-size:13.5px;color:var(--ink2)">
+      <b style="color:var(--ink)">山径 Trailbook</b>（trail-ui.html）：路线资料库。<em>“每一条山径，都有一本鲜活的路书”</em>，
+      核心是搜索、难度、分段路书、路况核验、共建认领。它的价值是<b style="color:var(--ink)">信任</b>——让一个陌生地方变得敢去，
+      也让人愿意把走过的地方整理成别人用得上的东西。</p>
+      <p style="font-size:13.5px;color:var(--ink2)">
+      <b style="color:var(--ink)">山里见</b>（social-ui-plan.md）：扫码到访与连接。<em>“山里，总有人与你同频”</em>，
+      核心是扫码、到访卡、留言墙、留给下一位、山径拼图。它的价值是<b style="color:var(--ink)">温度</b>——
+      让一个人在山上不孤单，也让走过的路留下痕迹。</p>
+      <p style="font-size:13.5px;color:var(--ink2);margin-bottom:0">
+      两者不是两个产品，是同一条链的两端：<b style="color:var(--ink)">路书让人敢去，到访让人留下，留言让下一个人不孤单。</b>
+      前两版的问题是它们各自成了完整的首页，谁也没接住谁——Trailbook 把"去过的人"做成了静态数据，
+      山里见把"路书"降级成了详情页的附属信息。</p>
+    </div>
+    <div class="panel">
+      <h3 style="font-size:16px;margin-bottom:10px">定位（已确认）</h3>
+      <p style="font-size:20px;font-weight:800;line-height:1.5;letter-spacing:-.4px;margin-bottom:14px">
+        给每一个岔路口一个路书，<br>给每一个山峰一个打卡点。</p>
+      <div class="callout blue" style="margin-bottom:10px">
+        这句话同时定义了产品的<b>内容供给</b>和<b>交付形态</b>：<br>
+        岔路口 = 路书点，解决"往哪走"，靠用户共建（拍来向视角、指方向）；<br>
+        山峰 = 打卡点，解决"我来过"，靠到访产生内容（第 N 位、到访卡、用时榜）。<br>
+        两类点位的字段、页面形态与后台管理都要分开。
+      </div>
+      <div class="kv">
+        <dt>品牌语</dt><dd>每一次上山，都算数。</dd>
+        <dt>副线</dt><dd>山里，总有人与你同频。</dd>
+        <dt>英文</dt><dd>SEE YOU OUTSIDE</dd>
+        <dt>主入口</dt><dd>扫一扫（现场）＋ 今天去哪（出发前）</dd>
+        <dt>信任基础</dt><dd>核验过的路书与难度分级</dd>
+        <dt>情绪落点</dt><dd>到访的归属感 · 被看见 · 留下痕迹</dd>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+<!-- ============ 2 四屏 ============ -->
+<section id="screens"><div class="wrap">
+  <div class="sec-title"><span class="n">02</span><h2>四屏原型</h2>
+    <span class="hint">390 × 844 画布 · 概念数据</span></div>
+
+  <div class="screens">
+
+  <!-- ---- A 首页·未出发 ---- -->
+  <figure class="phone-wrap">
+    <div class="phone" id="phone-home-a">
+      <div class="statusbar"><span>7:42</span><span class="icons"><i style="width:15px;height:8px"></i><i style="width:11px;height:8px;border-radius:50% 50% 0 0"></i><i style="width:20px;height:9px;border-radius:3px"></i></span></div>
+      <div class="ph-body">
+
+        <div class="appbar" data-n="1">
+          <div>
+            <div class="logo">山里见<span class="logo-en">SEE YOU OUTSIDE</span></div>
+            <div class="greet">周日早上好，山友。</div>
+            <div class="wx">晴 17° · 空气优 · 日落 18:24　今天适合上山</div>
+          </div>
+          <div class="bell"><svg class="ico" viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 6-2 7-2 7h16s-2-1-2-7"/><path d="M10.5 19a2 2 0 0 0 3 0"/></svg><i class="dot"></i></div>
+        </div>
+
+        <div class="card today" data-n="2">
+          <div class="card-tag">今天去哪 · 距你 12 km</div>
+          <div class="route-row">
+            <div class="thumb scene"><i class="sun"></i></div>
+            <div>
+              <div class="badge easy">● 简单</div>
+              <div class="route-name">溪谷森林步道</div>
+              <div class="route-stat">5.2 km · ↗ 180 m · 约 2 小时</div>
+            </div>
+          </div>
+          <div class="who"><span class="av a2">鱼</span>2 小时前，小鱼 刚从起点出发 · 今天已有 3 人到访</div>
+          <button class="btn coral">看看这条路</button>
+          <button class="btn ghost">我已经到了 · 扫一扫</button>
+        </div>
+
+        <div class="trio" data-n="3">
+          <a>想去<b>8</b></a><a>到过<b>12</b></a><a>拼图<b>3/6</b></a>
+        </div>
+
+        <div data-n="4">
+          <div class="sec-head"><h3>今天有人在山里</h3><span>更多 ›</span></div>
+          <div class="card post">
+            <div class="ph"><span class="av a1">川</span><div><b>阿川</b><em>3 小时前 · 青山顶</em></div></div>
+            <h4>第 100 位登顶打卡的人，是我！</h4>
+            <div class="shot scene"><i class="sun"></i><span class="cap">像这样的时刻，<br>值得被记录。</span><span class="stamp">#100</span></div>
+            <div class="acts"><span>击掌 <b>26</b></span><span>留言 <b>8</b></span><span>想去</span></div>
+          </div>
+          <div class="card post">
+            <div class="ph"><span class="av a3">鱼</span><div><b>小鱼</b><em>2 小时前 · 溪谷森林步道</em></div></div>
+            <h4>第一次一个人上山，有点怕，但真的好看。</h4>
+            <div class="shot short scene"><i class="sun"></i></div>
+            <div class="acts"><span>击掌 <b>12</b></span><span>留言 <b>3</b></span><span>想去</span></div>
+          </div>
+        </div>
+
+        <div class="card board" data-n="5">
+          <div class="sec-head"><h3>今日登顶用时榜</h3><span>青山顶 ›</span></div>
+          <div class="rank p1"><span class="pos">1</span><span class="av a4">野</span><span class="nm"><b>小野</b><em>今天 08:26</em></span><span class="tm">01:12</span></div>
+          <div class="rank"><span class="pos">2</span><span class="av a1">楠</span><span class="nm"><b>阿楠</b><em>今天 09:03</em></span><span class="tm">01:28</span></div>
+          <div class="rank me"><span class="pos">3</span><span class="av a3">我</span><span class="nm"><b>你</b><em>今天 09:41 · 个人最好</em></span><span class="tm">01:42</span></div>
+          <div class="rank-note">比上次快 6 分钟 · 前 20 名计入今日榜</div>
+        </div>
+
+        <div class="card letter" data-n="6">
+          <span class="stampmark"></span>
+          <div class="tag">留给下一位</div>
+          <div class="line">上面风大，<br>记得带件外套。</div>
+          <div class="sub">这条路上已有 214 句留言 · 到现场拆开一封</div>
+        </div>
+
+      </div>
+      <nav class="tabbar" data-n="7">
+        <a class="on"><svg class="ico" viewBox="0 0 24 24"><path d="M3 10.7 12 3.5l9 7.2V21H3z"/></svg>出发</a>
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M2 19.5 9 6.5l3.6 6.2 2.2-3.4 7.2 10.2z"/></svg>山径</a>
+        <a class="scan"><span class="scan-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round"><path d="M4 9V5.6A1.6 1.6 0 0 1 5.6 4H9"/><path d="M15 4h3.4A1.6 1.6 0 0 1 20 5.6V9"/><path d="M20 15v3.4a1.6 1.6 0 0 1-1.6 1.6H15"/><path d="M9 20H5.6A1.6 1.6 0 0 1 4 18.4V15"/><rect x="10" y="10" width="4" height="4" rx="1.2"/></svg></span><em>扫一扫</em></a>
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z"/></svg>消息</a>
+        <a><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20c1.3-3.6 4-5.4 7.2-5.4s5.9 1.8 7.2 5.4"/></svg>我</a>
+      </nav>
+    </div>
+    <figcaption><b>首页 · 今天去哪</b><br>出发前的默认状态</figcaption>
+  </figure>
+
+  <!-- ---- B 首页·行进中 ---- -->
+  <figure class="phone-wrap">
+    <div class="phone">
+      <div class="statusbar"><span>9:26</span><span class="icons"><i style="width:15px;height:8px"></i><i style="width:11px;height:8px;border-radius:50% 50% 0 0"></i><i style="width:20px;height:9px;border-radius:3px"></i></span></div>
+      <div class="ph-body">
+
+        <div class="appbar">
+          <div>
+            <div class="logo">山里见<span class="logo-en">SEE YOU OUTSIDE</span></div>
+            <div class="greet">你正在路上，山友。</div>
+            <div class="wx">距日落 8 小时 58 分　今天这条路有 3 个人</div>
+          </div>
+          <div class="bell"><svg class="ico" viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 6-2 7-2 7h16s-2-1-2-7"/><path d="M10.5 19a2 2 0 0 0 3 0"/></svg><i class="dot"></i></div>
+        </div>
+
+        <div class="card today live">
+          <div class="card-tag">进行中 · 溪谷森林步道</div>
+          <div class="live-grid">
+            <div><span>起点打卡</span><b>07:12</b></div>
+            <div><span>已走</span><b>2h14m</b></div>
+            <div><span>点位</span><b>2/5</b></div>
+          </div>
+          <button class="btn white">结束并留张到访卡</button>
+          <div class="live-note">↘ 下一处下撤点：3.2 km 后的林道口</div>
+        </div>
+
+        <div class="trio">
+          <a>想去<b>8</b></a><a>到过<b>12</b></a><a>拼图<b>3/6</b></a>
+        </div>
+
+        <div>
+          <div class="sec-head"><h3>今天有人在山里</h3><span>更多 ›</span></div>
+          <div class="card post">
+            <div class="ph"><span class="av a4">周</span><div><b>老周</b><em>40 分钟前 · 青山山脊环线</em></div></div>
+            <h4>山脊上风大，石阶结露，慢慢走。</h4>
+            <div class="shot short scene"><i class="sun"></i><span class="cap">实时路况 · 已核验</span></div>
+            <div class="acts"><span>击掌 <b>9</b></span><span>留言 <b>2</b></span><span>收藏地点</span></div>
+          </div>
+          <div class="card post">
+            <div class="ph"><span class="av a1">川</span><div><b>阿川</b><em>3 小时前 · 青山顶</em></div></div>
+            <h4>第 100 位登顶打卡的人，是我！</h4>
+            <div class="shot short scene"><i class="sun"></i><span class="stamp">#100</span></div>
+            <div class="acts"><span>击掌 <b>26</b></span><span>留言 <b>8</b></span><span>想去</span></div>
+          </div>
+        </div>
+
+        <div class="card letter">
+          <span class="stampmark"></span>
+          <div class="tag">留给下一位</div>
+          <div class="line">上面风大，<br>记得带件外套。</div>
+          <div class="sub">终点也有一封 · 到点位自动提示拆开</div>
+        </div>
+
+      </div>
+      <nav class="tabbar">
+        <a class="on"><svg class="ico" viewBox="0 0 24 24"><path d="M3 10.7 12 3.5l9 7.2V21H3z"/></svg>出发</a>
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M2 19.5 9 6.5l3.6 6.2 2.2-3.4 7.2 10.2z"/></svg>山径</a>
+        <a class="scan"><span class="scan-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round"><path d="M4 9V5.6A1.6 1.6 0 0 1 5.6 4H9"/><path d="M15 4h3.4A1.6 1.6 0 0 1 20 5.6V9"/><path d="M20 15v3.4a1.6 1.6 0 0 1-1.6 1.6H15"/><path d="M9 20H5.6A1.6 1.6 0 0 1 4 18.4V15"/><rect x="10" y="10" width="4" height="4" rx="1.2"/></svg></span><em>扫一扫</em></a>
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z"/></svg>消息</a>
+        <a><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20c1.3-3.6 4-5.4 7.2-5.4s5.9 1.8 7.2 5.4"/></svg>我</a>
+      </nav>
+    </div>
+    <figcaption><b>首页 · 在山里</b><br>同一张主卡的第二种面貌</figcaption>
+  </figure>
+
+  <!-- ---- C 扫码到达页 ---- -->
+  <figure class="phone-wrap">
+    <div class="phone">
+      <div class="statusbar"><span>9:24</span><span class="icons"><i style="width:15px;height:8px"></i><i style="width:11px;height:8px;border-radius:50% 50% 0 0"></i><i style="width:20px;height:9px;border-radius:3px"></i></span></div>
+      <div class="arrive-top scene">
+        <i class="sun"></i>
+        <div class="nav-top">
+          <span class="pill">‹ 返回</span>
+          <span class="pill">溪谷森林步道 · ● 简单</span>
+        </div>
+        <span class="cap">走到这里，<br>你也是这条路上的人了。</span>
+      </div>
+      <div class="sheet">
+        <span class="seal">#128</span>
+        <h2 class="arrive-h">你到了，山友。</h2>
+        <p class="arrive-p">你是第 <b>128</b> 位在这条路上留下痕迹的人</p>
+        <button class="btn coral">留下我的到访卡</button>
+        <div class="mini3">
+          <div><span>首次到访</span><b>✓</b></div>
+          <div><span>本次用时</span><b>01:42</b></div>
+          <div><span>山径拼图</span><b>+1</b></div>
+        </div>
+        <div class="boardline">🏆 本次 <b>01:42</b>　今日第 <b>3</b> 名<span>用时榜 ›</span></div>
+        <div class="card letter">
+          <span class="stampmark"></span>
+          <div class="tag">有人给你留了一句话</div>
+          <div class="line" style="font-size:15px">来自一位先到的山友　<span style="color:var(--violet)">拆开看看 ›</span></div>
+          <div class="sub">118 天前写在这里，等下一个走到这个点位的人</div>
+        </div>
+        <div class="sec-head" style="margin-top:16px"><h3>溪谷留言墙</h3><span>全部留言 ›</span></div>
+        <div class="comment">
+          <div class="ph"><span class="av a2" style="width:22px;height:22px;font-size:10px">鱼</span>小鱼 · 2 小时前</div>
+          <p>风很大，但真的好温柔！看到日出的一刻，觉得所有的辛苦都值得了 ❤️</p>
+        </div>
+        <div class="comment">
+          <div class="ph"><span class="av a1" style="width:22px;height:22px;font-size:10px">凯</span>阿凯 · 5 小时前</div>
+          <p>一个人来，遇到超棒的伙伴，一起看了日出。</p>
+        </div>
+        <div class="more"><span>写给未来的自己</span><span>求一张合影</span><span>一起走一段</span></div>
+      </div>
+      <nav class="tabbar">
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M3 10.7 12 3.5l9 7.2V21H3z"/></svg>出发</a>
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M2 19.5 9 6.5l3.6 6.2 2.2-3.4 7.2 10.2z"/></svg>山径</a>
+        <a class="scan"><span class="scan-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round"><path d="M4 9V5.6A1.6 1.6 0 0 1 5.6 4H9"/><path d="M15 4h3.4A1.6 1.6 0 0 1 20 5.6V9"/><path d="M20 15v3.4a1.6 1.6 0 0 1-1.6 1.6H15"/><path d="M9 20H5.6A1.6 1.6 0 0 1 4 18.4V15"/><rect x="10" y="10" width="4" height="4" rx="1.2"/></svg></span><em>扫一扫</em></a>
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z"/></svg>消息</a>
+        <a><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20c1.3-3.6 4-5.4 7.2-5.4s5.9 1.8 7.2 5.4"/></svg>我</a>
+      </nav>
+    </div>
+    <figcaption><b>扫码到达页</b><br>轻量打卡优先，惊喜逐层展开</figcaption>
+  </figure>
+
+  <!-- ---- D 地点空间 ---- -->
+  <figure class="phone-wrap">
+    <div class="phone">
+      <div class="statusbar"><span>7:50</span><span class="icons"><i style="width:15px;height:8px"></i><i style="width:11px;height:8px;border-radius:50% 50% 0 0"></i><i style="width:20px;height:9px;border-radius:3px"></i></span></div>
+      <div class="arrive-top scene" style="height:190px">
+        <i class="sun"></i>
+        <div class="nav-top"><span class="pill">‹ 返回</span><span class="pill">路书 · 难度</span></div>
+      </div>
+      <div class="sheet">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+          <span class="badge easy">● 简单</span>
+          <span style="font-size:12px;color:var(--ink2)">近 30 天 128 人到访 · 今日 3 人</span>
+        </div>
+        <h2 class="arrive-h" style="margin-top:4px">溪谷森林步道</h2>
+        <p class="arrive-p">5.2 km · ↗ 180 m · 约 2 小时 · 林荫缓坡，适合轻量出行</p>
+
+        <div class="sec-head"><h3>分段路书</h3><span>维护人 老周 ›</span></div>
+        <div class="card" style="padding:6px 16px">
+          <div class="rowline on"><span class="num">01</span><div><b>起点 · 停车场东侧标牌</b><small>扫码点位 #1 · 有卫生间与补水</small></div></div>
+          <div class="rowline on"><span class="num">02</span><div><b>林道岔口</b><small>左转上山，别走右边的作业道</small></div></div>
+          <div class="rowline"><span class="num">03</span><div><b>溪谷平台</b><small>午餐点 · 石阶结露时慢行</small></div></div>
+          <div class="rowline"><span class="num">04</span><div><b>终点 · 观景平台</b><small>扫码点位 #2 · 日落 18:24</small></div></div>
+        </div>
+
+        <div class="callout blue" style="font-size:13px">
+          <b>最近路况</b>　9 月 28 日维护人确认：林道口补给点开放，溪谷段有倒木已清理。
+        </div>
+
+        <div class="sec-head"><h3>用时榜</h3><span>今日 · 好友 · 我的纪录 ›</span></div>
+        <div class="card" style="padding:8px 16px 14px">
+          <div class="rank p1"><span class="pos">1</span><span class="av a4">野</span><span class="nm"><b>小野</b><em>今天 08:26</em></span><span class="tm">01:12</span></div>
+          <div class="rank"><span class="pos">2</span><span class="av a1">楠</span><span class="nm"><b>阿楠</b><em>今天 09:03</em></span><span class="tm">01:28</span></div>
+          <div class="rank me"><span class="pos">3</span><span class="av a3">我</span><span class="nm"><b>你</b><em>今天 09:41 · 个人最好</em></span><span class="tm">01:42</span></div>
+          <div class="safehint">共 37 人今日登顶 · 请以安全返程为第一目标</div>
+        </div>
+
+        <div class="sec-head"><h3>留言墙</h3><span>214 条 ›</span></div>
+        <div class="comment">
+          <div class="ph"><span class="av a2" style="width:22px;height:22px;font-size:10px">鱼</span>小鱼 · 2 小时前</div>
+          <p>第一次一个人爬山，有点怕，但真的好看。</p>
+        </div>
+        <div class="sticky-actions">
+          <button class="btn ghost" style="margin:0">收藏到想去</button>
+          <button class="btn coral">我已经到了</button>
+        </div>
+      </div>
+      <nav class="tabbar">
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M3 10.7 12 3.5l9 7.2V21H3z"/></svg>出发</a>
+        <a class="on"><svg class="ico" viewBox="0 0 24 24"><path d="M2 19.5 9 6.5l3.6 6.2 2.2-3.4 7.2 10.2z"/></svg>山径</a>
+        <a class="scan"><span class="scan-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round"><path d="M4 9V5.6A1.6 1.6 0 0 1 5.6 4H9"/><path d="M15 4h3.4A1.6 1.6 0 0 1 20 5.6V9"/><path d="M20 15v3.4a1.6 1.6 0 0 1-1.6 1.6H15"/><path d="M9 20H5.6A1.6 1.6 0 0 1 4 18.4V15"/><rect x="10" y="10" width="4" height="4" rx="1.2"/></svg></span><em>扫一扫</em></a>
+        <a><svg class="ico" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z"/></svg>消息</a>
+        <a><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20c1.3-3.6 4-5.4 7.2-5.4s5.9 1.8 7.2 5.4"/></svg>我</a>
+      </nav>
+    </div>
+    <figcaption><b>地点空间 / 路线详情</b><br>路书是信任，留言是温度</figcaption>
+  </figure>
+
+  </div>
+</div></section>
+
+<!-- ============ 3 首页布局 ============ -->
+<section id="home-redline"><div class="wrap">
+  <div class="sec-title"><span class="n">03</span><h2>首页布局</h2>
+    <span class="hint">首屏三块 · 完整七块 · 按优先级排</span></div>
+
+  <div class="redline">
+    <div id="redlineStage"><div id="redlinePhone"></div></div>
+    <ol class="legend">
+      <li><b>1</b><h4>问候 + 山况一行</h4>
+        <p>回答"现在去不去得了"。天气、日落时间、路况摘要占一行，不占屏。
+        <span class="why">这是唯一一处"环境信息"，它把"打开 app"变成"要不要出门"。</span></p></li>
+      <li><b>2</b><h4>今日主卡（首页唯一主角，三态切换）</h4>
+        <p>没想好去哪 → 推荐一条路 + 双按钮；在路上 → 换成钴蓝的行进卡；刚结束 → 换成到访卡预览。
+        <span class="why">首页的心脏不是信息流，是"我现在该做什么"。</span></p></li>
+      <li><b>3</b><h4>足迹三格：想去 / 到过 / 拼图</h4>
+        <p>把原方案的"想来 + 拼图 + 到访"压成一行三格，点进「我」。
+        <span class="why">进度感要一直可见，但不能各占一块屏。</span></p></li>
+      <li><b>4</b><h4>今天有人在山里（动态流）</h4>
+        <p>每张卡必须带地点与时间，点地点进"地点空间"。默认只放 2–3 张 + 更多。
+        <span class="why">和晒图社区的区别：动态挂在地点上，而不是挂在人身上。</span></p></li>
+      <li><b>5</b><h4>今日登顶用时榜</h4>
+        <p>默认展示三行：第 1 名、第 2 名、我（高亮）。点进地点看今日 / 好友 / 我的纪录三个视角。
+        <span class="why">这是最强的"想再回来一次"的钩子——名次会变。</span></p></li>
+      <li><b>6</b><h4>留给下一位（信封卡）</h4>
+        <p>淡紫信纸 + 手写一句话 + 现场拆开。保留原方案里最有情绪的一件东西。
+        <span class="why">它同时承担"解释玩法"和"制造向往"两件事。</span></p></li>
+      <li><b>7</b><h4>底部导航，中间扫一扫凸起</h4>
+        <p>出发 / 山径 / 扫一扫 / 消息 / 我。出发与山径分开，把资料库还给用户。
+        <span class="why">"想去 + 路书"不再挤在同一格，找山和上山各有入口。</span></p></li>
+    </ol>
+  </div>
+</div></section>
+
+<!-- ============ 4 页面结构 ============ -->
+<section id="tree"><div class="wrap">
+  <div class="sec-title"><span class="n">04</span><h2>页面结构</h2>
+    <span class="hint">五条主线 + 一个后台</span></div>
+
+  <div class="root"><b>hikes · 移动优先</b>
+    <span>入口：扫一扫（现场标牌二维码）· 分享链接 · 搜索 · 首页推荐</span></div>
+
+  <div class="tree">
+    <div class="node">
+      <h4>出发（首页）</h4>
+      <div class="cap">我现在该做什么</div>
+      <ul>
+        <li>今天去哪 · 附近推荐 <em>→ 地点空间</em></li>
+        <li>进行中 · 起点打卡、点位进度、结束 <em>→ 到访卡</em></li>
+        <li>今天有人在山里 <em>→ 动态详情 → 地点空间</em></li>
+        <li>今日登顶用时榜 <em>→ 地点空间 / 用时榜</em></li>
+        <li>留给下一位 <em>→ 信件详情</em></li>
+        <li>山况 / 天气 <em>→ 区域页</em></li>
+      </ul>
+    </div>
+    <div class="node">
+      <h4>山径（地点与路书）</h4>
+      <div class="cap">能不能去、怎么走</div>
+      <ul>
+        <li>搜索 / 筛选 <em>区域·难度·时长·爬升</em></li>
+        <li>地点空间 = 路线详情 <em>路书 / 难度 / 装备</em></li>
+        <li>分段路书与关键点位 <em>照片 · 编号 · 来向视角</em></li>
+        <li>最近路况 <em>维护人核验 + 用户报告</em></li>
+        <li>用时榜 <em>今日 · 好友 · 我的纪录</em></li>
+        <li>留言墙 / 到访者 / 今日现场</li>
+        <li>共建：认领 · 提交 · 巡查 <em>后台审核</em></li>
+      </ul>
+    </div>
+    <div class="node coral">
+      <h4>扫一扫</h4>
+      <div class="cap">我已经到了</div>
+      <ul>
+        <li>点位识别 <em>标牌二维码 / 编号输入</em></li>
+        <li>到达页：你是第 N 位</li>
+        <li>到达页两种形态 <em>打卡点（山峰）/ 路书点（岔路口）</em></li>
+        <li>留下到访卡 <em>昵称 + 照片 + 标签</em></li>
+        <li>拆信 <em>留给下一位 / 未来信解锁</em></li>
+        <li>留言墙 · 求合影 · 一起走一段</li>
+        <li>结束行程 <em>用时入榜 → 地点空间</em></li>
+      </ul>
+    </div>
+    <div class="node violet">
+      <h4>消息</h4>
+      <div class="cap">有人回应了你</div>
+      <ul>
+        <li>留言与击掌</li>
+        <li>合影 / 同行请求的回应</li>
+        <li>信件解锁通知 <em>未来信到日子了</em></li>
+        <li>我关注的山友与地点</li>
+      </ul>
+    </div>
+    <div class="node gray">
+      <h4>我</h4>
+      <div class="cap">我来过哪里</div>
+      <ul>
+        <li>到访册 · 到访纪念卡</li>
+        <li>想去清单 <em>收藏的地点</em></li>
+        <li>山径拼图进度 <em>3/6</em></li>
+        <li>用时记录 <em>个人纪录 · 榜单名次</em></li>
+        <li>山间信箱 <em>写出的与收到的</em></li>
+        <li>资料 · 隐私 · 内容管理</li>
+      </ul>
+    </div>
+    <div class="node gray">
+      <h4>维护后台</h4>
+      <div class="cap">保证路书可信</div>
+      <ul>
+        <li>路线审核 · 难度复核</li>
+        <li>点位分型与二维码管理 <em>路书点 / 打卡点</em></li>
+        <li>内容审核 · 举报处理</li>
+        <li>维护人认领与排班</li>
+        <li>版本记录 <em>路况变更可追溯</em></li>
+      </ul>
+    </div>
+  </div>
+</div></section>
+
+<!-- ============ 5 UI ============ -->
+<section id="ui"><div class="wrap">
+  <div class="sec-title"><span class="n">05</span><h2>UI 设计规范</h2>
+    <span class="hint">暖白的纸 · 钴蓝的信任 · 珊瑚橙的行动</span></div>
+
+  <div class="panel">
+    <h3 style="font-size:16px;margin-bottom:14px">色板</h3>
+    <div class="swatches">
+      <div class="sw" style="background:#F7F3EC;border:1px solid #E9E2D5">暖白 · 页面底<small>#F7F3EC</small></div>
+      <div class="sw" style="background:#fff;border:1px solid #E9E2D5">纸白 · 卡片<small>#FFFFFF</small></div>
+      <div class="sw" style="background:#22242E;color:#fff">墨 · 主文字<small>#22242E</small></div>
+      <div class="sw" style="background:#6B6E7E;color:#fff">次文字<small>#6B6E7E</small></div>
+      <div class="sw" style="background:#3455F5;color:#fff">钴蓝 · 品牌 / 行进中<small>#3455F5</small></div>
+      <div class="sw" style="background:#FF714E;color:#fff">珊瑚橙 · 行动 / 印章<small>#FF714E</small></div>
+      <div class="sw" style="background:#7B6CE8;color:#fff">淡紫 · 信件<small>#7B6CE8</small></div>
+      <div class="sw" style="background:#ECE9FB">信纸底<small>#ECE9FB</small></div>
+    </div>
+    <h3 style="font-size:16px;margin:20px 0 12px">难度三色（只出现在路书区域）</h3>
+    <div class="swatches">
+      <div class="sw" style="background:#E6F5E2;color:#2F7A2A;border:1px solid #CDE8C7">● 圆 · 简单<small>#52B44A</small></div>
+      <div class="sw" style="background:#FDF2D6;color:#8A6410;border:1px solid #F1E0B0">■ 方 · 中等<small>#F2B62C</small></div>
+      <div class="sw" style="background:#FCE7E5;color:#A83027;border:1px solid #F2CFCB">◆ 菱 · 困难<small>#E4453A</small></div>
+    </div>
+    <div class="callout" style="margin-top:16px">
+      <b>对原稿的一处修改：</b>难度色从荧光 #7DE329 / #FFDB29 / #FF5449 降饱和为交通灯语义的
+      #52B44A / #F2B62C / #E4453A。荧光色放在暖白纸底上会盖住照片与珊瑚橙，破坏"明信片"的调性；
+      形状（圆 / 方 / 菱）与文字始终和颜色同时出现，色弱用户也能分辨。
+      森林绿 #173E2D 退为后台与路书表格的辅助色，不再做品牌主色——两版稿子各有一套视觉系统，这是统一后的结果。
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h3 style="font-size:16px;margin-bottom:10px">字号与层级</h3>
+      <div class="type-row"><span style="font-size:25px;font-weight:900;letter-spacing:-.6px">你到了，山友。</span><code>25 / 900</code></div>
+      <div class="type-row"><span style="font-size:19px;font-weight:800">溪谷森林步道</span><code>19 / 800</code></div>
+      <div class="type-row"><span style="font-size:16.5px;font-weight:800">今天有人在山里</span><code>16.5 / 800</code></div>
+      <div class="type-row" style="font-size:15px">正文：卡片里的说明与留言<code>15 / 400</code></div>
+      <div class="type-row" style="font-size:13px;color:var(--ink2)">次要：时间、地点、计数<code>13 / 400</code></div>
+      <div class="type-row" style="font-size:12px;color:var(--ink2)">标签：难度徽标、卡片眉标<code>12 / 700</code></div>
+      <div class="callout violet" style="margin-top:16px">
+        手写体只用于信件和到访卡上的一句情绪文案，<b>不用于任何功能文字</b>——
+        这是"温度归温度、操作归操作"的边界。
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3 style="font-size:16px;margin-bottom:10px">形状与组件</h3>
+      <dl class="kv" style="margin-bottom:16px">
+        <dt>卡片圆角</dt><dd>22 px（大卡）· 14–16 px（小卡与缩略图）</dd>
+        <dt>按钮</dt><dd>胶囊或 14 px 圆角，高度 ≥ 48 px，触控区 ≥ 44 px</dd>
+        <dt>图片</dt><dd>16 px 圆角，1:1 或 4:3；人物照片优先于风景</dd>
+        <dt>阴影</dt><dd>0 1px 2px / 0 8px 24px，透明度 ≤ 7%</dd>
+        <dt>间距</dt><dd>卡片内 18 px，卡片间 14 px，区块间 18–24 px</dd>
+        <dt>手机字号</dt><dd>正文 15 px，触控目标 ≥ 44 px</dd>
+      </dl>
+      <h4 style="font-size:14px;margin-bottom:10px">核心组件</h4>
+      <div class="comp-row" style="margin-bottom:12px">
+        <span class="badge easy">● 简单</span>
+        <span class="badge mid">■ 中等</span>
+        <span class="badge hard">◆ 困难</span>
+      </div>
+      <div class="comp-row" style="margin-bottom:12px">
+        <button class="btn coral" style="width:auto;padding:10px 20px">留下我的到访卡</button>
+        <button class="btn ghost" style="width:auto;padding:10px 20px;margin:0">收藏到想去</button>
+      </div>
+      <div class="comp-row">
+        <span style="border:2.5px solid var(--coral);color:var(--coral);border-radius:10px;padding:2px 10px;font:800 18px/1.35 -apple-system;transform:rotate(-3deg);background:#FFF6F2">#128</span>
+        <span class="av a1">川</span><span class="av a2">鱼</span><span class="av a3">周</span>
+        <span style="background:var(--violet-bg);border:1px dashed #C6BCF0;border-radius:10px;padding:6px 12px;font-size:12.5px;color:#5C4FC7;font-weight:700">信纸 · 淡紫虚线</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3 style="font-size:16px;margin-bottom:14px">趣味功能清单与位置</h3>
+    <table class="fn">
+      <tr><th style="width:190px">玩法</th><th style="width:300px">放在哪</th><th>为什么它会让人回来</th></tr>
+      <tr><td>到访纪念卡</td><td class="where">扫一扫 → 到达页生成<br>我 / 到访册</td><td>分享出去后被人击掌、被留言，通知会把人拉回来</td></tr>
+      <tr><td>第 N 位到访</td><td class="where">到达页印章<br>地点空间 / 到访者</td><td>数字会变大；被后来者超过时值得回来看一眼</td></tr>
+      <tr><td>第一次</td><td class="where">到达页自选标签</td><td>生成专属卡，是被祝贺的入口</td></tr>
+      <tr><td>山径拼图</td><td class="where">首页足迹格<br>我 / 山径拼图</td><td>3/6 这种"差三块"的状态本身就是回访理由</td></tr>
+      <tr><td><b>用时榜</b></td><td class="where">首页「今日登顶用时榜」<br>地点空间<br>我 / 用时记录</td><td>名次每天都会变，个人纪录会刷新——最稳定的回访钩子</td></tr>
+      <tr><td>留言墙</td><td class="where">地点空间<br>到达页</td><td>有人回复你，消息红点直接把人带回来</td></tr>
+      <tr><td>留给下一位</td><td class="where">到达页拆信<br>地点空间</td><td>你写的那句被谁拆开了，会通知你</td></tr>
+      <tr><td>未来信</td><td class="where">到达页写信<br>我 / 山间信箱</td><td><b>按指定日期解锁</b>——制造了"必须回来"的承诺，是最强的回访机制</td></tr>
+      <tr><td>求一张合影<br>一起走一段</td><td class="where">到达页折叠区<br>消息</td><td>请求被接受，就是一次必须回来看的对话</td></tr>
+      <tr><td>今日现场</td><td class="where">首页 · 地点空间</td><td>此刻路上有几个人的实时感</td></tr>
+    </table>
+    <p style="font-size:13.5px;color:var(--ink2);margin:16px 0 0">
+      常驻入口只留三件——<b>到访卡、留言墙、用时榜</b>；其余作为"到了现场才出现"的惊喜，
+      这样首页和导航都不用一次解释十件事。</p>
+  </div>
+</div></section>
+
+<!-- ============ 6 扫码落地页与回访 ============ -->
+<section id="qr"><div class="wrap">
+  <div class="sec-title"><span class="n">06</span><h2>扫码落地页与回访</h2>
+    <span class="hint">一个二维码 = 一个点位 = 一个稳定子页面</span></div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h3 style="font-size:16px;margin-bottom:12px">二维码与落地页</h3>
+      <div class="flow"><span>印刷标牌（短链）</span><i>→</i><span>302 跳转</span><i>→</i>
+        <span>点位子页面 H5</span><i>→</i><span>打卡 / 路书</span></div>
+      <p style="font-size:13.5px;color:var(--ink2)">
+        二维码里印的是<b>短链</b>（如 <code>hikes.app/p/QSD1024</code>），不是页面真实地址。
+        标牌贴上去就收不回来，短链可以让页面结构以后随便改而不用重印。</p>
+      <p style="font-size:13.5px;color:var(--ink2)">
+        服务端按 UA 分流：手机 → 点位子页面；桌面 → "用手机扫码"页 + 二维码图 + 输入点位编号。
+        子页面必须<b>免登录可玩</b>（昵称即可打卡），登录放到后面，否则微信里第一步就流失。</p>
+      <p style="font-size:13.5px;color:var(--ink2);margin-bottom:0">
+        标牌上同时印：点位名 · 点位编号 · 一句话引导 · 短链文字。编号要能在扫码失败时手动输入。</p>
+    </div>
+
+    <div class="panel">
+      <h3 style="font-size:16px;margin-bottom:12px">微信 / 其他扫码工具能不能跳进来</h3>
+      <div class="callout blue" style="margin-bottom:10px">
+        <b>能。</b>微信扫码打开的是内置浏览器，普通 https 网页可以直接打开——
+        这正是"网页版优先"的价值：不需要小程序也能完成打卡。
+      </div>
+      <p style="font-size:13.5px;color:var(--ink2)">
+        但要绕开四个坑：<br>
+        <b>1. 域名必须国内可访问、已备案。</b>未备案域名在微信里会被拦成"无法打开网页"。<br>
+        <b>2. 不要用 deep link（如 <code>hikes://</code>）做二维码内容。</b>没装 App 的人只会看到空白页。<br>
+        <b>3. 不要做诱导分享或强制下载。</b>微信对这类外链拦截很严，"分享三个群解锁"这种玩法不要碰。<br>
+        <b>4. 页面内不要再放一个"扫一扫"。</b>用户已经在扫码了；真要调微信相机需 JS-SDK + 公众号配置，
+        成本高收益低，直接降级成"输入点位编号"更稳。</p>
+      <p style="font-size:13.5px;color:var(--ink2);margin-bottom:0">
+        系统相机（iOS / 安卓原生）、支付宝、抖音识别 https 链接后都会跳系统浏览器，
+        所以落地页要在无 cookie、无登录、弱网下都能渲染出打卡按钮。</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3 style="font-size:16px;margin-bottom:12px">除了扫码，用户为什么要回来</h3>
+    <div class="grid2">
+      <div>
+        <div class="callout blue"><b>关系型（最强）</b>　有人回应了你的留言 / 击掌 / 合影请求被接受 /
+          关注的山友又上山了 → 消息红点</div>
+        <div class="callout violet"><b>延迟回报型（第二强）</b>　写给未来自己的信按日期解锁 /
+          你留给下一位的那句话被谁拆开了 → 推送</div>
+        <div class="callout"><b>竞争型</b>　用时榜名次被超过 / 个人纪录被刷新 / 今日榜换了人</div>
+      </div>
+      <div>
+        <div class="callout" style="background:#F2F5F0;border-left-color:var(--easy)">
+          <b>进度型</b>　山径拼图 3/6 · 想去清单 · "第 5 个点位"这类累计</div>
+        <div class="callout" style="background:#FFF9EC;border-left-color:var(--mid)">
+          <b>内容型</b>　收藏的地点有新的路况核验、新的留言、新的到访者</div>
+        <div class="callout" style="background:#F4F0E7;border-left-color:#C9C3B4">
+          <b>被动召回</b>　分享出去的到访卡被人击掌 / 被留言，通知把人拉回来</div>
+      </div>
+    </div>
+    <p style="font-size:13.5px;color:var(--ink2);margin:6px 0 0">
+      排序就是优先级：<b>消息红点 &gt; 未来信解锁 &gt; 用时榜名次 &gt; 拼图进度</b>。
+      首页之所以把用时榜放在信封卡上面，就是为了让"回来一次"的理由在第一屏之后马上出现。</p>
+  </div>
+</div></section>
+
+<!-- ============ 7 判断 ============ -->
+<section id="notes"><div class="wrap">
+  <div class="sec-title"><span class="n">07</span><h2>设计判断与待确认项</h2>
+    <span class="hint">这一版我改了什么、为什么，以及我不确定的地方</span></div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h3 style="font-size:16px;margin-bottom:12px">我做的四个判断</h3>
+      <p style="font-size:13.5px"><b>1. 首页主角从"动态流"换成"今日主卡"。</b><br>
+        <span style="color:var(--ink2)">原方案首页第一屏是扫码按钮 + 山友动态，等于默认用户已经在山里。
+        但大部分打开时刻是"我想出去走走"。主卡三态把出发前、在路上、刚结束这三种状态统一成一张卡，
+        扫码降级为主卡里的一个按钮，而不是整个首页的假设。</span></p>
+      <p style="font-size:13.5px"><b>2. 导航把"想来"换成"山径"。</b><br>
+        <span style="color:var(--ink2)">"想去"是一个状态列表，不是目的地，撑不起一个 tab；
+        而 Trailbook 那套搜索、难度筛选、分段路书、共建认领才是 hikes 的信任基础，
+        它需要自己的入口。想去/到过变成地点上的状态，同时收进「我」。</span></p>
+      <p style="font-size:13.5px;margin-bottom:0"><b>3. 动态挂在地点上，不挂在人上。</b><br>
+        <span style="color:var(--ink2)">每条动态卡必须带地点和时间，可点进"地点空间"。
+        这决定了产品的形状：主角是山径，不是博主。</span></p>
+      <p style="font-size:13.5px;margin:14px 0 0"><b>4. 扫一扫是动作，不是内容，所以它不占 tab。</b><br>
+        <span style="color:var(--ink2)">四个功能 tab 回答四个问题（出发 / 山径 / 消息 / 我），
+        扫一扫回答的是"现在做什么"。它做成底部正中凸起的钴蓝按钮，是全站唯一一个实心饱和色的常驻控件。</span></p>
+    </div>
+
+    <div class="panel">
+      <h3 style="font-size:16px;margin-bottom:12px">我要提醒的两件事</h3>
+      <div class="callout">
+        <b>用时榜保留，改掉的是那句文案。</b>榜单留下，冲突的「慢一点也没关系，风景会等你」删掉；
+        同时在榜单旁加一句安全提示，并给每个人一条"跟自己比"的纪录线。
+        这样榜单的动机是"我想再快一点"，而不是"我比别人慢"。
+      </div>
+      <div class="callout blue">
+        <b>扫码是入口，但不能是唯一入口。</b>没有到现场的用户打开 app 时，
+        扫码按钮是无效的。所以「我已经到了 · 扫一扫」永远和「看看这条路」并列出现，
+        让两种状态的人都有下一步。
+      </div>
+      <h3 style="font-size:15px;margin:18px 0 8px">已经定下来的</h3>
+      <p style="font-size:13.5px;color:var(--ink2)">
+        <b>定位</b>：给每一个岔路口一个路书，给每一个山峰一个打卡点。<br>
+        <b>品牌语改掉了</b>：原副线「慢一点也没关系，风景会等你」与用时榜直接冲突，已换成
+        「上面风大，记得带件外套。」——只讲关心，不讲快慢。主品牌语为「每一次上山，都算数。」<br>
+        <b>用时榜保留并前置</b>：首页第三屏，用三行结构（第 1 名 / 第 2 名 / 我）。三条底线——
+        只对山峰类点位生效、同屏给"比上次快多少"的个人纪录线、旁边一句安全提示。榜单靠"名次会变"制造回访，
+        不靠羞辱慢的人。</p>
+      <h3 style="font-size:15px;margin:18px 0 8px">新增的待确认</h3>
+      <p style="font-size:13.5px;color:var(--ink2);margin:0">
+        ① <b>用时榜的对比范围</b>：全站今日榜 / 仅好友榜 / 只跟自己比？这决定伤害感和回访强度，三种的伤害感递增顺序是好友 &lt; 全站 &lt; 只跟自己比。<br>
+        ② <b>点位分型是否用两套落地页模板</b>：岔路口（路书点）以"往哪走"为主，山峰（打卡点）以"我来过"为主。我按两套设计的，但命名要定。
+      </p>
+    </div>
+  </div>
+</div></section>
+
+</main>
+
+<footer>hikes · v2 设计稿 · 页面结构 / 首页布局 / UI 规范 · 全部路线、人物与数据均为示例</footer>
+
+<script>
+(function(){
+  /* 把首页 A 克隆到标注区，并按模块位置打上序号 */
+  var src=document.getElementById('phone-home-a');
+  var slot=document.getElementById('redlinePhone');
+  var stage=document.getElementById('redlineStage');
+  if(src&&slot&&stage){
+    var clone=src.cloneNode(true);
+    clone.removeAttribute('id');
+    Array.prototype.forEach.call(clone.querySelectorAll('[id]'),function(e){e.removeAttribute('id')});
+    slot.appendChild(clone);
+    var sr=stage.getBoundingClientRect(), pr=clone.getBoundingClientRect();
+    var rail=pr.left-sr.left-30;
+    Array.prototype.forEach.call(clone.querySelectorAll('[data-n]'),function(el){
+      var r=el.getBoundingClientRect();
+      var m=document.createElement('span');
+      m.className='marker'; m.textContent=el.dataset.n;
+      m.style.left=rail+'px';
+      m.style.top=(r.top-sr.top+4)+'px';
+      stage.appendChild(m);
+    });
+  }
+
+  /* 单节截图模式：#screens / #home-redline / #tree / #ui / #notes / #positioning */
+  var only=(location.hash||'').replace('#','');
+  if(only){
+    var ok=false;
+    Array.prototype.forEach.call(document.querySelectorAll('main > section'),function(s){
+      if(s.id===only){ok=true; s.hidden=false;} else {s.hidden=true;}
+    });
+    if(ok){
+      var t=document.querySelector('header.top'); if(t) t.hidden=true;
+      var n=document.querySelector('nav.toc'); if(n) n.hidden=true;
+      var f=document.querySelector('footer'); if(f) f.hidden=true;
+      document.querySelectorAll('section .wrap').forEach(function(w){w.style.paddingTop='18px'});
+      var wmap={screens:'1780px',tree:'1240px',ui:'1400px','home-redline':'1340px',positioning:'1400px'};
+      var w=document.querySelector('#'+only+' .wrap'); if(w) w.style.maxWidth=(wmap[only]||'1400px');
+    }
+  }
+})();
+</script>
+</body>
+</html>

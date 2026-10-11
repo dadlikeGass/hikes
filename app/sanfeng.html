@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>三峰连穿 · 分级效果预览</title>
+<link rel="stylesheet" href="css/app.css">
+<style>
+body{background:#E7E1D6;padding:26px 18px 40px;font-size:14px}
+.stage{display:flex;gap:26px;justify-content:center;align-items:flex-start;flex-wrap:wrap;max-width:1000px;margin:0 auto}
+.col{display:flex;flex-direction:column;align-items:center;gap:10px}
+.col>h4{font-size:13px;color:#5A5D6C;font-weight:700;letter-spacing:.5px}
+.frame{width:390px;height:790px;background:var(--bg);border:1px solid #E3DCCD;border-radius:38px;
+  overflow:hidden;box-shadow:0 22px 50px rgba(34,36,46,.16);display:flex;flex-direction:column}
+.sc{flex:1;overflow-y:auto;padding:0 16px 20px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--ink2);margin:4px 0 12px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px}
+.bigtrk{position:relative;background:#fff;border-radius:18px;padding:12px;box-shadow:var(--shadow);margin-bottom:12px}
+.bigtrk svg{display:block;width:100%;height:230px}
+.peak{position:absolute;transform:translate(-50%,-50%);font-size:9.5px;font-weight:800;color:#fff;
+  background:#22242E;border-radius:999px;padding:2px 7px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+.peak::after{content:'';position:absolute;left:50%;bottom:-4px;width:1px;height:4px;background:#22242E}
+.pkrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--hair);font-size:12.5px}
+.pkrow:last-child{border-bottom:none}
+.pkrow b{font-size:13.5px}
+.pkrow em{font-style:normal;color:var(--ink3);font-size:11.5px}
+.hero2{height:130px;margin:0 -16px 12px;overflow:hidden;position:relative}
+.tagc{position:absolute;left:12px;top:10px}
+.ntbox{border-top:1px dashed var(--line);padding:8px 0 4px;margin:2px 0 6px}
+.nthead{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--ink3)}
+.ntadd{font-size:11.5px;font-weight:700;color:var(--blue)}
+.nt{margin-top:8px;padding-left:9px;border-left:2px solid #E9E3D5}
+.nt.keeper{border-left-color:var(--blue)}
+.ntm{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink3)}
+.ntm b{font-size:12.5px;color:var(--ink)}
+.ntrole{font-style:normal;background:var(--blue);color:#fff;border-radius:5px;padding:1px 5px;font-size:9.5px;font-weight:700}
+.ntlike{margin-left:auto;color:var(--coral);font-weight:700}
+.ntlike,.ntbad{cursor:pointer}
+.ntbad{color:var(--ink3);font-weight:700;margin-left:8px}
+.ntbad.on{color:var(--ink2)}
+.nt.warn{border-left-color:var(--amber);opacity:.55}
+.nt.warn .ntwarn{display:block}
+.ntwarn{display:none;font-size:11px;color:var(--amber-ink);margin-top:4px;font-weight:700}
+.nt p{margin:3px 0 0;font-size:12.5px;color:#3C3F4E;line-height:1.55}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="col">
+    <h4>首页</h4>
+    <div class="frame"><div class="sc" id="home"></div></div>
+  </div>
+  <div class="col">
+    <h4>路书 · 三峰连穿</h4>
+    <div class="frame"><div class="sc" id="trail"></div></div>
+  </div>
+</div>
+<script src="js/data.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/track.js"></script>
+<script src="js/route-sanfeng.js"></script>
+<script>
+(function () {
+  var S = window.SANFENG, U = window.UI, esc = U.esc;
+  var COLOR = { easy: '#2563EB', mid: '#F2B62C', hard: '#E4453A', hidden: '#22242E' };
+  var BG = { easy: '#E4EDFD', mid: '#FDF2D6', hard: '#FBE4E2', hidden: '#EAE8E2' };
+  var INK = { easy: '#1B4FC4', mid: '#8A6410', hard: '#B3261E', hidden: '#22242E' };
+  var NAME = { easy: '简单', mid: '中等', hard: '困难' };
+  var LEVEL = {
+    easy: { key: 'easy', glyph: '●', short: '简单' },
+    mid: { key: 'mid', glyph: '▲', short: '中等' },
+    hard: { key: 'hard', glyph: '◆', short: '困难' }
+  };
+  function badge(lv) {
+    var c = COLOR[lv];
+    var svg = lv === 'easy'
+      ? '<circle cx="50" cy="50" r="41" fill="' + c + '"/>'
+      : lv === 'mid'
+        ? '<polygon points="50,10 92,87 8,87" fill="' + c + '"/>'
+        : '<polygon points="50,6 94,50 50,94 6,50" fill="' + c + '"/>';
+    return '<span class="badge" style="background:' + BG[lv] + ';color:' + INK[lv] + '">' +
+      '<span class="lvmark"><span class="lvshape">' + '<svg viewBox="0 0 100 100">' + svg + '</svg></span>' +
+      NAME[lv] + '</span></span>';
+  }
+
+  /* ---- 留言：多人留言按「维护人 / 点赞 / 时间」优先排列 ---- */
+  var NOTES = [
+    { k: 'seg', i: 0, who: '老周', role: '维护人', t: '2 天前', like: 12, txt: '这段是全程最陡的，前 2 km 石阶连续，别冲，配速压住。' },
+    { k: 'seg', i: 0, who: '小鱼', role: '山友', t: '昨天', like: 4, txt: '下雨天石阶很滑，我走的左侧土路。' },
+    { k: 'seg', i: 1, who: '阿川', role: '山友', t: '3 天前', like: 6, txt: '从鹫峰到阳台山这段起伏不大，可以加速。' },
+    { k: 'seg', i: 3, who: '阿楠', role: '维护人', t: '5 天前', like: 9, txt: '这段下降碎石多，膝盖不好的慢慢下。' },
+    { k: 'peak', i: 0, who: '老周', role: '维护人', t: '5 天前', like: 9, txt: '鹫峰顶风大，登顶后马上加衣服。' },
+    { k: 'peak', i: 2, who: '阿楠', role: '山友', t: '1 周前', like: 3, txt: '阳台山顶有小卖部，可以补水。' }
+  ];
+  function mine() { try { return JSON.parse(localStorage.getItem('sf.mine') || '[]'); } catch (e) { return []; } }
+  function saveMine(a) { try { localStorage.setItem('sf.mine', JSON.stringify(a)); } catch (e) { } }
+  function votes() { try { return JSON.parse(localStorage.getItem('sf.vote') || '{}'); } catch (e) { return {}; } }
+  function saveVotes(v) { try { localStorage.setItem('sf.vote', JSON.stringify(v)); } catch (e) { } }
+  function notesFor(k, i) {
+    var all = mine().filter(function (n) { return n.k === k && n.i === i; })
+      .concat(NOTES.filter(function (n) { return n.k === k && n.i === i; }));
+    all.forEach(function (n) {
+      var v = votes()[k + '|' + i + '|' + n.who];
+      n.like = (n.like || 0) + (v === 'like' ? 1 : 0);
+      n.bad = (n.bad || 0) + (v === 'bad' ? 1 : 0);
+    });
+    return all.sort(function (a, b) {
+      var ra = (a.role === '维护人' ? 0 : 1), rb = (b.role === '维护人' ? 0 : 1);
+      var sa = (a.like || 0) - (a.bad || 0), sb = (b.like || 0) - (b.bad || 0);
+      return ra - rb || sb - sa;
+    });
+  }
+  function notesHTML(k, i) {
+    var list = notesFor(k, i);
+    var head = '<div class="nthead"><span>' + (list.length ? list.length + ' 条留言' : '还没有留言') + '</span>' +
+      '<button class="ntadd" data-k="' + k + '" data-i="' + i + '">＋ 写一条</button></div>';
+    if (!list.length) return head;
+    return head + list.map(function (n, idx) {
+      var keeper = n.role === '维护人';
+      var like = (n.like || 0), bad = (n.bad || 0);
+      var warn = !keeper && bad >= 3 && bad > like;
+      return '<div class="nt' + (keeper ? ' keeper' : '') + (warn ? ' warn' : '') + '">' +
+        '<div class="ntm"><b>' + n.who + '</b>' + (keeper ? '<i class="ntrole">维护人</i>' : '') +
+        '<em>' + n.t + '</em>' +
+        '<span class="ntlike" data-k="' + k + '" data-i="' + i + '" data-x="' + idx + '">♥ ' + like + '</span>' +
+        '<span class="ntbad" data-k="' + k + '" data-i="' + i + '" data-x="' + idx + '">✕ ' + bad + '</span></div>' +
+        '<p>' + n.txt + '</p>' +
+        '<span class="ntwarn">✕ ' + bad + ' 人认为这条已经不准了</span></div>';
+    }).join('');
+  }
+
+  /* ---- 按段着色的轨迹 ---- */
+  var W = 340, H = 230, pad = 26;
+  var xs = S.path.map(function (p) { return p[0]; }), ys = S.path.map(function (p) { return p[1]; });
+  var mnx = Math.min.apply(null, xs), mxx = Math.max.apply(null, xs);
+  var mny = Math.min.apply(null, ys), mxy = Math.max.apply(null, ys);
+  var sc = Math.min((W - pad * 2) / ((mxx - mnx) || 1), (H - pad * 2) / ((mxy - mny) || 1));
+  var ox = (W - (mxx - mnx) * sc) / 2, oy = (H - (mxy - mny) * sc) / 2;
+  function P(i) { return [(xs[i] - mnx) * sc + ox, (ys[i] - mny) * sc + oy]; }
+  var marks = [0].concat(S.peaks.map(function (p) { return Math.round(p.km / S.km * (S.path.length - 1)); }));
+  marks.push(S.path.length - 1);
+  var trackSVG = '<svg viewBox="0 0 ' + W + ' ' + H + '">';
+  trackSVG += '<g fill="none" stroke="#EFEADD" stroke-width="1">';
+  [40, 78, 116, 154, 192].forEach(function (y) { trackSVG += '<path d="M-10 ' + y + ' q 70 -13 140 0 t 200 0"/>'; });
+  trackSVG += '</g>';
+  S.segs.forEach(function (sg, k) {
+    var i0 = marks[k], i1 = marks[k + 1];
+    if (i1 - i0 < 1) return;
+    var d = '';
+    for (var i = i0; i <= i1; i++) { var q = P(i); d += (i === i0 ? 'M' : 'L') + q[0].toFixed(1) + ' ' + q[1].toFixed(1); }
+    trackSVG += '<path d="' + d + '" fill="none" stroke="' + COLOR[sg.level] + '" stroke-width="6" ' +
+      'stroke-linecap="round" stroke-linejoin="round"/>';
+  });
+  var p0 = P(0), pn = P(S.path.length - 1);
+  trackSVG += '<circle cx="' + p0[0].toFixed(1) + '" cy="' + p0[1].toFixed(1) + '" r="7" fill="#fff"/>' +
+    '<circle cx="' + p0[0].toFixed(1) + '" cy="' + p0[1].toFixed(1) + '" r="4.5" fill="#3455F5"/>' +
+    '<circle cx="' + pn[0].toFixed(1) + '" cy="' + pn[1].toFixed(1) + '" r="7" fill="#fff"/>' +
+    '<circle cx="' + pn[0].toFixed(1) + '" cy="' + pn[1].toFixed(1) + '" r="4.5" fill="#FF714E"/>';
+  trackSVG += '</svg>';
+  var peakTags = S.peaks.map(function (p) {
+    var i = Math.round(p.km / S.km * (S.path.length - 1)), q = P(i);
+    return '<span class="peak" style="left:' + (q[0] / W * 100).toFixed(1) + '%;top:' +
+      ((q[1] / H * 100) - 7).toFixed(1) + '%">⛰ ' + p.ele + ' m</span>';
+  }).join('');
+
+  /* ---- 首页 ---- */
+  var ORD3 = ['easy', 'mid', 'hard'], lvTop = 'easy';
+  S.segs.forEach(function (s) { if (ORD3.indexOf(s.level) > ORD3.indexOf(lvTop)) lvTop = s.level; });
+  document.getElementById('home').innerHTML =
+    '<div class="topbar home" style="padding-left:0;padding-right:0">' +
+    '<span class="brand"><b>到此一游</b><em>HIKERS</em></span></div>' +
+    '<div class="scanstrip">扫码，留下我来过<span>→</span></div>' +
+    '<div class="carousel" style="overflow:hidden"><div class="slide" style="flex:0 0 100%">' +
+    '<div class="ph" style="height:150px">' + U.scene('sanfeng') + '<div class="scrim"></div>' +
+    '<div class="ovl tl"><h4>' + S.name + '</h4><div class="st">' + S.km + ' km · ↗ ' + S.up +
+    ' m · 约 5 小时</div></div>' +
+    '<div class="ovl br">' + badge(lvTop) + '</div></div>' +
+    '<div class="sb"><span class="trk trk-mini" style="width:70px;height:66px">' + trackSVG.replace('height:230px', '') + '</span>' +
+    '<div class="sbtx">' +
+    '<div class="sline"><span>本周打卡</span><b>86 人</b></div>' +
+    '<div class="sline"><span>最快登顶</span><b class="hi">02:41</b></div>' +
+    '<div class="sline"><span>记录保持</span><b style="font-size:11.5px;font-weight:700;color:var(--ink2)">老周</b></div>' +
+    '</div></div></div></div>' +
+    '<div class="legend"><span><i style="background:#52B44A"></i>简单</span><span><i style="background:#2563EB"></i>中等</span>' +
+    '<span><i style="background:#9E1B1B"></i>困难</span><span>按段着色 · GPX 自动生成</span></div>' +
+    '<div class="sec-head"><h3>周末有人组队</h3><span class="more">全部 ›</span></div>' +
+    '<div class="act"><div class="date"><b>18</b><span>周六</span></div><div style="flex:1">' +
+    '<h4>三峰连穿 · 训练队</h4><div class="meta">5:30 大觉寺停车场 · ◆ 困难 · 约 5 小时<br>发起人 老周 · 需自备 2L 水</div>' +
+    '<div class="foot"><span class="cnt">7 人已参加</span><button class="btn coral mini" style="margin-left:auto">我也去参加</button></div>' +
+    '</div></div>';
+
+  /* ---- 路书详情 ---- */
+  document.getElementById('trail').innerHTML =
+    '<div class="hero2">' + U.scene('sanfeng') +
+    '<span class="tagc">' + badge(lvTop) + '</span></div>' +
+    '<h2 style="font-size:24px;font-weight:900;letter-spacing:-.7px">' + S.name + '</h2>' +
+    '<p class="tiny muted" style="margin:4px 0 12px">' + S.sub + ' · ' + S.km + ' km · ↗ ' + S.up +
+    ' m · ↘ ' + S.dn + ' m · 识别到 ' + S.peaks.length + ' 个山顶</p>' +
+
+    '<div class="bigtrk">' + trackSVG + peakTags + '</div>' +
+    '<div class="legend"><span><i style="background:#52B44A"></i>简单</span><span><i style="background:#2563EB"></i>中等</span>' +
+    '<span><i style="background:#9E1B1B"></i>困难</span><span>⛰ 山顶（标注海拔）</span></div>' +
+
+    '<div class="sec-head"><h3>山顶</h3><span class="more">' + S.peaks.length + ' 个</span></div>' +
+    '<div class="card tight">' + S.peaks.map(function (p, i) {
+      return '<div class="pkrow"><span class="pk" style="font-weight:800;color:var(--ink3);width:16px">' + (i + 1) + '</span>' +
+        '<span style="font-size:15px">⛰</span>' +
+        '<span style="flex:1;min-width:0"><b>' + p.km.toFixed(1) + ' km 处</b> <em>' +
+        (i === 0 ? '自起点爬升 ' + (S.segs[0] ? S.segs[0].rise : 0) + ' m'
+          : '自 ' + S.peaks[i - 1].km.toFixed(1) + ' km 爬升 ' + (S.segs[i] ? S.segs[i].rise : 0) + ' m') +
+        '</em></span>' +
+        '<b style="font-variant-numeric:tabular-nums">海拔 ' + p.ele + ' m</b></div>' +
+        '<div class="ntbox" data-k="peak" data-i="' + i + '">' + notesHTML('peak', i) + '</div>';
+    }).join('') + '</div>' +
+
+    '<div class="sec-head"><h3>分段难度</h3><span class="more">爬升 + 距离 + 坡度 取最高</span></div>' +
+    '<div class="card tight">' + S.segs.map(function (sg, i) {
+      var KIND = { climb: '爬升', desc: '下降', flat: '平缓' };
+      return '<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--hair)">' +
+        '<span style="width:10px;height:10px;border-radius:3px;background:' + COLOR[sg.level] + ';flex:0 0 auto"></span>' +
+        '<span style="font-weight:800;flex:0 0 46px;font-size:12.5px">' + (i + 1) + '. ' + KIND[sg.kind] + '</span>' +
+        '<span style="color:var(--ink2);flex:0 0 96px;font-size:12.5px">' + sg.from.toFixed(1) + '–' + sg.to.toFixed(1) + ' km</span>' +
+        '<span style="flex:1;font-size:12.5px;color:var(--ink2)">' + sg.km.toFixed(1) + ' km · ' +
+        (sg.rise > 0 ? '+' : '') + sg.rise + ' m · ' + (sg.pct > 0 ? '+' : '') + sg.pct + '%</span>' +
+        badge(sg.level) + '</div>' +
+        '<div class="ntbox" data-k="seg" data-i="' + i + '">' + notesHTML('seg', i) + '</div>';
+    }).join('') +
+    '<div class="note" style="padding:10px 2px 0">段难度 = max(爬升档, 距离档, 坡度档)；' +
+    '爬升 ≤100/100–300/&gt;300 m，距离 ≤3/3–8/&gt;8 km，坡度 ≤15/15–25/&gt;25%。' +
+    '是否要手脚并用、是否需要绳索冰爪，由山友和维护人确认，系统不自动判定。</div></div>' +
+
+    '<div class="sec-head"><h3>路段说明</h3><span class="more">维护人核对</span></div>' +
+    '<div class="card" style="background:#fff"><div class="note">' +
+    '第 1 段 4.9 km 爬升 971 m 是本条线最陡的一段（平均 20%），从大觉寺一路上到鹫峰；' +
+    '第 3、4 段虽然终点落在山顶上，但自身是平缓与下降，所以难度按它们自己的爬升算，不按"有顶"算。' +
+    '</div><button class="btn ghost" style="margin-top:12px">确认分段 · 提交为正式路书</button></div>';
+
+  /* 写一条留言 */
+  document.addEventListener('click', function (e) {
+    var vt = e.target.closest('.ntlike,.ntbad');
+    if (vt) {
+      var kk = vt.getAttribute('data-k'), ii = +vt.getAttribute('data-i');
+      var who = vt.parentNode.querySelector('b').textContent;
+      var key = kk + '|' + ii + '|' + who;
+      var want = vt.classList.contains('ntlike') ? 'like' : 'bad';
+      var vv = votes();
+      if (vv[key] === want) { delete vv[key]; } else { vv[key] = want; }
+      saveVotes(vv);
+      var bx = vt.closest('.ntbox');
+      if (bx) bx.innerHTML = notesHTML(kk, ii);
+      return;
+    }
+    var b = e.target.closest('.ntadd');
+    if (!b) return;
+    var txt = window.prompt('写一条留言（会挂在这一段上）');
+    if (!txt) return;
+    var arr = mine();
+    arr.push({ k: b.getAttribute('data-k'), i: +b.getAttribute('data-i'), who: '我', role: '山友', t: '刚刚', like: 0, txt: txt });
+    saveMine(arr);
+    var box = b.closest('.ntbox');
+    if (box) box.innerHTML = notesHTML(box.getAttribute('data-k'), +box.getAttribute('data-i'));
+  });
+})();
+</script>
+</body>
+</html>
