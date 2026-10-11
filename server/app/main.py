@@ -87,7 +87,10 @@ class RouteBrief(BaseModel):
     km: float
     up: int
     down: int
-    level: Literal["easy", "mid", "hard", "hidden"]
+    hardest_level: Literal["easy", "mid", "hard", "hidden"] = Field(
+        description="最难那一段的等级，不代表整条线路")
+    hours: float | None = Field(default=None, description="平均完成时间（估算）")
+    kcal: int | None = Field(default=None, description="大致消耗（估算）")
     peak_count: int
     segment_count: int
     visit_count: int
@@ -126,7 +129,10 @@ class RouteDetail(BaseModel):
     km: float
     up: int
     down: int
-    level: Literal["easy", "mid", "hard", "hidden"]
+    hardest_level: Literal["easy", "mid", "hard", "hidden"]
+    hours: float | None = None
+    kcal: int | None = None
+    est: dict[str, Any] | None = None
     peak_count: int
     path: list[list[float]] = Field(description="归一化 0-1 坐标，前端直接画 SVG")
     profile: list[float] = Field(description="归一化海拔剖面")
@@ -208,14 +214,15 @@ def health():
 
 @app.get("/api/routes", response_model=RouteListOut, tags=["路书"])
 def list_routes(level: str | None = None, limit: int = 20):
-    sql = """SELECT id, slug, name, sub, km, up, down, level, peak_count,
+    sql = """SELECT id, slug, name, sub, km, up, down, hardest_level, hours, kcal,
+                    peak_count,
                     (SELECT count(*) FROM route_segments s WHERE s.route_id = r.id) AS segment_count,
                     (SELECT coalesce(sum(seq),0) FROM visits v
                        JOIN points p ON p.id = v.point_id WHERE p.route_id = r.id) AS visit_count
              FROM routes r WHERE status = 'published'"""
     if level:
-        sql += " AND level = :level"
-    sql += " ORDER BY id LIMIT :limit"
+        sql += " AND hardest_level = :level"
+    sql += " ORDER BY km LIMIT :limit"
     return RouteListOut(items=[dict(r) for r in q(sql, level=level, limit=limit)],
                         nextCursor=None)
 
@@ -230,8 +237,8 @@ def get_route(slug: str):
     peaks = q("SELECT idx, km, altitude, rise FROM route_peaks WHERE route_id = :id ORDER BY idx",
               id=r["id"])
     d = dict(r)
-    keys = ("id", "slug", "name", "sub", "km", "up", "down", "level", "peak_count",
-            "path", "profile")
+    keys = ("id", "slug", "name", "sub", "km", "up", "down", "hardest_level", "hours",
+            "kcal", "est", "peak_count", "path", "profile")
     return RouteDetail(**{k: d[k] for k in keys},
                        segments=[dict(s) for s in segs], peaks=[dict(p) for p in peaks])
 

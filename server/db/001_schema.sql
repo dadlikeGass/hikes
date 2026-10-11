@@ -24,7 +24,11 @@ CREATE TABLE routes (
   km          NUMERIC(6,2)  NOT NULL,
   up          INT           NOT NULL,        -- 原始高程 + 3m 滞回，不用平滑高程
   down        INT           NOT NULL,
-  level       TEXT          NOT NULL CHECK (level IN ('easy','mid','hard','hidden')),
+  -- 线路不做整体难度分级。这里存"最难那一段"的等级，另给用时与消耗估算。
+  hardest_level TEXT        NOT NULL CHECK (hardest_level IN ('easy','mid','hard','hidden')),
+  hours       NUMERIC(4,1),                  -- 平均完成时间（估算）
+  kcal        INT,                           -- 大致消耗（估算）
+  est         JSONB,                         -- 估算所用的假设参数，前端要标注"估算"
   peak_count  SMALLINT      NOT NULL DEFAULT 0,
   path        JSONB         NOT NULL,        -- 归一化 0-1 坐标，前端直接画 SVG
   profile     JSONB         NOT NULL,        -- 归一化海拔剖面
@@ -34,7 +38,7 @@ CREATE TABLE routes (
   updated_at  TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_routes_geom  ON routes USING GIST (geom);
-CREATE INDEX idx_routes_level ON routes (level, status);
+CREATE INDEX idx_routes_level ON routes (hardest_level, status);
 
 -- ============ 线路分段（难度着色的数据源）============
 CREATE TABLE route_segments (
