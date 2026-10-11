@@ -56,11 +56,18 @@ def gain_loss(pts):
     return up, dn
 
 
+# 段难度分档：爬升阈值按北京山地实况抬高（原 100/300 对这里太低）
 BAND_GRAD = [(15, "easy"), (25, "mid"), (1e9, "hard")]
-BAND_GAIN = [(100, "easy"), (300, "mid"), (1e9, "hard")]
+BAND_GAIN = [(200, "easy"), (500, "mid"), (1e9, "hard")]
 BAND_KM = [(3, "easy"), (8, "mid"), (1e9, "hard")]
 ORD = {"easy": 0, "mid": 1, "hard": 2}
 REV = ["easy", "mid", "hard"]
+
+# 完成时间与消耗的估算参数（写进产物，前端要标注"估算"）
+HIKER_WEIGHT_KG = 65      # 体面体重
+MET = 6.5                 # 负重徒步的代谢当量
+FLAT_KMH = 5.0            # 成熟步道平均速度
+CLIMB_FACTOR = 8.0        # 爬升 1 m ≈ 水平 8 m（接近 Naismith 法则）
 
 
 def band(table, v):
@@ -142,10 +149,20 @@ def pickup(pt):
             for i in range(n)]
     prof = [round((e - min(ys)) / ((max(ys) - min(ys)) or 1), 4) for e in ys]
 
-    lv_all = REV[max(ORD[s["level"]] for s in segs)] if segs else "easy"
+    # 线路难度不再整体分级。只标"最难的那一段"，另给完成时间与消耗估算。
+    hardest = max(segs, key=lambda s: ORD[s["level"]]) if segs else None
+    eq_km = total / 1000 + up * CLIMB_FACTOR / 1000     # 等效距离
+    hours = eq_km / FLAT_KMH
+    kcal = MET * HIKER_WEIGHT_KG * hours
     return {"slug": pt.stem, "name": (re.search(r"<name>([^<]+)</name>", pt.read_text(
         encoding="utf-8", errors="ignore")) or [None, pt.stem])[1],
-        "km": round(total / 1000, 1), "up": round(up), "down": round(dn), "level": lv_all,
+        "km": round(total / 1000, 1), "up": round(up), "down": round(dn),
+        "hardest": {"level": hardest["level"], "no": hardest["no"],
+                    "from": hardest["from"], "to": hardest["to"], "pct": hardest["pct"],
+                    "rise": hardest["rise"]} if hardest else None,
+        "hours": round(hours, 1), "kcal": round(kcal / 50) * 50,
+        "est": {"flatKmh": FLAT_KMH, "climbFactor": CLIMB_FACTOR,
+                "weightKg": HIKER_WEIGHT_KG, "met": MET},
         "peaks": peaks, "segments": segs, "path": path, "profile": prof,
         "points": len(raw), "resampled": n}
 
@@ -167,12 +184,15 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "routes.json").write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
 
-    print(f"{'线路':<14}{'km':>6}{'爬升':>7}{'下降':>7}{'顶':>4}{'段':>4}  难度")
-    print("-" * 58)
+    print(f"{'线路':<14}{'km':>6}{'爬升':>7}{'下降':>7}{'顶':>4}{'段':>4}"
+          f"{'用时':>7}{'kcal':>7}  最难段")
+    print("-" * 74)
     for r in out.values():
+        h = r["hardest"]
         print(f"{r['slug']:<14}{r['km']:>6}{r['up']:>7}{r['down']:>7}"
-              f"{len(r['peaks']):>4}{len(r['segments']):>4}  {r['level']}")
-        print(f"            {r['name'][:34]}")
+              f"{len(r['peaks']):>4}{len(r['segments']):>4}"
+              f"{r['hours']:>6.1f}h{r['kcal']:>7}  {h['level']} ({h['pct']:+d}%)")
+        print(f"            {r['name'][:30]}")
     if fail:
         print("\n跳过：")
         for s, why in fail:
