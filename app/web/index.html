@@ -21,6 +21,13 @@ body{background:#E7E1D6;padding:0 0 40px}
 .segline{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--hair);font-size:12.5px}
 .segline:last-child{border-bottom:none}
 .sq{width:10px;height:10px;border-radius:3px;flex:0 0 auto}
+.ntrole{font-style:normal;background:var(--blue);color:#fff;border-radius:5px;padding:1px 5px;
+  font-size:9.5px;font-weight:700}
+.cmacts{display:flex;gap:16px;margin-top:9px;font-size:12px;align-items:center}
+.cmacts button{font-weight:700;color:var(--ink3)}
+.cmacts button.on{color:var(--coral)}
+.cmacts button.onbad{color:var(--amber-ink)}
+.cmnote{color:var(--amber-ink);font-weight:700;font-size:11px}
 </style>
 </head>
 <body>
@@ -128,9 +135,19 @@ async function j(url, opt) {
       (p.topComment
         ? '<div class="letter"><span class="stampmark"></span><div class="ltag">有人给你留了一句话</div>' +
           '<div class="line" style="font-size:15px">' + esc(p.topComment.text) + '</div>' +
-          '<div class="lsub">' + esc(p.topComment.nickname || '山友') + ' · ♥ ' +
-          p.topComment.like_count + ' · ✕ ' + p.topComment.bad_count + '</div></div>'
-        : '<div class="card muted tiny">还没有人在这里留言</div>') +
+          '<div class="lsub">' + esc(p.topComment.nickname || '山友') + ' 留在这里</div></div>'
+        : '') +
+
+      '<div class="sec-head"><h3>留言</h3><span class="more" id="cmcount"></span></div>' +
+      '<div id="cmlist"><div class="skel"></div></div>' +
+      '<div class="card" style="padding:14px">' +
+      '<textarea id="cminput" rows="2" maxlength="200" placeholder="写一句给下一位（最多 200 字）" ' +
+      'style="width:100%;border:1.5px solid var(--line);border-radius:12px;padding:11px;' +
+      'font:inherit;font-size:14px;resize:none;outline:none;background:#fff"></textarea>' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-top:10px">' +
+      '<span class="tiny muted" id="cmhint">发布后挂在这一点位上</span>' +
+      '<button class="btn coral" id="cmsend" style="width:auto;margin-left:auto;' +
+      'padding:10px 22px;font-size:14px">发布</button></div></div>' +
 
       (route
         ? '<div class="sec-head"><h3>' + esc(route.name) + '</h3>' +
@@ -169,6 +186,63 @@ async function j(url, opt) {
         document.getElementById('ckmsg').textContent = String(e.message).slice(0, 120);
       }
     };
+
+    /* ---------------- 留言 ---------------- */
+    var H = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+    function fmt(iso) {
+      var m = Math.round((new Date() - new Date(iso)) / 60000);
+      if (m < 1) return '刚刚';
+      if (m < 60) return m + ' 分钟前';
+      if (m < 1440) return Math.round(m / 60) + ' 小时前';
+      return Math.round(m / 1440) + ' 天前';
+    }
+    async function loadComments() {
+      var list = await j('/api/points/' + p.id + '/comments');
+      document.getElementById('cmcount').textContent = list.items.length ? list.items.length + ' 条' : '';
+      var box = document.getElementById('cmlist');
+      if (!list.items.length) {
+        box.innerHTML = '<div class="card muted tiny">还没有人在这里留言，做第一个。</div>';
+        return;
+      }
+      box.innerHTML = list.items.map(function (c) {
+        var flagged = c.status === 'flagged';
+        return '<div class="comment"' + (flagged ? ' style="opacity:.55"' : '') + '>' +
+          '<div class="ph">' + esc(c.nickname || '山友') +
+          (c.is_maintainer ? ' <span class="ntrole">维护人</span>' : '') +
+          '<span style="margin-left:auto">' + fmt(c.created_at) + '</span></div>' +
+          '<p>' + esc(c.text) + '</p><div class="cmacts">' +
+          '<button data-v="like" data-c="' + c.id + '" class="' + (c.like_count ? 'on' : '') + '">♥ ' + c.like_count + '</button>' +
+          '<button data-v="bad" data-c="' + c.id + '" class="' + (c.bad_count ? 'onbad' : '') + '">✕ ' + c.bad_count + '</button>' +
+          (flagged ? '<span class="cmnote">' + c.bad_count + ' 人认为这条已经不准了</span>' : '') +
+          '</div></div>';
+      }).join('');
+      box.querySelectorAll('[data-v]').forEach(function (b) {
+        b.onclick = async function () {
+          b.disabled = true;
+          try {
+            await j('/api/comments/' + b.dataset.c + '/vote',
+              { method: 'POST', headers: H, body: JSON.stringify({ value: b.dataset.v }) });
+            await loadComments();
+          } catch (e) { b.disabled = false; }
+        };
+      });
+    }
+    document.getElementById('cmsend').onclick = async function () {
+      var el = document.getElementById('cminput'), t = el.value.trim();
+      if (!t) { el.focus(); return; }
+      this.disabled = true;
+      try {
+        await j('/api/points/' + p.id + '/comments',
+          { method: 'POST', headers: H, body: JSON.stringify({ text: t }) });
+        el.value = '';
+        await loadComments();
+      } catch (e) {
+        document.getElementById('cmhint').textContent = '发布失败：' + String(e.message).slice(0, 80);
+      } finally { this.disabled = false; }
+    };
+    await loadComments();
+    fetch('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'app_open', props: { code: code } }) }).catch(function () { });
   } catch (e) {
     v.innerHTML = '<div class="errbox"><b>加载失败</b><br>' + esc(e.message) +
       '<br><br>先跑一次种子：<br><code>docker compose exec api python /srv/seeds/seed.py</code></div>';
