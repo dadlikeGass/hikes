@@ -290,6 +290,23 @@ def get_point(code: str):
 
 # ==================== 打卡 ====================
 
+class VisitItem(BaseModel):
+    pointId: int
+    name: str
+    seq: int
+    at: datetime
+    level: Literal["easy", "mid", "hard", "hidden"] | None = None
+
+
+@app.get("/api/me/visits", response_model=list[VisitItem], tags=["我"],
+         responses=ERR_401, summary="我去过的地方")
+def my_visits(limit: int = 100, uid: int = Depends(require_user)):
+    rows = q("""SELECT v.point_id AS "pointId", p.name, v.seq, v.created_at AS at, p.level
+                FROM visits v JOIN points p ON p.id = v.point_id
+                WHERE v.user_id = :uid ORDER BY v.created_at DESC LIMIT :limit""",
+             uid=uid, limit=limit)
+    return [VisitItem(**dict(r)) for r in rows]
+
 @app.post("/api/points/{point_id}/visit", response_model=VisitOut, tags=["打卡"],
           responses={**ERR_401, **ERR_404},
           summary="打卡（同一人 / 同一点位 / 同一天只计一次）")

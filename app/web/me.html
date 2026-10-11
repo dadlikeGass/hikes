@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>我 · 到此一游</title>
+<link rel="stylesheet" href="/theme/app.css">
+<style>
+body{background:#E7E1D6}
+.wrap{max-width:430px;margin:0 auto;background:var(--bg);min-height:100dvh;padding-bottom:26px}
+.pz{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:13px}
+.pz i{aspect-ratio:1;border-radius:7px;background:#E4DED0;display:block}
+.pz i.on{background:linear-gradient(140deg,#7E9AE8,#5468D0)}
+.row{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--hair)}
+.row:last-child{border-bottom:none}
+.row .sq{width:9px;height:9px;border-radius:3px;flex:0 0 auto}
+.row b{display:block;font-size:14px}
+.row em{font-style:normal;font-size:11.5px;color:var(--ink3)}
+.row .seq{font-size:15px;font-weight:800;flex:0 0 auto}
+.empty{text-align:center;color:var(--ink3);font-size:13px;padding:24px 10px;line-height:1.7}
+.skel{background:linear-gradient(90deg,#EFEAE0,#F7F3EC,#EFEAE0);border-radius:12px;height:56px;margin-bottom:9px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar" style="padding:16px">
+    <div class="row-between" style="align-items:center">
+      <div><span class="brand mini" style="display:block"><b>到此一游</b></span>
+        <div class="page-title">我</div></div>
+      <a class="iconbtn" href="/routes.html">📖</a>
+    </div>
+  </div>
+  <div style="padding:0 16px" id="view">
+    <div class="skel"></div><div class="skel"></div>
+  </div>
+</div>
+<script>
+var C = { easy: '#2563EB', mid: '#F2B62C', hard: '#E4453A', hidden: '#22242E' };
+var N = { easy: '简单', mid: '中等', hard: '困难', hidden: '隐藏' };
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+  return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+async function j(u, o) { var r = await fetch(u, o); if (!r.ok) throw new Error(r.status); return r.json(); }
+function fmt(iso) {
+  return new Date(iso).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+}
+(async function () {
+  var view = document.getElementById('view');
+  try {
+    var tk = await j('/api/auth/dev-login?user_id=1', { method: 'POST' });
+    var vs = await j('/api/me/visits', { headers: { 'Authorization': 'Bearer ' + tk.token } });
+    var me = await j('/api/me', { headers: { 'Authorization': 'Bearer ' + tk.token } }).catch(function () {
+      return { nickname: '阿甘', visitedCount: vs.length };
+    });
+    var GOAL = 6, lit = Math.min(GOAL, vs.length);
+    view.innerHTML =
+      '<div class="profile" style="display:flex;align-items:center;gap:13px;margin:4px 0 18px">' +
+      '<div style="width:56px;height:56px;border-radius:50%;background:linear-gradient(140deg,#7E9AE8,#4F6BD8);' +
+      'display:grid;place-items:center;color:#fff;font-size:21px;font-weight:800">我</div>' +
+      '<div><b style="display:block;font-size:18px;font-weight:800">' + esc(me.nickname || '阿甘') + '</b>' +
+      '<span style="font-size:12.5px;color:var(--ink2)">到过 ' + vs.length + ' 个点位</span></div></div>' +
+
+      '<div class="card"><div class="row-between"><h3 style="font-size:16px;font-weight:800">山径拼图</h3>' +
+      '<span class="tiny muted">' + lit + '/' + GOAL + ' 座</span></div>' +
+      '<div class="progress"><i style="width:' + Math.round(lit / GOAL * 100) + '%"></i></div>' +
+      '<div class="tiny muted">' + (lit >= GOAL ? '已点亮全部 ' + GOAL + ' 座，解锁「山脊行者」'
+        : '再打卡 ' + (GOAL - lit) + ' 个点位，解锁「山脊行者」') + '</div>' +
+      '<div class="pz">' + [1, 2, 3, 4, 5, 6].map(function (i) {
+        return '<i class="' + (i <= lit ? 'on' : '') + '"></i>'; }).join('') + '</div></div>' +
+
+      '<div class="sec-head"><h3>我去过的地方</h3>' +
+      '<span class="more">' + vs.length + ' 个</span></div>' +
+      '<div class="card tight">' + (vs.length ? vs.map(function (v) {
+        return '<div class="row"><span class="sq" style="background:' + (C[v.level] || '#999') + '"></span>' +
+          '<span style="flex:1;min-width:0"><b>' + esc(v.name) + '</b>' +
+          '<em>' + fmt(v.at) + ' · ' + (N[v.level] || '') + '</em></span>' +
+          '<span class="seq" style="color:var(--coral)">#' + v.seq + '</span></div>';
+      }).join('') : '<div class="empty">还没有打卡记录<br>' +
+        '<span style="font-size:12px">扫一张标牌二维码，留下第一次</span></div>') + '</div>' +
+
+      '<a class="rowlink" href="/routes.html" style="margin-top:14px">' +
+      '<span class="em">📖</span><div class="tx"><b>去看那 12 条线路</b>' +
+      '<span>难度 · 用时 · 消耗</span></div><span class="ar">›</span></a>' +
+      '<a class="rowlink" href="/places.html"><span class="em">⛰</span>' +
+      '<div class="tx"><b>63 个山顶</b><span>按海拔排的城市山头榜</span></div>' +
+      '<span class="ar">›</span></a>';
+  } catch (e) {
+    view.innerHTML = '<div class="card" style="background:var(--coral-bg);box-shadow:none">' +
+      '加载失败：' + esc(e.message) + '</div>';
+  }
+})();
+</script>
+</body>
+</html>
