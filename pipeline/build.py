@@ -56,10 +56,11 @@ def gain_loss(pts):
     return up, dn
 
 
-# 段难度分档：爬升阈值按北京山地实况抬高（原 100/300 对这里太低）
+# 段难度只看两个维度：爬升高度、平均坡度。
+# 距离不进难度——它带来的是"多久、多少消耗"，由线路的用时与卡路里表达。
+# 爬升阈值按北京山地实况抬高（原 100/300 对这里太低）。
 BAND_GRAD = [(15, "easy"), (25, "mid"), (1e9, "hard")]
 BAND_GAIN = [(200, "easy"), (500, "mid"), (1e9, "hard")]
-BAND_KM = [(3, "easy"), (8, "mid"), (1e9, "hard")]
 ORD = {"easy": 0, "mid": 1, "hard": 2}
 REV = ["easy", "mid", "hard"]
 
@@ -132,8 +133,7 @@ def pickup(pt):
         de = sm[i1] - sm[i0]
         pct = de / dm * 100 if dm > 0 else 0
         km = xs[i1] - xs[i0]
-        lv = REV[max(ORD[band(BAND_GRAD, abs(pct))], ORD[band(BAND_GAIN, de)],
-                     ORD[band(BAND_KM, km)])]
+        lv = REV[max(ORD[band(BAND_GRAD, abs(pct))], ORD[band(BAND_GAIN, de)])]
         segs.append({"no": len(segs) + 1, "from": round(xs[i0], 2), "to": round(xs[i1], 2),
                      "km": round(km, 2), "rise": round(de), "pct": round(pct), "level": lv,
                      "kind": "climb" if pct > 3 else ("desc" if pct < -3 else "flat"),
