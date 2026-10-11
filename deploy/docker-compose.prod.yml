@@ -1,0 +1,70 @@
+# 生产环境：不挂源码、不开放数据库端口、不给后门开关。
+# 用法见 docs/DEPLOY.md
+name: hikes-prod
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+      - ../server/db/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    # 不映射端口：只有 api 容器能访问
+
+  api:
+    build:
+      context: ../server
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+      WX_APPID: ${WX_APPID}
+      WX_SECRET: ${WX_SECRET}
+      # 不给 ALLOW_DEV_LOGIN：生产环境 /api/auth/dev-login 自动返回 404
+    volumes:
+      - ../app/web:/srv/web:ro
+      - ../app/css:/srv/theme:ro
+      - ../pipeline/out:/srv/routes-data:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on: [api]
+
+  backup:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./backups:/backups
+    entrypoint: >
+      sh -c 'while true; do
+        pg_dump -h db -U ${POSTGRES_USER} -d ${POSTGRES_DB} -Fc \
+          -f /backups/hikes-$$(date +%%Y%%m%%d-%%H%%M).dump && \
+        find /backups -name "*.dump" -mtime +14 -delete;
+        sleep 86400;
+      done'
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  dbdata:
