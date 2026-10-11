@@ -22,6 +22,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://hikes:hikes@db:5432/hikes
       JWT_SECRET: dev-only-change-me
+      ALLOW_DEV_LOGIN: "1"        # 仅本地联调；生产必须去掉
     ports: ["8000:8000"]
     volumes:
       - ./app:/srv/app:ro
