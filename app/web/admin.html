@@ -116,11 +116,14 @@ async function open(id) {
     '</svg></span><span><span style="font-weight:800;display:block">' + TYPE[p.type] + '</span>' +
     '<span class="code">DCYY | ' + (p.altitude ? p.altitude + 'M' : '—') + '</span>' +
     '<span class="org">I HAVE BEEN HERE</span></span>' +
-    '<span class="qr">二维码<br>待接入</span></div>' +
+    '<img class="qr" src="/api/qr/' + encodeURIComponent(p.code) + '.svg" alt="二维码">' +
+    '</div>' +
     '<div class="fld"><label>短链（二维码里印的就是它）</label>' +
     '<div class="link">' + shortLink(p.code) + '</div>' +
     '<div class="note" style="margin-top:6px">编号不可改——标牌已经印出去了。' +
-    '页面内容随时可改，不用重印。</div></div>' +
+    '页面内容随时可改，不用重印。<br>' +
+    '<a href="/api/qr/' + encodeURIComponent(p.code) + '.svg" download="' + p.code +
+    '.svg" style="color:var(--blue);font-weight:700">下载二维码（矢量，可送印）</a></div></div>' +
     '<div class="fld"><label>名称</label><input id="f-name" value="' + esc(p.name) + '"></div>' +
     '<div class="fld"><label>难度（标牌上的图形）</label><select id="f-level">' +
     ['easy', 'mid', 'hard', 'hidden'].map(function (k) {

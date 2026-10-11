@@ -4,6 +4,7 @@
 否则 /docs 里响应是空的，前端没法照着联调。
 """
 import json
+import io
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
@@ -13,6 +14,9 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Path
 from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+from fastapi.responses import Response
+import qrcode
+import qrcode.image.svg
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
@@ -20,6 +24,7 @@ from sqlalchemy import create_engine, text
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://hikes:hikes@db:5432/hikes")
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-change-me")
 JWT_ALG = "HS256"
+PUBLIC_BASE = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/")
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
 app = FastAPI(title="到此一游 API", version="1.0",
@@ -489,6 +494,28 @@ def short_link(code: str, request: Request):
 
 
 # ==================== 埋点 ====================
+
+@app.get("/api/qr/{code}.svg", tags=["短链"], summary="生成可扫的二维码（矢量，印刷用）",
+         responses={404: {"description": "编号不存在"}})
+def qr_svg(code: str, box: int = 10, border: int = 2):
+    """二维码里编码的是 PUBLIC_BASE_URL + /p/{code}。
+    编号不存在时 404——避免印出一张扫不开的废码。"""
+    if not q1("SELECT 1 AS x FROM short_links WHERE code = :c", c=code):
+        err(404, "POINT_NOT_FOUND", f"编号 {code} 不存在，不能生成二维码")
+    url = f"{PUBLIC_BASE}/p/{code}"
+    img = qrcode.make(url, image_factory=qrcode.image.svg.SvgPathImage,
+                      box_size=box, border=border)
+    buf = io.BytesIO()
+    img.save(buf)
+    return Response(buf.getvalue(), media_type="image/svg+xml",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/api/qr/{code}/target", tags=["短链"], summary="二维码里编码的内容（自检用）")
+def qr_target(code: str):
+    if not q1("SELECT 1 AS x FROM short_links WHERE code = :c", c=code):
+        err(404, "POINT_NOT_FOUND", "编号不存在")
+    return {"code": code, "encodes": f"{PUBLIC_BASE}/p/{code}"}
 
 @app.post("/api/events", status_code=202, tags=["埋点"],
           summary="扫码 / 打卡 / 留言 / 打开，三个验证指标都从这里出")
