@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>到此一游 · 点位</title>
+<link rel="stylesheet" href="/theme/app.css">
+<style>
+body{background:#E7E1D6;padding:0 0 40px}
+.wrap{max-width:430px;margin:0 auto;background:var(--bg);min-height:100dvh;overflow:hidden}
+.topbar.home{border-bottom:1px solid var(--hair)}
+.code{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--ink3)}
+.hero3{height:150px;position:relative;overflow:hidden}
+.hero3 .cap{position:absolute;left:14px;bottom:12px;color:#fff;font-size:15px;font-weight:800;
+  text-shadow:0 2px 10px rgba(12,10,26,.7);z-index:2}
+.bigseq{font-size:44px;font-weight:900;letter-spacing:-2px;line-height:1;color:var(--coral)}
+.skel{background:linear-gradient(90deg,#EFEAE0,#F7F3EC,#EFEAE0);border-radius:10px;height:16px;margin:10px 0}
+.errbox{background:var(--coral-bg);border-left:4px solid var(--coral);border-radius:12px;padding:14px;font-size:13px}
+.trk2{background:#fff;border-radius:18px;padding:12px;box-shadow:var(--shadow);margin-bottom:12px}
+.trk2 svg{display:block;width:100%;height:200px}
+.segline{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--hair);font-size:12.5px}
+.segline:last-child{border-bottom:none}
+.sq{width:10px;height:10px;border-radius:3px;flex:0 0 auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar home" style="padding:16px">
+    <span class="brand"><b>到此一游</b><em>HIKERS</em></span>
+  </div>
+  <div id="view" style="padding:0 16px 24px">
+    <div class="skel" style="width:60%;height:22px"></div>
+    <div class="skel" style="width:40%"></div>
+    <div class="skel" style="height:150px;border-radius:18px"></div>
+  </div>
+</div>
+<script>
+var COLORS = { easy: '#2563EB', mid: '#F2B62C', hard: '#E4453A', hidden: '#22242E' };
+var NAMES = { easy: '简单', mid: '中等', hard: '困难', hidden: '隐藏' };
+var KIND = { climb: '爬升', desc: '下降', flat: '平缓' };
+var SHAPE = {
+  easy: function (c) { return '<circle cx="50" cy="50" r="41" fill="' + c + '"/>'; },
+  mid: function (c) { return '<polygon points="50,10 92,87 8,87" fill="' + c + '"/>'; },
+  hard: function (c) { return '<polygon points="50,6 94,50 50,94 6,50" fill="' + c + '"/>'; },
+  hidden: function (c) { return '<polygon points="50,5 89,27 89,73 50,95 11,73 11,27" fill="' + c + '"/>'; }
+};
+function badge(lv) {
+  var c = COLORS[lv] || '#22242E';
+  return '<span class="badge" style="background:' + c + '22;color:' + c + '">' +
+    '<span class="lvmark"><span class="lvshape">' +
+    '<svg viewBox="0 0 100 100">' + SHAPE[lv](c) + '</svg></span>' + (NAMES[lv] || lv) +
+    '</span></span>';
+}
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+  return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function scene(seed) {
+  var h = 0; for (var i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 997;
+  var pal = [
+    ['#FFE9C8', '#FFD09A', '#F4A97E', '#C4869A', '#6E6394'],
+    ['#EAF2F8', '#D3E2EC', '#AEC3D6', '#8897B2', '#5E6C8C'],
+    ['#EDF4E7', '#D6E7CC', '#B2CCA4', '#89A87E', '#628067']
+  ][h % 3];
+  var uid = 'g' + h, out = '<svg viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice">';
+  out += '<defs><linearGradient id="' + uid + '" x1="0" y1="0" x2="0" y2="1">';
+  pal.forEach(function (c, i) { out += '<stop offset="' + (i * 25) + '%" stop-color="' + c + '"/>'; });
+  out += '</linearGradient></defs><rect width="400" height="300" fill="url(#' + uid + ')"/>';
+  out += '<circle cx="270" cy="90" r="26" fill="#FFE0A0" opacity=".9"/>';
+  out += '<path d="M0 300 L0 180 L70 120 L140 190 L210 130 L290 200 L400 150 L400 300Z" fill="#524C72" opacity=".85"/>';
+  out += '<path d="M0 300 L0 230 L90 190 L180 245 L280 195 L400 250 L400 300Z" fill="#33304A"/>';
+  return out + '</svg>';
+}
+function trackSVG(path, segs, km, peaks) {
+  var W = 380, H = 200, pad = 24, xs = [], ys = [];
+  path.forEach(function (p) { xs.push(p[0]); ys.push(p[1]); });
+  var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
+  var y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+  var s = Math.min((W - pad * 2) / ((x1 - x0) || 1), (H - pad * 2) / ((y1 - y0) || 1));
+  var ox = (W - (x1 - x0) * s) / 2, oy = (H - (y1 - y0) * s) / 2;
+  function P(i) { return [(xs[i] - x0) * s + ox, (ys[i] - y0) * s + oy]; }
+  var n = path.length - 1, out = '<svg viewBox="0 0 ' + W + ' ' + H + '">';
+  out += '<g fill="none" stroke="#EFEADD" stroke-width="1">';
+  [40, 78, 116, 154].forEach(function (y) { out += '<path d="M0 ' + y + ' q 70 -12 140 0 t 200 0"/>'; });
+  out += '</g>';
+  segs.forEach(function (sg) {
+    var a = Math.round(sg.from_km / km * n), b = Math.round(sg.to_km / km * n), d = '';
+    for (var i = a; i <= b; i++) { var q = P(i); d += (i === a ? 'M' : 'L') + q[0].toFixed(1) + ' ' + q[1].toFixed(1); }
+    out += '<path d="' + d + '" fill="none" stroke="' + (COLORS[sg.level] || '#888') +
+      '" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>';
+  });
+  (peaks || []).forEach(function (p) {
+    var q = P(Math.round(p.km / km * n));
+    out += '<circle cx="' + q[0].toFixed(1) + '" cy="' + q[1].toFixed(1) + '" r="7" fill="#22242E"/>' +
+      '<text x="' + q[0].toFixed(1) + '" y="' + (q[1] - 11).toFixed(1) + '" text-anchor="middle" ' +
+      'font-size="11" font-weight="700" fill="#22242E">' + p.altitude + '</text>';
+  });
+  return out + '</svg>';
+}
+async function j(url, opt) {
+  var r = await fetch(url, opt);
+  if (!r.ok) throw new Error((await r.json().catch(function () { return {}; })).detail
+    ? JSON.stringify((await r.json()).detail) : r.status);
+  return r.json();
+}
+(async function () {
+  var v = document.getElementById('view');
+  var code = new URLSearchParams(location.search).get('code') || 'QS-P1092';
+  try {
+    var p = await j('/api/points/' + code);
+    var route = p.route_id ? await j('/api/routes/sanfeng') : null;
+    var token = null;
+    try { token = (await j('/api/auth/dev-login?user_id=1', { method: 'POST' })).token; } catch (e) { }
+
+    v.innerHTML =
+      '<div class="hero3" style="margin:0 -16px">' + scene(p.code) +
+      '<span class="cap">' + esc(p.name) + ' · 海拔 ' + (p.altitude || '—') + ' m</span></div>' +
+      '<div style="margin-top:14px">' +
+      '<div class="code">' + esc(p.code) + ' · ' + esc(p.type) + '</div>' +
+      '<h2 style="font-size:23px;font-weight:900;letter-spacing:-.6px;margin:4px 0 6px">你到了，山友。</h2>' +
+      '<div class="muted" style="font-size:13px;margin-bottom:14px">' +
+      (p.route_name ? '属于「' + esc(p.route_name) + '」' : '') +
+      ' · 已有 ' + p.visitCount + ' 人在这里留下痕迹</div>' +
+      '<div class="card" style="text-align:center">' +
+      '<div class="bigseq" id="seq">' + (p.visitCount ? '第 ' + (p.visitCount + 1) + ' 位' : '第 1 位') + '</div>' +
+      '<div class="muted tiny" style="margin:8px 0 14px">还没有留下你的痕迹</div>' +
+      '<button class="btn coral" id="ck">留下我的打卡</button>' +
+      '<div id="ckmsg" class="tiny" style="margin-top:10px;color:var(--blue)"></div></div>' +
+
+      (p.topComment
+        ? '<div class="letter"><span class="stampmark"></span><div class="ltag">有人给你留了一句话</div>' +
+          '<div class="line" style="font-size:15px">' + esc(p.topComment.text) + '</div>' +
+          '<div class="lsub">' + esc(p.topComment.nickname || '山友') + ' · ♥ ' +
+          p.topComment.like_count + ' · ✕ ' + p.topComment.bad_count + '</div></div>'
+        : '<div class="card muted tiny">还没有人在这里留言</div>') +
+
+      (route
+        ? '<div class="sec-head"><h3>' + esc(route.name) + '</h3>' +
+          '<span class="more">' + route.km + ' km · ↗ ' + route.up + ' m</span></div>' +
+          '<div class="hint" style="margin-top:-6px">' + badge(route.level) +
+          ' 5 个山顶 · 6 段 · 数据来自数据库</div>' +
+          '<div class="trk2">' + trackSVG(route.path, route.segments, route.km, route.peaks) + '</div>' +
+          '<div class="card" style="padding:6px 14px">' +
+          route.segments.map(function (s) {
+            return '<div class="segline"><span class="sq" style="background:' + COLORS[s.level] + '"></span>' +
+              '<span style="font-weight:800;flex:0 0 52px">' + s.no + '. ' + KIND[s.kind] + '</span>' +
+              '<span class="muted" style="flex:0 0 96px">' + s.from_km + '–' + s.to_km + ' km</span>' +
+              '<span style="flex:1;color:var(--ink2)">' + (s.rise > 0 ? '+' : '') + s.rise +
+              ' m · ' + (s.pct > 0 ? '+' : '') + s.pct + '%</span>' +
+              badge(s.level) + '</div>';
+          }).join('') + '</div>'
+        : '') +
+      '</div>';
+
+    document.getElementById('ck').onclick = async function () {
+      var btn = this;
+      btn.disabled = true;
+      try {
+        var r = await j('/api/points/' + p.id + '/visit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ source: 'scan' })
+        });
+        document.getElementById('seq').textContent = '第 ' + r.seq + ' 位';
+        document.getElementById('ckmsg').textContent = r.message +
+          (r.isFirstVisit ? '' : '（今天已经打过卡了）');
+        btn.textContent = '已打卡';
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = '打卡失败，重试';
+        document.getElementById('ckmsg').textContent = String(e.message).slice(0, 120);
+      }
+    };
+  } catch (e) {
+    v.innerHTML = '<div class="errbox"><b>加载失败</b><br>' + esc(e.message) +
+      '<br><br>先跑一次种子：<br><code>docker compose exec api python /srv/seeds/seed.py</code></div>';
+  }
+})();
+</script>
+</body>
+</html>

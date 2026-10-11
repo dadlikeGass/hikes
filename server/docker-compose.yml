@@ -28,6 +28,8 @@ services:
       - ./app:/srv/app:ro
       - ./seeds:/srv/seeds:ro
       - ../app/js:/srv/route-data:ro   # pipeline 工程化之前，种子数据从已算好的产物读
+      - ../app/web:/srv/web:ro         # 真实页面（同源，免 CORS）
+      - ../app/css:/srv/theme:ro       # 前端设计令牌与样式（同一份，不复制）
     depends_on:
       db:
         condition: service_healthy

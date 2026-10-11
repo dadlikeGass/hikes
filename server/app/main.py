@@ -10,6 +10,7 @@ from typing import Any, Literal
 import jwt
 from fastapi import Depends, FastAPI, Header, HTTPException, Path
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
 
@@ -283,3 +284,15 @@ def do_visit(body: VisitIn, point_id: int = Path(ge=1), uid: int = Depends(requi
               uid=uid, pid=point_id)
     return VisitOut(seq=row[0], isFirstVisit=is_first, myVisitCount=mine["n"],
                     message=f"你是第 {row[0]} 位在这里留下痕迹的人")
+
+
+# ==================== 静态页面 ====================
+# 挂在最后，避免覆盖 /api 路由。前端产物来自仓库 app/（同一套设计令牌）。
+import pathlib  # noqa: E402
+
+_theme = pathlib.Path(os.getenv("THEME_DIR", "/srv/theme"))
+if _theme.is_dir():
+    app.mount("/theme", StaticFiles(directory=str(_theme)), name="theme")
+_static = pathlib.Path(os.getenv("STATIC_DIR", "/srv/web"))
+if _static.is_dir():
+    app.mount("/", StaticFiles(directory=str(_static), html=True), name="web")
