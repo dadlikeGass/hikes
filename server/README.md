@@ -50,6 +50,8 @@ curl -s -X POST localhost:8000/api/points/1/visit \
 第一次返回 `seq: 1`，**再执行一次返回同样的 seq 且 `isFirstVisit: false`**——
 这就是"一天一次"去重生效的证明。
 
+（`X-User-Id` 用 seed 打印出来的演示用户 id，默认是 1。）
+
 ## 现在还没做的（W2 补）
 
 - 微信登录 + JWT（现在是 `X-User-Id` 头，只为联调）
@@ -57,3 +59,5 @@ curl -s -X POST localhost:8000/api/points/1/visit \
 - 留言接口 + 赞/踩（表已经建好）
 - 埋点接口 `POST /api/events`
 - 迁移改用 alembic（现在是启动时执行 SQL，只适合初始化）
+- **`seq` 的并发安全**：现在用 `max(seq)+1` 算，并发打卡可能撞号。
+  1 万用户以下实际很难触发，但 W2 要改成点位级序列或加行锁。

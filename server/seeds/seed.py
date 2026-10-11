@@ -57,6 +57,10 @@ def main():
                  "rise": d["segs"][i]["rise"] if i < len(d["segs"]) else 0})
 
         # 一个示例点位 + 短链，供 W2 扫码联调
+        uid = c.execute(text("""INSERT INTO users (wx_openid, nickname)
+            VALUES ('demo_openid', '阿甘')
+            ON CONFLICT (wx_openid) DO UPDATE SET nickname = EXCLUDED.nickname
+            RETURNING id""")).scalar()
         pid = c.execute(text("""INSERT INTO points
             (code, type, name, route_id, index_in_route, total_in_route, level, altitude, geom, status)
             VALUES ('QS-P1092', 'peak', '鹫峰顶', :rid, 1, 5, 'hard', 1092,
@@ -65,6 +69,7 @@ def main():
         c.execute(text("INSERT INTO short_links (code, point_id) VALUES ('QS-P1092', :pid)"), {"pid": pid})
 
     print(f"✓ 线路 {d['name']}：{len(d['segs'])} 段 / {len(d['peaks'])} 个山顶 / 1 个点位")
+    print(f"  演示用户 id={uid}（请求头 X-User-Id: {uid}）")
     print("  验证：curl localhost:8000/health")
 
 
