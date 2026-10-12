@@ -170,19 +170,21 @@ function rankGroups() {
 }
 
 function renderList() {
-  var box = document.getElementById('listbox');
-  if (!box) return;
+  var rank = document.getElementById('rankbox'), all = document.getElementById('allbox');
+  if (!rank) return;
   if (Q || LV !== 'all') {
     var f = ALL.filter(function (r) {
       return (LV === 'all' || r.hardest_level === LV) &&
         (!Q || r.name.indexOf(Q) >= 0 || (r.sub || '').indexOf(Q) >= 0);
     });
-    box.innerHTML = '<div class="rankhd"><h3>筛选结果</h3><span>' + f.length + ' 条</span></div>' +
+    rank.innerHTML = '<div class="rankhd"><h3>筛选结果</h3><span>' + f.length + ' 条</span></div>' +
       (f.length ? f.map(bigCard).join('')
         : '<div class="card" style="text-align:center;color:var(--ink3);padding:30px 16px">没有匹配的线路</div>');
+    all.innerHTML = '';
   } else {
-    box.innerHTML = rankGroups() +
-      '<div class="rankhd"><h3>全部线路</h3><span>按里程</span></div>' + ALL.map(bigCard).join('');
+    rank.innerHTML = rankGroups();
+    all.innerHTML = '<div class="rankhd" style="margin-top:18px"><h3>全部线路</h3>' +
+      '<span>按里程</span></div>' + ALL.map(bigCard).join('');
   }
 }
 
@@ -199,8 +201,8 @@ async function list() {
       }).join('') + '</div>' +
     '<div class="hint" style="margin:0 2px 10px">难度徽标只代表<strong>这条线路里最难的那一段</strong>，' +
     '不代表整条线路。用时与消耗是估算。</div>' +
-    '<div id="listbox"></div>' +
-    '<div class="rankhd" style="margin-top:22px"><h3>关于难度</h3><span>形状 + 颜色</span></div>' +
+    '<div id="rankbox"></div>' +            /* 榜单（或筛选结果）—— 文档顺序排在第三 */
+    '<div class="rankhd" style="margin-top:10px"><h3>关于难度</h3><span>形状 + 颜色</span></div>' +
     '<div class="card">' +
     ['easy', 'mid', 'hard', 'hidden'].map(function (k) {
       return '<div style="display:flex;gap:12px;align-items:center;padding:9px 0">' +
@@ -222,6 +224,7 @@ async function list() {
     '<p><b>瑞士 · SAC</b>　T1–T6，颜色直接印在实体路标上：T1 徒步道（黄）、' +
     'T2–T3 山地步道（红）、T4–T6 高山步道（蓝）。和我们用形状区分是同一个思路。</p>' +
     '</div></details>' +
+    '<div id="allbox"></div>' +             /* 全部线路作为附表，放在难度说明之后 */
     '<div class="hint" style="text-align:center;margin-top:14px">' +
     '用时与消耗为估算 · 线路数据来自真实 GPX</div>';
 
