@@ -720,8 +720,10 @@
   }
 
   var npGeo = { lat: null, lng: null };
+  var npGpx = null;      /* 选中的 GPX 原文 */
   function newPointSheet(kind) {
     npGeo = { lat: null, lng: null };
+    npGpx = null;
     U.openSheet(
       '<h3>我要成为山大王</h3>' +
       '<div class="sh-sub">建好立刻拿到编号和二维码，印出来贴上去就能用</div>' +
@@ -730,6 +732,12 @@
       '<div class="field"><label>一句话介绍 · 必填</label>' +
       '<input id="npIntro" type="text" maxlength="200" ' +
       'placeholder="怎么走、什么样。这句话会成为第一条留言"></div>' +
+      '<div class="field"><label>GPX 轨迹 · 必填</label>' +
+      '<input id="npGpx" type="file" accept=".gpx,.xml,application/gpx+xml" ' +
+      'style="padding:10px;border:1.5px dashed var(--line);border-radius:12px;width:100%;' +
+      'font-size:12.5px;background:#fff">' +
+      '<div class="note" id="npGpxMsg" style="margin-top:6px">' +
+      '从六只脚 / 两步路 / 手表导出的 .gpx。有轨迹才能建点位——它证明你真的走过。</div></div>' +
       '<div class="field"><label>位置</label>' +
       '<button class="btn ghost" id="npGeo" style="font-size:13px;padding:10px">取当前位置</button>' +
       '<div class="note" id="npGeoMsg" style="margin-top:8px">取不到定位就填个大致位置：</div>' +
@@ -743,6 +751,25 @@
       '<button class="btn coral" data-act="new-point-submit" data-kind="' + kind +
       '">建好并生成二维码</button>' +
       '<button class="btn ghost" style="margin-top:9px" data-act="close">先不建</button>');
+    var fi = document.getElementById('npGpx');
+    fi.onchange = function () {
+      var f = this.files && this.files[0];
+      var msg = document.getElementById('npGpxMsg');
+      if (!f) { npGpx = null; return; }
+      if (f.size > 8 * 1024 * 1024) {
+        npGpx = null; msg.innerHTML = '<b style="color:var(--coral)">文件超过 8MB，换一个</b>'; return;
+      }
+      var rd = new FileReader();
+      rd.onload = function () {
+        npGpx = String(rd.result);
+        var n = (npGpx.match(/<trkpt/g) || []).length;
+        var e = (npGpx.match(/<ele>/g) || []).length;
+        msg.innerHTML = '✓ ' + f.name + ' · ' + n + ' 个轨迹点' +
+          (n < 10 ? '<b style="color:var(--coral)">（点太少，至少要 10 个）</b>' : '') +
+          (e ? ' · 带海拔' : ' · <b style="color:var(--coral)">没有海拔，算不出爬升</b>');
+      };
+      rd.readAsText(f);
+    };
     document.getElementById('npGeo').onclick = function () {
       var m = document.getElementById('npGeoMsg');
       if (!navigator.geolocation) { m.textContent = '这个浏览器不支持定位，填大致位置吧'; return; }
@@ -756,7 +783,9 @@
 
   function newPointSend(kind, btn) {
     var v = function (id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
+    if (!npGpx) { U.toast('必须选择 GPX 轨迹文件——有轨迹才能建点位'); return; }
     var body = {
+      gpx: npGpx,
       name: v('npName'), intro: v('npIntro'), nickname: v('npNick') || H.me.name,
       kind: kind, lat: npGeo.lat, lng: npGeo.lng,
       area: v('npArea') || null,
