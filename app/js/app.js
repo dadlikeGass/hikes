@@ -546,8 +546,8 @@
         '<div class="card tight">' + board.map(function (p, i) {
           return '<a class="rank' + (i === 0 ? ' p1' : '') + '" href="#/peaks/' + p.id + '">' +
             '<span class="pos">' + (i + 1) + '</span><span class="thumb">' + U.scene(p.id) + '</span>' +
-            '<span class="nm"><b>' + esc(p.name) + '</b><em>海拔 ' + p.alt +
-            (p.trailName ? ' m · ' + esc(p.trailName) : ' m') + '</em></span>' +
+            '<span class="nm"><b>' + (p.name ? esc(p.name) : '未命名山顶') + '</b>' +
+            '<em>海拔 ' + p.alt + (p.trailName ? ' m · ' + esc(p.trailName) : ' m') + '</em></span>' +
             /* 本周热度（扫码打卡次数）+「我来过」。整行本来就是链接，
                点按钮 = 点这一行 → 进该山头详情页 */
             '<span style="flex:0 0 auto;text-align:right;line-height:1.2">' +
@@ -600,7 +600,14 @@
       '<div class="floating right"><span class="pill">山头 · 打卡点</span></div></div>' +
       '<div class="pad">' +
       '<h2 class="arrive-h" style="margin-top:0">' + esc(p.name) + '</h2>' +
-      '<p class="arrive-p">海拔 ' + p.alt + ' m · 属于「' + esc(p.trailName) + '」· 热度 ' + p.visits30 + '</p>' +
+      '<p class="arrive-p">' +
+      (p.name ? esc(p.name) + ' · ' : '<span class="soon-tag">待命名</span>') +
+      '海拔 ' + p.alt + ' m · 属于「' + esc(p.trailName) + '」</p>' +
+      '<div class="hint" style="margin:-8px 2px 14px;display:flex;gap:12px;flex-wrap:wrap">' +
+      '<span>本周热度 <b style="color:var(--coral)">' + (p.visits30 || 0) + '</b></span>' +
+      (p.lat ? '<span>坐标 ' + p.lat + ', ' + p.lng + '</span>'
+             : '<span>坐标待采集</span>') +
+      '</div>' +
       U.signage(p, { code: 'PK-' + p.id.toUpperCase() }) +
 
       '<div class="sec-head"><h3>用时榜</h3><span class="more">今日 · 好友 · 我的纪录 ›</span></div>' +

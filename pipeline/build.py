@@ -119,7 +119,9 @@ def pickup(pt):
         hi_i = top[i + 1] if i + 1 < len(top) else n - 1
         rel = sm[p] - min(sm[lo_i:hi_i + 1])
         if rel >= MIN_REL:
-            peaks.append({"km": round(xs[p], 2), "ele": round(sm[p]), "rel": round(rel)})
+            # 经纬度：采样时就存了，之前没输出——有了坐标才能做"附近的山"和导航
+            peaks.append({"km": round(xs[p], 2), "ele": round(sm[p]), "rel": round(rel),
+                          "lat": round(ll[p][0], 6), "lng": round(ll[p][1], 6)})
     peak_idx = {round(xs[p], 2): p for p in top}
 
     # 分段：以山顶为切点，段难度 = max(爬升档, 距离档, 坡度档)

@@ -284,6 +284,10 @@ class PeakItem(BaseModel):
     km: float
     altitude: int
     rise: int = Field(description="自上一个山顶（或起点）的爬升")
+    name: str | None = Field(default=None, description="主峰真名；空表示待维护人命名")
+    lat: float | None = None
+    lng: float | None = None
+    weekly_heat: int = Field(default=0, description="本周热度：该线路近 7 天打卡人次")
 
 
 class PointBrief(BaseModel):
@@ -343,7 +347,10 @@ def patch_point(point_id: int, body: PointPatch, uid: int = Depends(require_user
          summary="全部山顶，按海拔排序（来自 GPX 自动识别）")
 def list_peaks(limit: int = 200, route: str | None = None):
     sql = """SELECT p.id, r.slug AS route_slug, r.name AS route_name, p.idx, p.km,
-                    p.altitude, p.rise
+                    p.altitude, p.rise, p.name, p.lat, p.lng,
+                    (SELECT count(*) FROM visits v JOIN points pt ON pt.id = v.point_id
+                       WHERE pt.route_id = r.id AND v.created_at > now() - interval '7 days')
+                       AS weekly_heat
              FROM route_peaks p JOIN routes r ON r.id = p.route_id"""
     if route:
         sql += " WHERE r.slug = :route"

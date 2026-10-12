@@ -60,9 +60,15 @@
     /* 山顶：来自 GPX 自动识别 */
     H.peaks = peaks.map(function (p) {
       return {
-        id: p.route_slug + '-' + p.idx, name: p.route_name,
-        alt: p.altitude, trailName: p.route_name,
-        km: p.km, rise: p.rise, visits30: 0, fastest: '—', photos: 0,
+        id: p.route_slug + '-' + p.idx,
+        name: p.name,                       /* 主峰真名；空 = 待维护人命名 */
+        alt: p.altitude,
+        trailName: p.route_name,            /* 所属线路 */
+        km: p.km, rise: p.rise,
+        lat: p.lat, lng: p.lng,             /* 地理定位 */
+        visits30: p.weekly_heat || 0,       /* 本周热度：扫码打卡次数 */
+        photos: 0,
+        fastest: '—',
         board: [], comments: []
       };
     });

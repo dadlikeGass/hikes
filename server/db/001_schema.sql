@@ -67,8 +67,14 @@ CREATE TABLE route_peaks (
   km        NUMERIC(6,2) NOT NULL,
   altitude  INT NOT NULL,
   rise      INT NOT NULL,                    -- 自上一个山顶（或起点）的爬升
+  -- 以下三项要实地采集/维护人填，不能靠推算
+  name      TEXT,                            -- 主峰真名；空则前端显示"未命名山顶"
+  lat       NUMERIC(9,6),
+  lng       NUMERIC(9,6),
+  geom      GEOMETRY(Point, 4326),
   UNIQUE (route_id, idx)
 );
+CREATE INDEX idx_peaks_geom ON route_peaks USING GIST (geom);
 
 -- ============ 点位（二维码指向的东西）============
 CREATE TABLE points (

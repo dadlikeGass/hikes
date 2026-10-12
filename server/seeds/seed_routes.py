@@ -60,10 +60,14 @@ def main():
                 n_seg += 1
             for i, p in enumerate(r["peaks"]):
                 prev = r["peaks"][i - 1]["ele"] if i else None
-                c.execute(text("""INSERT INTO route_peaks (route_id, idx, km, altitude, rise)
-                    VALUES (:rid, :i, :km, :alt, :rise)"""),
+                c.execute(text("""INSERT INTO route_peaks
+                    (route_id, idx, km, altitude, rise, lat, lng, geom)
+                    VALUES (:rid, :i, :km, :alt, :rise, :lat, :lng,
+                            CASE WHEN :lat IS NULL THEN NULL
+                                 ELSE ST_SetSRID(ST_MakePoint(:lng, :lat), 4326) END)"""),
                     {"rid": rid, "i": i, "km": p["km"], "alt": p["ele"],
-                     "rise": round(p["ele"] - prev) if prev else round(p["rel"])})
+                     "rise": round(p["ele"] - prev) if prev else round(p["rel"]),
+                     "lat": p.get("lat"), "lng": p.get("lng")})
                 n_peak += 1
 
         # 每个线路的最高山顶生成一个示例点位 + 短链，供扫码联调
