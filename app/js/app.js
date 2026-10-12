@@ -892,7 +892,8 @@
     var done = !!S.mySeqs[p.id];
     /* API 的山顶没有 seq；有真实点位就用它的到访数 +1，否则退到本地记录 */
     var realPt = (H.points && H.points.length) ? H.points[0] : null;
-    var seq = realPt ? (realPt.visitCount + 1)
+    /* 列表接口字段是 visit_count（下划线），详情接口是 visitCount（驼峰）——两种都兼容 */
+    var seq = realPt ? ((realPt.visit_count || realPt.visitCount || 0) + 1)
                      : (p.seq || 1) + (done ? 1 : 0);
     var myTime = S.pb[p.id] || '01:42';
     var letter = H.letters[0];
