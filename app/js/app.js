@@ -355,9 +355,16 @@
       '<div class="sec-head"><h3>分段路书</h3><span class="more">维护人 ' + esc(t.status.who) + ' ›</span></div>' +
       '<div class="card tight">' + rows + '</div>' +
 
-      '<div class="card" style="background:var(--blue-bg);box-shadow:none;margin-top:14px">' +
-      '<div style="font-size:12px;font-weight:800;color:var(--blue);margin-bottom:6px">最近路况</div>' +
-      '<div style="font-size:13px;color:#33415E">' + esc(t.status.when) + '维护人确认：' + esc(t.status.text) + '</div></div>' +
+      (t.status
+        ? '<div class="card" style="background:var(--blue-bg);box-shadow:none;margin-top:14px">' +
+          '<div style="font-size:12px;font-weight:800;color:var(--blue);margin-bottom:6px">最近路况</div>' +
+          '<div style="font-size:13px;color:#33415E">' + esc(t.status.when) + '维护人确认：' +
+          esc(t.status.text) + '</div></div>'
+        : '<div class="card soonrow" style="margin-top:14px;border:1px dashed #DED7C8">' +
+          '<div style="font-size:12px;font-weight:800;color:var(--ink2);margin-bottom:6px">' +
+          '最近路况<span class="soon-tag">待开发</span></div>' +
+          '<div style="font-size:12.5px;color:var(--ink3)">' +
+          '需要维护人核验的数据表，还没有。</div></div>') +
 
       '<div class="sec-head"><h3>用时榜</h3><span class="more">按线路 ›</span></div>' +
       '<div class="card tight">' + rankRows([
