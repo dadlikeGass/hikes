@@ -176,7 +176,8 @@
       }).join('') + '</div>' +
       '<div class="dots" id="dots">' + hot.map(function (_, i) { return '<i class="' + (i === 0 ? 'on' : '') + '"></i>'; }).join('') + '</div>' +
 
-      '<div class="sec-head" style="margin-top:14px"><h3>周末有人组队</h3><span class="more">全部活动 ›</span></div>' +
+      '<div class="sec-head" style="margin-top:14px"><h3>周末有人组队' +
+      '<span class="soon-tag">待开发</span></h3><span class="more">全部活动 ›</span></div>' +
       '<div class="act">' +
       '<div class="date"><b>' + esc(act.day) + '</b><span>' + esc(act.week) + '</span></div>' +
       '<div style="flex:1;min-width:0">' +
@@ -189,7 +190,8 @@
       '<button class="btn ' + (joined ? 'ghost' : 'coral') + ' mini" style="margin-left:auto" data-act="join" data-id="' +
       act.id + '">' + (joined ? '已参加 · 退出' : '我也去参加') + '</button></div></div></div>' +
 
-      '<div class="sec-head"><h3>山友的今天</h3><span class="more">全部 ›</span></div>' +
+      '<div class="sec-head"><h3>山友的今天<span class="soon-tag">待开发</span></h3>' +
+      '<span class="more">全部 ›</span></div>' +
       '<div class="falls"><div class="col">' + left.map(postCard).join('') + '</div>' +
       '<div class="col">' + right.map(postCard).join('') + '</div></div>' +
 
@@ -964,7 +966,8 @@
       '<a href="#/trails"' + cls('trails') + '>' + U.icon('book') + '路书</a>' +
       '<a href="#/places"' + cls('places') + '>' + U.icon('hill') + '山头·岔路</a>' +
       '<a class="scan" href="#/scan">' + '<span class="scan-btn">' + U.icon('scan') + '</span><em>扫一扫</em></a>' +
-      '<a href="#/messages"' + cls('messages') + '>' + U.icon('chat') + '消息</a>' +
+      '<a href="#/messages" class="soon' + (tab === 'messages' ? ' on' : '') + '">' +
+      U.icon('chat') + '消息</a>' +
       '<a href="#/me"' + cls('me') + '>' + U.icon('me') + '我</a>';
   }
 
@@ -1231,7 +1234,22 @@
 
   function $(s) { return document.querySelector(s); }
 
+  /* 等后端数据灌进 HIKES 之后再渲染（见 js/api.js） */
+  function boot() {
+    var p = (window.API && window.API.ready) ? window.API.ready : Promise.resolve();
+    p.then(function () {
+      if (window.API && window.API.error) {
+        document.getElementById('view').innerHTML =
+          '<div class="empty"><span class="big">⛰</span>后端没连上<br>' +
+          '<span style="font-size:12.5px">从 http://localhost:8000/app/index.html 打开，' +
+          '不要直接双击文件</span></div>';
+        return;
+      }
+      render();
+    });
+  }
   window.addEventListener('hashchange', render);
-  document.addEventListener('DOMContentLoaded', render);
-  if (document.readyState !== 'loading') render();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else { boot(); }
 })();

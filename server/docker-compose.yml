@@ -31,6 +31,7 @@ services:
       - ../app/web:/srv/web:ro         # 真实页面（同源，免 CORS）
       - ../app/css:/srv/theme:ro       # 前端设计令牌与样式（同一份，不复制）
       - ../pipeline/out:/srv/routes-data:ro   # pipeline 生成的分级结果
+      - ../app:/srv/webapp:ro                 # app/index.html 原型（接后端用）
     depends_on:
       db:
         condition: service_healthy

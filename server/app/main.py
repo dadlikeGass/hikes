@@ -15,8 +15,12 @@ from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.responses import Response
-import qrcode
-import qrcode.image.svg
+try:
+    import qrcode
+    import qrcode.image.svg
+    HAS_QR = True
+except ImportError:            # 可选依赖：没装也不该让整个服务起不来
+    HAS_QR = False
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
@@ -522,10 +526,13 @@ def short_link(code: str, request: Request):
 @app.get("/api/qr/{code}.svg", tags=["短链"], summary="生成可扫的二维码（矢量，印刷用）",
          response_class=Response,
          responses={200: {"content": {"image/svg+xml": {}}, "description": "SVG 二维码"},
-                    404: {"description": "编号不存在"}})
+                    404: {"description": "编号不存在"},
+                    503: {"description": "服务端没装 qrcode 依赖"}})
 def qr_svg(code: str, box: int = 10, border: int = 2):
     """二维码里编码的是 PUBLIC_BASE_URL + /p/{code}。
     编号不存在时 404——避免印出一张扫不开的废码。"""
+    if not HAS_QR:
+        err(503, "QR_UNAVAILABLE", "服务端缺少 qrcode 依赖，重建镜像后可用")
     if not q1("SELECT 1 AS x FROM short_links WHERE code = :c", c=code):
         err(404, "POINT_NOT_FOUND", f"编号 {code} 不存在，不能生成二维码")
     url = f"{PUBLIC_BASE}/p/{code}"
@@ -566,6 +573,9 @@ import pathlib  # noqa: E402
 _theme = pathlib.Path(os.getenv("THEME_DIR", "/srv/theme"))
 if _theme.is_dir():
     app.mount("/theme", StaticFiles(directory=str(_theme)), name="theme")
+_webapp = pathlib.Path("/srv/webapp")
+if _webapp.is_dir():
+    app.mount("/app", StaticFiles(directory=str(_webapp), html=True), name="webapp")
 _static = pathlib.Path(os.getenv("STATIC_DIR", "/srv/web"))
 if _static.is_dir():
     from fastapi.responses import FileResponse
