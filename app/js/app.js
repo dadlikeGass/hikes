@@ -546,8 +546,15 @@
         '<div class="card tight">' + board.map(function (p, i) {
           return '<a class="rank' + (i === 0 ? ' p1' : '') + '" href="#/peaks/' + p.id + '">' +
             '<span class="pos">' + (i + 1) + '</span><span class="thumb">' + U.scene(p.id) + '</span>' +
-            '<span class="nm"><b>' + esc(p.name) + '</b><em>海拔 ' + p.alt + ' m · 热度 ' + p.visits30 + '</em></span>' +
-            '<span class="tm" style="font-size:12px">' + p.fastest + '</span></a>';
+            '<span class="nm"><b>' + esc(p.name) + '</b><em>海拔 ' + p.alt +
+            (p.trailName ? ' m · ' + esc(p.trailName) : ' m') + '</em></span>' +
+            /* 本周热度（扫码打卡次数）+「我来过」。整行本来就是链接，
+               点按钮 = 点这一行 → 进该山头详情页 */
+            '<span style="flex:0 0 auto;text-align:right;line-height:1.2">' +
+            '<span style="display:block;font-size:10px;color:var(--ink3)">本周热度</span>' +
+            '<b style="font-size:13px;color:var(--coral)">' + (p.visits30 || 0) + '</b></span>' +
+            '<span class="btn coral mini" style="flex:0 0 auto;margin-left:2px;padding:7px 13px;' +
+            'font-size:12.5px">我来过</span></a>';
         }).join('') + '</div>' +
         '<div class="hint">榜单口径：六只脚上的轨迹热度（浏览量）· 仅代表关注度，不代表近期到访人数</div>' +
         '<div class="sec-head"><h3>最近有人去过</h3><span class="more">全部 ›</span></div>' +
