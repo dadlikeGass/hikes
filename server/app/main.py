@@ -191,6 +191,15 @@ class TokenOut(BaseModel):
     userId: int
 
 
+class QrTargetOut(BaseModel):
+    code: str
+    encodes: str = Field(description="二维码里实际编码的 URL")
+
+
+class EventsOut(BaseModel):
+    accepted: int
+
+
 # ==================== 认证 ====================
 
 @app.post("/api/auth/dev-login", response_model=TokenOut, tags=["认证"],
@@ -480,7 +489,9 @@ def vote(comment_id: int, body: VoteIn, uid: int = Depends(require_user)):
 # ==================== 短链 ====================
 
 @app.get("/p/{code}", tags=["短链"], summary="二维码里印的就是它",
-         responses={404: {"description": "编号不存在"}})
+         status_code=302, response_class=RedirectResponse,
+         responses={302: {"description": "跳转到落地页（微信内将优先跳小程序）"},
+                    404: {"description": "编号不存在"}})
 def short_link(code: str, request: Request):
     """按 UA 分流。现在两端都回 H5 落地页；小程序上线后微信内优先跳小程序。"""
     row = q1("SELECT point_id FROM short_links WHERE code = :c", c=code)
@@ -496,7 +507,9 @@ def short_link(code: str, request: Request):
 # ==================== 埋点 ====================
 
 @app.get("/api/qr/{code}.svg", tags=["短链"], summary="生成可扫的二维码（矢量，印刷用）",
-         responses={404: {"description": "编号不存在"}})
+         response_class=Response,
+         responses={200: {"content": {"image/svg+xml": {}}, "description": "SVG 二维码"},
+                    404: {"description": "编号不存在"}})
 def qr_svg(code: str, box: int = 10, border: int = 2):
     """二维码里编码的是 PUBLIC_BASE_URL + /p/{code}。
     编号不存在时 404——避免印出一张扫不开的废码。"""
@@ -512,14 +525,16 @@ def qr_svg(code: str, box: int = 10, border: int = 2):
 
 
 @app.get("/api/qr/{code}/target", tags=["短链"], summary="二维码里编码的内容（自检用）")
-def qr_target(code: str):
+def qr_target(code: str) -> QrTargetOut:
     if not q1("SELECT 1 AS x FROM short_links WHERE code = :c", c=code):
         err(404, "POINT_NOT_FOUND", "编号不存在")
-    return {"code": code, "encodes": f"{PUBLIC_BASE}/p/{code}"}
+    return QrTargetOut(code=code, encodes=f"{PUBLIC_BASE}/p/{code}")
 
 @app.post("/api/events", status_code=202, tags=["埋点"],
+          response_model=EventsOut,
+          responses={400: {"description": "事件缺少 name"}},
           summary="扫码 / 打卡 / 留言 / 打开，三个验证指标都从这里出")
-def track(payload: dict | list[dict]):
+def track(payload: dict | list[dict]) -> EventsOut:
     rows = payload if isinstance(payload, list) else [payload]
     with engine.begin() as conn:
         for e in rows:
@@ -528,7 +543,7 @@ def track(payload: dict | list[dict]):
                 err(400, "BAD_EVENT", "事件缺少 name")
             conn.execute(text("""INSERT INTO events (name, props) VALUES (:n, :p)"""),
                          {"n": name, "p": json.dumps(e.get("props") or {}, ensure_ascii=False)})
-    return {"accepted": len(rows)}
+    return EventsOut(accepted=len(rows))
 
 
 # ==================== 静态页面 ====================
