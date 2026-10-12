@@ -17,6 +17,18 @@
   var here = location.pathname;
   function on(p) { return here.indexOf(p) === 0 ? ' class="on"' : ''; }
 
+  /* 左上角品牌 logo 常驻可点回首页（PLAN §2：首页走左上角 logo，不占 tab） */
+  (function homeLink() {
+    var bar = document.querySelector('.topbar');
+    if (!bar || bar.querySelector('.homebrand')) return;
+    var a = document.createElement('a');
+    a.href = '/';
+    a.className = 'homebrand';
+    a.innerHTML = '<span class="brand mini"><b>到此一游</b></span>';
+    a.style.cssText = 'display:inline-block;color:inherit;text-decoration:none;margin-bottom:1px';
+    bar.insertBefore(a, bar.firstChild);
+  })();
+
   var css = document.createElement('style');
   css.textContent = [
     /* 页面容器：手机上铺满，桌面上固定 430px 居中——所有页面统一，不再各写各的 */

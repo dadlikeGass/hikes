@@ -133,7 +133,8 @@ def pickup(pt):
         de = sm[i1] - sm[i0]
         pct = de / dm * 100 if dm > 0 else 0
         km = xs[i1] - xs[i0]
-        lv = REV[max(ORD[band(BAND_GRAD, abs(pct))], ORD[band(BAND_GAIN, de)])]
+        # 爬升档取下坡的绝对值——"下坡就是反向的爬坡"，否则 -768 m 的下降会被算成没爬升
+        lv = REV[max(ORD[band(BAND_GRAD, abs(pct))], ORD[band(BAND_GAIN, abs(de))])]
         segs.append({"no": len(segs) + 1, "from": round(xs[i0], 2), "to": round(xs[i1], 2),
                      "km": round(km, 2), "rise": round(de), "pct": round(pct), "level": lv,
                      "kind": "climb" if pct > 3 else ("desc" if pct < -3 else "flat"),

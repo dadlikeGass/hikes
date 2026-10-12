@@ -53,6 +53,19 @@ body{background:#E7E1D6}
 .rankhd{display:flex;justify-content:space-between;align-items:baseline;margin:16px 2px 9px}
 .rankhd h3{font-size:15.5px;font-weight:800}
 .rankhd span{font-size:11.5px;color:var(--ink3)}
+.rankhd .seeall{border:none;background:none;font:inherit;font-size:12.5px;font-weight:700;
+  color:var(--blue);padding:2px 0;font-family:inherit}
+.hero4{height:210px;position:relative;overflow:hidden}
+.hero4>svg{display:block;width:100%;height:100%}
+.hero4 .scrim{position:absolute;inset:0;z-index:1;background:linear-gradient(180deg,
+  rgba(16,14,32,.60) 0%,rgba(16,14,32,.22) 45%,rgba(16,14,32,0) 68%,rgba(16,14,32,.52) 100%)}
+.hero4 .ovl{position:absolute;z-index:2}
+.hero4 .ovl.tl{left:16px;right:58px;bottom:14px;color:#fff}
+.hero4 .ovl.tl h2{font-size:23px;font-weight:900;letter-spacing:-.6px;
+  text-shadow:0 2px 10px rgba(12,10,26,.6)}
+.hero4 .ovl.tl .st{font-size:12px;color:rgba(255,255,255,.9);margin-top:3px;
+  text-shadow:0 1px 6px rgba(12,10,26,.6)}
+.hero4 .ovl.br{right:14px;top:12px}
 .note{font-size:11.5px;color:var(--ink3);line-height:1.7}
 </style>
 </head>
@@ -81,6 +94,22 @@ function badge(lv, txt) {
 }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
   return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+/* 山景插画：按 slug 确定性生成，同一线路永远同一张图 */
+function scene(seed) {
+  var h = 0; for (var i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 997;
+  var pal = [['#FFE9C8', '#FFD09A', '#F4A97E', '#C4869A', '#6E6394'],
+    ['#EAF2F8', '#D3E2EC', '#AEC3D6', '#8897B2', '#5E6C8C'],
+    ['#EDF4E7', '#D6E7CC', '#B2CCA4', '#89A87E', '#628067'],
+    ['#FFDCC6', '#F5AE93', '#CE8189', '#8E5F80', '#4E3D66']][h % 4];
+  var u = 'g' + h, o = '<svg viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice">';
+  o += '<defs><linearGradient id="' + u + '" x1="0" y1="0" x2="0" y2="1">';
+  pal.forEach(function (c, i) { o += '<stop offset="' + (i * 25) + '%" stop-color="' + c + '"/>'; });
+  o += '</linearGradient></defs><rect width="400" height="300" fill="url(#' + u + ')"/>';
+  o += '<circle cx="' + (90 + h % 200) + '" cy="86" r="24" fill="#FFE0A0" opacity=".9"/>';
+  o += '<path d="M0 300 L0 175 L70 118 L140 188 L210 128 L290 198 L400 148 L400 300Z" fill="#524C72" opacity=".85"/>';
+  o += '<path d="M0 300 L0 228 L90 188 L180 243 L280 193 L400 248 L400 300Z" fill="#33304A"/>';
+  return o + '</svg>';
+}
 function trackSVG(path, segs, km, peaks) {
   var W = 380, H = 210, pad = 26, xs = [], ys = [];
   path.forEach(function (p) { xs.push(p[0]); ys.push(p[1]); });
@@ -108,6 +137,27 @@ function trackSVG(path, segs, km, peaks) {
   return o + '</svg>';
 }
 async function j(u, o) { var r = await fetch(u, o); if (!r.ok) throw new Error(r.status); return r.json(); }
+
+/* 海拔剖面 + 底部难度色带 */
+function profileSVG(prof, segs, km) {
+  var W = 340, H = 96, pad = 8, n = prof.length;
+  var xs = [], ys = [];
+  for (var i = 0; i < n; i++) {
+    xs.push(pad + (i / (n - 1)) * (W - pad * 2));
+    ys.push(H - 16 - prof[i] * (H - 30));
+  }
+  var line = xs.map(function (x, i) { return (i ? 'L' : 'M') + x.toFixed(1) + ' ' + ys[i].toFixed(1); }).join(' ');
+  var area = line + ' L' + xs[n - 1].toFixed(1) + ' ' + (H - 12) + ' L' + xs[0].toFixed(1) + ' ' + (H - 12) + ' Z';
+  var o = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" style="height:74px;width:100%;display:block">';
+  o += '<path d="' + area + '" fill="#EDF1FD"/>';
+  o += '<path d="' + line + '" fill="none" stroke="#3455F5" stroke-width="2" stroke-linejoin="round"/>';
+  segs.forEach(function (s) {
+    var x0 = pad + (s.from_km / km) * (W - pad * 2), x1 = pad + (s.to_km / km) * (W - pad * 2);
+    o += '<rect x="' + x0.toFixed(1) + '" y="' + (H - 10) + '" width="' +
+      Math.max(1, x1 - x0).toFixed(1) + '" height="7" fill="' + (C[s.level] || '#999') + '"/>';
+  });
+  return o + '</svg>';
+}
 var view = document.getElementById('view');
 
 var TIP = {
@@ -116,7 +166,7 @@ var TIP = {
   hard: '长距离或复杂地形 · 建议预留整日',
   hidden: '需要绳索冰爪等保护措施 · 由山友与维护人确认'
 };
-var ALL = [], Q = '', LV = 'all';
+var ALL = [], Q = '', LV = 'all', GROUP = '';
 
 function bigCard(r) {
   return '<a class="rc" href="#' + r.slug + '">' +
@@ -164,27 +214,36 @@ function rankGroups() {
     ALL.slice().sort(function (a, b) { return b.km - a.km; }).slice(0, 5)
       .map(function (r) { return miniCard(r, '平均用时', function (x) { return x.hours + ' h'; }); })]);
   return g.map(function (x) {
-    return '<div class="rankhd"><h3>' + x[0] + '</h3><span>' + x[1] + '</span></div>' +
+    return '<div class="rankhd"><h3>' + x[0] + '</h3>' +
+      '<button class="seeall" data-g="' + x[0] + '">看全部 ›</button></div>' +
       '<div class="rankrow">' + x[2].join('') + '</div>';
   }).join('');
 }
 
 function renderList() {
-  var rank = document.getElementById('rankbox'), all = document.getElementById('allbox');
+  var rank = document.getElementById('rankbox');
   if (!rank) return;
-  if (Q || LV !== 'all') {
+  /* 默认只出榜单（文档：搜索 → 筛选 → 各榜单横滑 → 关于难度 → 底部说明，没有"全部线路"）
+     只有在搜索、筛难度、或点了「看全部」时才出列表。 */
+  if (Q || LV !== 'all' || GROUP) {
     var f = ALL.filter(function (r) {
-      return (LV === 'all' || r.hardest_level === LV) &&
+      var inGroup = !GROUP ||
+        (GROUP === '新手小白线路') ||
+        (GROUP === '最难的线路' && (r.hardest_level === 'hard' || r.hardest_level === 'hidden')) ||
+        (GROUP === '最长的线路') ||
+        (GROUP === '热门线路最快记录' && r.fastest_time);
+      return inGroup && (LV === 'all' || r.hardest_level === LV) &&
         (!Q || r.name.indexOf(Q) >= 0 || (r.sub || '').indexOf(Q) >= 0);
     });
-    rank.innerHTML = '<div class="rankhd"><h3>筛选结果</h3><span>' + f.length + ' 条</span></div>' +
+    if (GROUP === '新手小白线路') f.sort(function (a, b) { return a.hours - b.hours; });
+    if (GROUP === '最长的线路') f.sort(function (a, b) { return b.km - a.km; });
+    if (GROUP === '最难的线路') f.sort(function (a, b) { return b.up - a.up; });
+    rank.innerHTML = '<div class="rankhd"><h3>' + (GROUP || '筛选结果') + '</h3>' +
+      '<button class="seeall back" data-g="">‹ 回榜单</button></div>' +
       (f.length ? f.map(bigCard).join('')
         : '<div class="card" style="text-align:center;color:var(--ink3);padding:30px 16px">没有匹配的线路</div>');
-    all.innerHTML = '';
   } else {
     rank.innerHTML = rankGroups();
-    all.innerHTML = '<div class="rankhd" style="margin-top:18px"><h3>全部线路</h3>' +
-      '<span>按里程</span></div>' + ALL.map(bigCard).join('');
   }
 }
 
@@ -224,7 +283,6 @@ async function list() {
     '<p><b>瑞士 · SAC</b>　T1–T6，颜色直接印在实体路标上：T1 徒步道（黄）、' +
     'T2–T3 山地步道（红）、T4–T6 高山步道（蓝）。和我们用形状区分是同一个思路。</p>' +
     '</div></details>' +
-    '<div id="allbox"></div>' +             /* 全部线路作为附表，放在难度说明之后 */
     '<div class="hint" style="text-align:center;margin-top:14px">' +
     '用时与消耗为估算 · 线路数据来自真实 GPX</div>';
 
@@ -233,10 +291,22 @@ async function list() {
   q.addEventListener('input', function () { Q = this.value.trim(); renderList(); });
   document.getElementById('chips').addEventListener('click', function (e) {
     var b = e.target.closest('.chip'); if (!b) return;
-    LV = b.dataset.lv;
+    LV = b.dataset.lv; GROUP = '';
     document.querySelectorAll('#chips .chip').forEach(function (x) {
       x.classList.toggle('on', x === b); });
     renderList();
+  });
+  document.getElementById('rankbox').addEventListener('click', function (e) {
+    var b = e.target.closest('.seeall'); if (!b) return;
+    GROUP = b.dataset.g || '';
+    if (GROUP) {
+      Q = ''; LV = 'all';
+      document.getElementById('q').value = '';
+      document.querySelectorAll('#chips .chip').forEach(function (x) {
+        x.classList.toggle('on', x.dataset.lv === 'all'); });
+    }
+    renderList();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   });
   renderList();
 }
@@ -245,26 +315,65 @@ async function detail(slug) {
   view.innerHTML = '<div class="skel" style="height:200px"></div>';
   var r = await j('/api/routes/' + slug);
   var est = r.est || {};
+  var h = r.hardest || {};
+  var top = r.peaks.length ? Math.max.apply(null, r.peaks.map(function (p) { return p.altitude; })) : 0;
+  var hardestRow = r.segments.filter(function (s) { return s.level === r.hardest_level; })[0] || r.segments[0];
   view.innerHTML =
     '<a class="backb" href="#">‹ 全部线路</a>' +
-    '<div style="padding:0 0 4px"><h2 style="font-size:23px;font-weight:900;letter-spacing:-.6px">' +
-    esc(r.name) + '</h2>' +
-    (r.sub ? '<div class="sub" style="color:var(--ink3);font-size:12px">' + esc(r.sub) + '</div>' : '') +
-    '</div>' +
+    /* ① 大图 */
+    '<div class="hero4" style="margin:0 -16px 14px">' + scene(r.slug) +
+    '<div class="scrim"></div>' +
+    '<div class="ovl tl"><h2>' + esc(r.name) + '</h2>' +
+    (r.sub ? '<div class="st">' + esc(r.sub) + '</div>' : '') + '</div>' +
+    '<div class="ovl br">' + badge(r.hardest_level) + '</div></div>' +
+    /* ② 名称 + 距离 / 爬升 / 下降 + 山顶数 */
     '<div class="card" style="padding:14px">' +
-    '<div class="mt" style="display:flex;gap:14px">' +
-    '<div style="flex:1"><span style="display:block;font-size:10.5px;color:var(--ink3)">距离</span>' +
-    '<b style="font-size:15px">' + r.km + ' km</b></div>' +
-    '<div style="flex:1"><span style="display:block;font-size:10.5px;color:var(--ink3)">爬升</span>' +
-    '<b style="font-size:15px">' + r.up + ' m</b></div>' +
+    '<div style="display:flex;gap:12px">' +
+    ['距离|' + r.km + ' km', '爬升|' + r.up + ' m', '下降|' + r.down + ' m',
+      '山顶|' + r.peaks.length + ' 个'].map(function (x) {
+      var a = x.split('|');
+      return '<div style="flex:1"><span style="display:block;font-size:10.5px;color:var(--ink3)">' +
+        a[0] + '</span><b style="font-size:15px;font-variant-numeric:tabular-nums">' + a[1] + '</b></div>';
+    }).join('') + '</div>' +
+    '<div style="display:flex;gap:12px;margin-top:13px;padding-top:13px;border-top:1px solid var(--hair)">' +
     '<div style="flex:1"><span style="display:block;font-size:10.5px;color:var(--ink3)">平均用时</span>' +
-    '<b style="font-size:15px">' + r.hours + ' h</b></div>' +
-    '<div style="flex:1"><span style="display:block;font-size:10.5px;color:var(--ink3)">消耗</span>' +
-    '<b style="font-size:15px;color:var(--coral)">' + r.kcal + '</b></div></div>' +
-    '<div class="hint" style="margin:10px 0 0">估算假设：' + (est.flatKmh || 5) + ' km/h · 爬升 1 m≈水平 ' +
-    (est.climbFactor || 8) + ' m · ' + (est.weightKg || 65) + ' kg · MET ' + (est.met || 6.5) +
-    '。按最难段的等级着色。</div></div>' +
+    '<b style="font-size:17px">' + r.hours + ' h</b></div>' +
+    '<div style="flex:1"><span style="display:block;font-size:10.5px;color:var(--ink3)">大致消耗</span>' +
+    '<b style="font-size:17px;color:var(--coral)">' + r.kcal + '</b></div></div></div>' +
+    /* ③ 难度判定卡 */
+    '<div class="rankhd"><h3>难度判定</h3><span>爬升 + 坡度</span></div>' +
+    '<div class="card" style="background:var(--blue-bg);box-shadow:none">' +
+    '<div style="font-size:12px;font-weight:800;color:var(--blue);margin-bottom:8px">' +
+    '整条线路不做分级，只标最难的那一段</div>' +
+    (hardestRow ? '<div class="kv" style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0">' +
+      '<span style="color:var(--blue-deep)">最难段</span><b>第 ' + hardestRow.no + ' 段 · ' +
+      hardestRow.from_km + '–' + hardestRow.to_km + ' km</b></div>' +
+      '<div class="kv" style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0">' +
+      '<span style="color:var(--blue-deep)">爬升 / 坡度</span><b>+' + hardestRow.rise + ' m · ' +
+      '+25%'.replace('25', hardestRow.pct) + '</b></div>' : '') +
+    '<div class="kv" style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0">' +
+    '<span style="color:var(--blue-deep)">判定结果</span>' + badge(r.hardest_level) + '</div>' +
+    '<div class="note" style="margin-top:10px;color:var(--blue-deep)">' +
+    '段难度只看<strong>爬升高度</strong>与<strong>平均坡度</strong>；距离不进难度——' +
+    '它体现在上面那行的用时与消耗里。是否要手脚并用、是否需要绳索冰爪，由山友和维护人确认。</div></div>' +
+    /* ④ 标牌预览 */
+    '<div class="rankhd"><h3>实体标牌</h3><span>终点打卡点样式</span></div>' +
+    '<div class="card" style="display:flex;gap:15px;align-items:center">' +
+    '<span style="width:62px;height:62px;flex:0 0 auto"><svg viewBox="0 0 100 100">' +
+    SH[r.hardest_level](C[r.hardest_level]) + '</svg></span>' +
+    '<span style="flex:1"><span style="display:block;font-size:10.5px;font-weight:800;' +
+    'letter-spacing:1.1px;color:var(--ink2)">DCYY | ' + (top ? top + 'M' : '—') + '</span>' +
+    '<span style="display:block;font-size:9.5px;font-weight:700;letter-spacing:1.6px;' +
+    'color:var(--ink3);margin-top:4px">I HAVE BEEN HERE</span></span>' +
+    '<span style="width:60px;height:60px;border:1px solid var(--line);border-radius:9px;' +
+    'display:grid;place-items:center;font-size:9px;color:var(--ink3);text-align:center;' +
+    'line-height:1.3">二维码<br>待标定</span></div>' +
+    /* ⑤ 按难度着色的轨迹图（山顶标海拔） */
+    '<div class="rankhd"><h3>轨迹与难度</h3><span>按段着色</span></div>' +
     '<div class="trk2">' + trackSVG(r.path, r.segments, r.km, r.peaks) + '</div>' +
+    /* ⑥ 海拔剖面 + 色带 */
+    '<div class="rankhd"><h3>海拔剖面</h3><span>底部色带 = 段的难度</span></div>' +
+    '<div class="trk2" style="padding:10px 12px 8px">' + profileSVG(r.profile, r.segments, r.km) + '</div>' +
     '<div class="sec-head"><h3>山顶</h3><span class="more">' + r.peaks.length + ' 个</span></div>' +
     '<div class="card tight">' + r.peaks.map(function (p, i) {
       return '<div class="segline"><span style="font-weight:800;color:var(--ink3);width:16px">' + (i + 1) + '</span>' +
