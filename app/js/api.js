@@ -35,6 +35,7 @@
         id: r.slug, name: r.name, sub: r.sub,
         level: r.hardest_level,          /* 界面用 level，含义是"最难的那一段" */
         km: r.km, up: r.up, down: r.down,
+        city: r.city,
         hours: (r.hours || '—') + ' 小时',
         hoursVal: r.hours, kcal: r.kcal,
         visits7: r.weekly_visits,

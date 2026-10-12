@@ -106,9 +106,10 @@
       (isWant(t.id) ? '♥' : '♡') + '</button></div>' +
       '<div class="tc-mid">' + U.trackBox(t.id, 'trk-tc') +
       '<div class="tc-stats">' +
-      '<div class="tcs"><span>六只脚人气</span><b>' + t.visits7 + '</b></div>' +
-      '<div class="tcs"><span>参考用时</span><b class="hi">' + t.fastest.time + '</b></div>' +
-      '<div class="tcs"><span>' + (t.group === 'park' ? '类型' : '区域') + '</span><b class="who">' + esc(t.group === 'park' ? '公园跑道' : t.region) + '</b></div>' +
+      /* 按首页轮播卡的规格：本周打卡 / 最快用时 / 记录保持者 */
+      '<div class="tcs"><span>本周打卡</span><b>' + (t.visits7 || 0) + ' 人</b></div>' +
+      '<div class="tcs"><span>最快用时</span><b class="hi">' + esc(t.fastest.time) + '</b></div>' +
+      '<div class="tcs"><span>记录保持</span><b class="who">' + esc(t.fastest.who) + '</b></div>' +
       '</div></div>' +
       '<div class="tc-bot"><span class="tc-dim">' + t.km + ' km · ↗ ' + t.up + ' m</span>' +
       U.levelBadge(lv) + '</div>' +
