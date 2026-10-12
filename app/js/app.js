@@ -703,8 +703,8 @@
     return (
       '<div class="hero tall">' + U.scene(p.id) +
       '<div class="floating"><a href="#/places"><span class="pill">‹ 返回</span></a></div>' +
-      '<div class="floating right"><span class="pill">山头 · 打卡点</span></div></div>' +
-      claimBtn(p.id, p.name || p.trailName, 'peak') +
+      '<div class="floating right"><span class="pill">山头 · 打卡点</span></div>' +
+      claimBtn(p.id, p.name || p.trailName, 'peak') + '</div>' +
       '<div class="pad">' +
       '<h2 class="arrive-h" style="margin-top:0">' + esc(p.name) + '</h2>' +
       '<p class="arrive-p">' +
@@ -745,8 +745,8 @@
     return (
       '<div class="hero tall">' + U.scene(j.id, { palette: 1 }) +
       '<div class="floating"><a href="#/places/junction"><span class="pill">‹ 返回</span></a></div>' +
-      '<div class="floating right"><span class="pill">岔路 · 路书点</span></div></div>' +
-      claimBtn(j.id, j.name, 'junction') +
+      '<div class="floating right"><span class="pill">岔路 · 路书点</span></div>' +
+      claimBtn(j.id, j.name, 'junction') + '</div>' +
       '<div class="pad">' +
       '<h2 class="arrive-h" style="margin-top:0">' + esc(j.name) + '</h2>' +
       '<p class="arrive-p">' + esc(j.trailName) + ' · 第 <b style="color:var(--blue)">' + j.index + '</b>/' + j.total +
