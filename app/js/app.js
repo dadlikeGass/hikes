@@ -98,10 +98,10 @@
   }
 
   function trailCard(t) {
-    var lv = U.trailLevel(t.id);
-    return '<div class="trailcard">' +
+    var lv = t.level;   /* 用接口算好的，别在前端重算 */
+    return '<a class="trailcard" href="#/trails/' + t.id + '">' +
       '<div class="tc-top">' +
-      '<a class="tc-name" href="#/trails/' + t.id + '">' + esc(t.name) + '</a>' +
+      '<span class="tc-name">' + esc(t.name) + '</span>' +
       '<button class="favbtn flat" data-act="want" data-id="' + t.id + '" data-on="♥" data-off="♡">' +
       (isWant(t.id) ? '♥' : '♡') + '</button></div>' +
       '<div class="tc-mid">' + U.trackBox(t.id, 'trk-tc') +
@@ -112,7 +112,7 @@
       '</div></div>' +
       '<div class="tc-bot"><span class="tc-dim">' + t.km + ' km · ↗ ' + t.up + ' m</span>' +
       U.levelBadge(lv) + '</div>' +
-      '</div>';
+      '</a>';
   }
 
   function compactRow(o) {
@@ -166,7 +166,7 @@
           '<div class="ovl tl"><h4>' + esc(t.name) + '</h4>' +
           '<div class="st">' + t.km + ' km · ↗ ' + t.up + ' m · ' + esc(t.hours) + '</div></div>' +
           '<button class="favbtn" data-act="want" data-id="' + t.id + '" data-on="♥" data-off="♡">' + (isWant(t.id) ? '♥' : '♡') + '</button>' +
-          '<div class="ovl br">' + U.levelBadge(U.trailLevel(t.id)) + '</div>' +
+          '<div class="ovl br">' + U.levelBadge(t.level) + '</div>' +
           '</div>' +
           '<a href="#/trails/' + t.id + '"><div class="sb">' + U.trackBox(t.id, 'trk-mini') +
           '<div class="sbtx">' +
@@ -268,24 +268,24 @@
 
       '<div class="sec-head"><h3>新手小白线路<small>平缓 · 3 小时内</small></h3><span class="more">看全部 ›</span></div>' +
       '<div class="card tight">' + easy.map(function (t, i) {
-        return compactRow({ pos: i + 1, thumb: t.id, title: t.name, sub: t.km + ' km · ↗ ' + t.up + ' m', level: U.trailLevel(t.id) });
+        return compactRow({ pos: i + 1, thumb: t.id, title: t.name, sub: t.km + ' km · ↗ ' + t.up + ' m', level: t.level });
       }).join('') + '</div>' +
 
       '<div class="sec-head"><h3>最难的线路</h3><span class="more">看全部 ›</span></div>' +
       '<div class="card tight">' + hard.map(function (t, i) {
-        return compactRow({ pos: i + 1, thumb: t.id, title: t.name, sub: t.km + ' km · ↗ ' + t.up + ' m · ' + t.hours, level: U.trailLevel(t.id) });
+        return compactRow({ pos: i + 1, thumb: t.id, title: t.name, sub: t.km + ' km · ↗ ' + t.up + ' m · ' + t.hours, level: t.level });
       }).join('') + '</div>' +
 
       '<div class="sec-head"><h3>最长的线路</h3><span class="more">看全部 ›</span></div>' +
       '<div class="card tight">' + longest.map(function (t, i) {
-        return compactRow({ pos: i + 1, thumb: t.id, title: t.name, sub: t.km + ' km · ' + t.hours, level: U.trailLevel(t.id) });
+        return compactRow({ pos: i + 1, thumb: t.id, title: t.name, sub: t.km + ' km · ' + t.hours, level: t.level });
       }).join('') + '</div>' +
 
       '<div class="sec-head"><h3>公园跑道<small>平路 · 1 小时内可完成</small></h3>' +
       '<button class="more" data-act="filter-grp" data-val="park">看全部 ' +
       all.filter(function (t) { return t.group === 'park'; }).length + ' 条 ›</button></div>' +
       '<div class="card tight">' + all.filter(function (t) { return t.group === 'park'; }).slice(0, 8).map(function (t) {
-        return compactRow({ thumb: t.id, title: t.name, sub: t.km + ' km · ↗ ' + t.up + ' m · ' + esc(t.region), level: U.trailLevel(t.id) });
+        return compactRow({ thumb: t.id, title: t.name, sub: t.km + ' km · ↗ ' + t.up + ' m · ' + esc(t.region), level: t.level });
       }).join('') + '</div>' +
 
       '<a class="rowlink" href="#/me/activity" style="margin-top:14px"><span class="em">＋</span>' +
@@ -335,7 +335,7 @@
     H.posts.forEach(function (p) { if (p.place.id === t.id) cs.push({ who: p.who, when: p.when, text: p.text }); });
     return (
       '<div class="hero tall">' + U.scene(t.id) +
-      '<div class="floating">' + U.levelBadge(U.trailLevel(t.id)) + '</div>' +
+      '<div class="floating">' + U.levelBadge(t.level) + '</div>' +
       '<div class="cap">' + esc(t.name) + '</div></div>' +
       '<div class="hint" style="margin:0 2px 14px">' + t.km + ' km · ↗ ' + t.up + ' m · ' + esc(t.hours) +
       ' · 六只脚人气 ' + t.visits7 + '</div>' +

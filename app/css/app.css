@@ -5,9 +5,11 @@
   --blue:#3455F5; --blue-bg:#F1F4FF; --blue-deep:#2A3A9E;
   --coral:#FF714E; --coral-bg:#FFF1EC;
   --violet:#7B6CE8; --violet-bg:#ECE9FB; --violet-deep:#5C4FC7;
-  --easy:#52B44A; --easy-bg:#E6F5E2; --easy-ink:#2F7A2A;
-  --mid:#2563EB;  --mid-bg:#E7EEFE;  --mid-ink:#1B4FC4;
-  --hard:#9E1B1B; --hard-bg:#F7E3E1; --hard-ink:#8E1B1B;
+  /* 难度四色：蓝 / 黄 / 深红 / 黑 */
+  --easy:#2563EB; --easy-bg:#E4EDFD; --easy-ink:#1B4FC4;
+  --mid:#F2B62C;  --mid-bg:#FDF2D6;  --mid-ink:#8A6410;
+  --hard:#C62828; --hard-bg:#FBE4E2; --hard-ink:#B3261E;
+  --hidden:#22242E; --hidden-bg:#EAE8E2; --hidden-ink:#22242E;
   --amber:#E8A33D; --amber-bg:#FDF2D6; --amber-ink:#8A6410;
   --shadow:0 1px 2px rgba(34,36,46,.05), 0 8px 24px rgba(34,36,46,.07);
   --r:22px;
@@ -112,7 +114,7 @@ input,textarea,select{font:inherit;color:inherit}
 .badge.easy{background:var(--easy-bg);color:var(--easy-ink)}
 .badge.mid{background:var(--mid-bg);color:var(--mid-ink)}
 .badge.hard{background:var(--hard-bg);color:var(--hard-ink)}
-.badge.hidden{background:#EAE8E2;color:#22242E}
+.badge.hidden{background:var(--hidden-bg);color:var(--hidden-ink)}
 .tag{font-size:10.5px;font-weight:700;border-radius:6px;padding:2px 7px}
 .tag.ok{background:var(--easy-bg);color:#2F7A2A}
 .tag.wait{background:var(--amber-bg);color:var(--amber-ink)}

@@ -134,7 +134,8 @@
   }
 
   /* ---------- 难度图形：圆（绿）/ 三角（蓝）/ 菱形（深红）/ 六边形（黑·隐藏） ---------- */
-  var SHAPE_COLOR = { easy: '#52B44A', mid: '#2563EB', hard: '#9E1B1B', hidden: '#22242E' };
+  /* 难度四色：蓝 / 黄 / 深红 / 黑（与 design.css、PLAN.md §2 一致） */
+  var SHAPE_COLOR = { easy: '#2563EB', mid: '#F2B62C', hard: '#C62828', hidden: '#22242E' };
   function shapeSVG(level) {
     var c = SHAPE_COLOR[level] || '#2563EB';
     var s = '<svg viewBox="0 0 100 100" aria-hidden="true">';
