@@ -890,7 +890,10 @@
   function arrivalView(pid) {
     var p = peak(pid) || H.peaks[0];
     var done = !!S.mySeqs[p.id];
-    var seq = p.seq + (done ? 1 : 0);
+    /* API 的山顶没有 seq；有真实点位就用它的到访数 +1，否则退到本地记录 */
+    var realPt = (H.points && H.points.length) ? H.points[0] : null;
+    var seq = realPt ? (realPt.visitCount + 1)
+                     : (p.seq || 1) + (done ? 1 : 0);
     var myTime = S.pb[p.id] || '01:42';
     var letter = H.letters[0];
     var slot = new Date().getHours() < 12 ? '今日第 3 名' : '今日第 7 名';
@@ -908,9 +911,12 @@
       '<div><span>' + (done ? '再次登顶' : '首次登顶') + '</span><b>' + (done ? '×2' : '✓') + '</b></div>' +
       '<div><span>本次用时</span><b>' + myTime + '</b></div>' +
       '<div><span>山径拼图</span><b>' + (done ? '+' + S.visited.length : '+1') + '</b></div></div>' +
-      '<div class="boardline">🏆 本次 <b>' + myTime + '</b>　' + slot +
+      '<div class="boardline soon-block">🏆 本次 <b>' + myTime + '</b>　' + slot +
       '<a class="go" href="#/peaks/' + p.id + '">用时榜 ›</a></div>' +
-      '<div class="letter"><span class="stampmark"></span>' +
+      '<div class="ltag" style="margin:2px 2px 6px;font-size:12px;font-weight:700;color:var(--ink2)">' +
+      '用时榜 · 拆信<span class="soon-tag">待开发</span>' +
+      '<span style="font-weight:400;color:var(--ink3);margin-left:6px">没有用时记录表与信件表，下面是示例</span></div>' +
+      '<div class="letter soon-block"><span class="stampmark"></span>' +
       '<div class="ltag">有人给你留了一句话</div>' +
       '<div class="line" style="font-size:15px">来自 ' + esc(letter.from) + '　' +
       '<button data-act="letter-open" data-id="' + p.id + '" style="color:var(--violet);font-weight:700">拆开看看 ›</button></div>' +
