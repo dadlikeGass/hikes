@@ -69,8 +69,11 @@ input,textarea,select{font:inherit;color:inherit}
   font-size:9.5px;font-weight:700;border-radius:5px;padding:1px 5px;letter-spacing:.3px;
   top:-2px;right:-6px;transform:scale(.92)}
 .soonrow{background:#F4F1EA!important;box-shadow:none!important;border:1px dashed #DED7C8}
-.soonrow .soon-tag{background:#9A9CAA;color:#fff;font-size:10px;font-weight:700;border-radius:6px;
-  padding:2px 7px;margin-left:8px;white-space:nowrap}
+.soon-tag{display:inline-block;background:#9A9CAA;color:#fff;font-size:10px;font-weight:700;
+  border-radius:6px;padding:2px 7px;margin-left:8px;white-space:nowrap;vertical-align:2px;
+  letter-spacing:.3px}
+/* 整块功能还没接数据：灰显降饱和，让用户一眼看出"这里有，但还不能用" */
+.soon-block{opacity:.5;filter:grayscale(.75);pointer-events:none}
 .tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;
   color:#9A9CAA;font-weight:600;padding:2px 0}
 .tabbar a .ico{stroke:#9A9CAA}

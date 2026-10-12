@@ -178,7 +178,7 @@
 
       '<div class="sec-head" style="margin-top:14px"><h3>周末有人组队' +
       '<span class="soon-tag">待开发</span></h3><span class="more">全部活动 ›</span></div>' +
-      '<div class="act">' +
+      '<div class="act soon-block">' +
       '<div class="date"><b>' + esc(act.day) + '</b><span>' + esc(act.week) + '</span></div>' +
       '<div style="flex:1;min-width:0">' +
       '<h4>' + esc(act.title) + '</h4>' +
@@ -192,7 +192,7 @@
 
       '<div class="sec-head"><h3>山友的今天<span class="soon-tag">待开发</span></h3>' +
       '<span class="more">全部 ›</span></div>' +
-      '<div class="falls"><div class="col">' + left.map(postCard).join('') + '</div>' +
+      '<div class="falls soon-block"><div class="col">' + left.map(postCard).join('') + '</div>' +
       '<div class="col">' + right.map(postCard).join('') + '</div></div>' +
 
       '<div class="letter" style="margin-top:16px">' +
