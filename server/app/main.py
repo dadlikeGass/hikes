@@ -280,6 +280,9 @@ class PeakItem(BaseModel):
     id: int
     route_slug: str
     route_name: str
+    city: str | None = Field(default=None, description="所在城市 / 区域")
+    level: Literal["easy", "mid", "hard", "hidden"] = Field(
+        default="mid", description="所属线路最难段的等级")
     idx: int
     km: float
     altitude: int
@@ -348,6 +351,7 @@ def patch_point(point_id: int, body: PointPatch, uid: int = Depends(require_user
 def list_peaks(limit: int = 200, route: str | None = None):
     sql = """SELECT p.id, r.slug AS route_slug, r.name AS route_name, p.idx, p.km,
                     p.altitude, p.rise, p.name, p.lat, p.lng,
+                    r.city, r.hardest_level AS level,
                     (SELECT count(*) FROM visits v JOIN points pt ON pt.id = v.point_id
                        WHERE pt.route_id = r.id AND v.created_at > now() - interval '7 days')
                        AS weekly_heat

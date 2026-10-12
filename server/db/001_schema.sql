@@ -21,6 +21,7 @@ CREATE TABLE routes (
   slug        TEXT UNIQUE NOT NULL,
   name        TEXT NOT NULL,
   sub         TEXT,
+  city        TEXT,                          -- 所在城市/区域，用于筛选
   km          NUMERIC(6,2)  NOT NULL,
   up          INT           NOT NULL,        -- 原始高程 + 3m 滞回，不用平滑高程
   down        INT           NOT NULL,

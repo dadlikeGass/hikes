@@ -157,8 +157,16 @@ def pickup(pt):
     eq_km = total / 1000 + up * CLIMB_FACTOR / 1000     # 等效距离
     hours = eq_km / FLAT_KMH
     kcal = MET * HIKER_WEIGHT_KG * hours
-    return {"slug": pt.stem, "name": (re.search(r"<name>([^<]+)</name>", pt.read_text(
-        encoding="utf-8", errors="ignore")) or [None, pt.stem])[1],
+    # 城市 / 区域：从 GPX 的 <desc> 里取（形如「北京海淀/门头沟：京西三峰…」）
+    txt = pt.read_text(encoding="utf-8", errors="ignore")
+    md = re.search(r"<desc>([^<]*)</desc>", txt)
+    city = "北京"
+    if md:
+        mc = re.search(r"北京([^：:]+)[：:]", md.group(1))
+        if mc:
+            city = "北京 · " + mc.group(1).strip().replace("/", " / ")
+    return {"slug": pt.stem, "city": city,
+        "name": (re.search(r"<name>([^<]+)</name>", txt) or [None, pt.stem])[1],
         "km": round(total / 1000, 1), "up": round(up), "down": round(dn),
         "hardest": {"level": hardest["level"], "no": hardest["no"],
                     "from": hardest["from"], "to": hardest["to"], "pct": hardest["pct"],

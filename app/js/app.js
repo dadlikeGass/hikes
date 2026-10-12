@@ -533,30 +533,90 @@
 
   /* ==================== 山头 · 岔路 ==================== */
   var seg = 'peak';
+  var pq = '', pf = 'all', pcity = 'all', plv = 'all';   /* 搜索 / 档位 / 城市 / 难度 */
+  var pgeo = null;                                        /* 我的坐标（点了"离我最近"才有） */
+
+  function distKm(a, b, c, d) {          /* 球面距离，够用 */
+    var R = 6371, r = Math.PI / 180;
+    var dLat = (c - a) * r, dLng = (d - b) * r;
+    var x = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(a * r) * Math.cos(c * r) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return 2 * R * Math.asin(Math.sqrt(x));
+  }
 
   function placesView() {
     var head = '<div class="seg">' +
       '<button class="' + (seg === 'peak' ? 'on' : '') + '" data-act="seg" data-val="peak">山头</button>' +
       '<button class="' + (seg === 'junction' ? 'on' : '') + '" data-act="seg" data-val="junction">岔路</button></div>';
 
+    /* 搜索栏 + 筛选：两段共用，选项随分段变 */
+    var FILTERS = seg === 'peak'
+      ? [['all', '全部'], ['near', '离我最近'], ['h2000', '2000 m 以上'],
+         ['h1500', '1500–2000 m'], ['l1500', '1500 m 以下']]
+      : [['all', '全部'], ['ok', '已核验'], ['wait', '待核验']];
+    if (FILTERS.every(function (f) { return f[0] !== pf; })) pf = 'all';
+    var cities = ['all'].concat(H.peaks.map(function (p) { return p.city; })
+      .filter(function (c, i, a) { return c && a.indexOf(c) === i; }));
+    var bar =
+      '<div class="searchbar">🔍<input id="pq" placeholder="' +
+      (seg === 'peak' ? '搜索山头名称或所属线路' : '搜索岔路名称或情报内容') +
+      '" value="' + esc(pq) + '"></div>' +
+      '<div class="chips" id="pfchips">' + FILTERS.map(function (f) {
+        return '<button class="chip' + (pf === f[0] ? ' on' : '') + '" data-act="pfilter" data-val="' +
+          f[0] + '">' + f[1] + '</button>';
+      }).join('') + '</div>' +
+      (seg === 'peak'
+        ? '<div class="chips">' + cities.map(function (c) {
+            return '<button class="chip' + (pcity === c ? ' on' : '') +
+              '" data-act="pcity" data-val="' + esc(c) + '">' +
+              (c === 'all' ? '全部城市' : c) + '</button>';
+          }).join('') + '</div>' +
+          '<div class="chips">' + [['all', '全部难度'], ['easy', '简单'], ['mid', '中等'],
+            ['hard', '困难'], ['hidden', '隐藏']].map(function (l) {
+            return '<button class="chip' + (plv === l[0] ? ' on' : '') +
+              '" data-act="plv" data-val="' + l[0] + '">' + l[1] + '</button>';
+          }).join('') + '</div>'
+        : '');
+
     if (seg === 'peak') {
-      var board = H.peaks.slice().sort(function (a, b) { return b.visits30 - a.visits30; });
-      return head +
-        '<div class="sec-head" style="margin-top:4px"><h3>山头热门排行榜</h3><span class="more">近 30 天 ›</span></div>' +
-        '<div class="card tight">' + board.map(function (p, i) {
-          return '<a class="rank' + (i === 0 ? ' p1' : '') + '" href="#/peaks/' + p.id + '">' +
-            '<span class="pos">' + (i + 1) + '</span><span class="thumb">' + U.scene(p.id) + '</span>' +
-            '<span class="nm"><b>' + (p.name ? esc(p.name) : '未命名山顶') + '</b>' +
-            '<em>海拔 ' + p.alt + (p.trailName ? ' m · ' + esc(p.trailName) : ' m') + '</em></span>' +
-            /* 本周热度（扫码打卡次数）+「我来过」。整行本来就是链接，
-               点按钮 = 点这一行 → 进该山头详情页 */
-            '<span style="flex:0 0 auto;text-align:right;line-height:1.2">' +
-            '<span style="display:block;font-size:10px;color:var(--ink3)">本周热度</span>' +
-            '<b style="font-size:13px;color:var(--coral)">' + (p.visits30 || 0) + '</b></span>' +
-            '<span class="btn coral mini" style="flex:0 0 auto;margin-left:2px;padding:7px 13px;' +
-            'font-size:12.5px">我来过</span></a>';
-        }).join('') + '</div>' +
-        '<div class="hint">榜单口径：六只脚上的轨迹热度（浏览量）· 仅代表关注度，不代表近期到访人数</div>' +
+      var board = H.peaks.slice().sort(function (a, b) {
+          if (pf === 'near' && pgeo) {
+            return distKm(pgeo.lat, pgeo.lng, a.lat || 0, a.lng || 0) -
+                   distKm(pgeo.lat, pgeo.lng, b.lat || 0, b.lng || 0);
+          }
+          return b.alt - a.alt;
+        })
+        .filter(function (p) {
+          var kw = pq.trim();
+          var okQ = !kw || (p.name || '').indexOf(kw) >= 0 || (p.trailName || '').indexOf(kw) >= 0;
+          var okF = pf === 'all' ||
+            (pf === 'near' && pgeo) ||
+            (pf === 'h2000' && p.alt >= 2000) ||
+            (pf === 'h1500' && p.alt >= 1500 && p.alt < 2000) ||
+            (pf === 'l1500' && p.alt < 1500);
+          return okQ && okF && (pcity === 'all' || p.city === pcity) &&
+            (plv === 'all' || p.level === plv);
+        });
+      return head + bar +
+        '<div class="sec-head" style="margin-top:4px"><h3>山头热门排行榜</h3>' +
+        '<span class="more">' + (pq || pf !== 'all' ? board.length + ' 个结果' : '按海拔 ›') + '</span></div>' +
+        (board.length ? board.slice(0, 12).map(function (p, i) {
+          return locCard({
+            href: '#/peaks/' + p.id,
+            scene: U.scene(p.id),
+            /* 峰名还没采到，就用线路名顶标题；标题和副标题不再重复同一个词 */
+            title: esc(p.name || p.trailName) +
+                   (p.name ? '' : ' <span class="soon-tag">待命名</span>'),
+            sub: '海拔 ' + p.alt + ' m' + (p.city ? ' · ' + esc(p.city) : '') +
+                 (pgeo && p.lat ? ' · 距你 ' + distKm(pgeo.lat, pgeo.lng, p.lat, p.lng).toFixed(1) + ' km' : ''),
+            heat: p.visits30 || 0,
+            footTitle: '山顶留言 · 1 条',
+            footText: '小鱼：风很大，但看到日出那一刻觉得都值了。' +
+                      ' <span class="soon-tag">示例</span>'
+          });
+        }).join('') : '<div class="empty">没有匹配的山头</div>') +
+        '<div class="hint" style="text-align:center">共 ' + H.peaks.length + ' 个山顶 · ' +
+        '峰名与照片待实地采集</div>' +
         '<div class="sec-head"><h3>最近有人去过</h3><span class="more">全部 ›</span></div>' +
         '<div class="card tight">' + H.posts.slice(0, 4).map(function (p) {
           var person = H.people[p.who];
@@ -570,15 +630,55 @@
     H.junctions.forEach(function (j) {
       intelFor(j).forEach(function (i) { all.push({ j: j, i: i }); });
     });
+    var kw = pq.trim();
+    all = all.filter(function (x) {
+      var okQ = !kw || (x.j.name || '').indexOf(kw) >= 0 ||
+        (x.i.title || '').indexOf(kw) >= 0 || (x.i.text || '').indexOf(kw) >= 0;
+      var okF = pf === 'all' || (pf === 'ok' && x.i.ok) || (pf === 'wait' && !x.i.ok);
+      return okQ && okF;
+    });
     all.sort(function (a, b) { return (b.i.mine ? 1 : 0) - (a.i.mine ? 1 : 0) || (b.i.ok ? 0 : 1) - (a.i.ok ? 0 : 1); });
-    return head +
+    return head + bar +
       '<div class="sec-head" style="margin-top:4px"><h3>岔路情报 · 最新</h3><span class="more">全部 ›</span></div>' +
-      '<div class="hint" style="margin-top:-6px">岔路的留言不是情绪，是情报：往哪走、能不能过。' +
-      '<a href="#/junctions/haohanpo" style="color:var(--blue);font-weight:700">看一个岔路页 ›</a></div>' +
-      all.slice(0, 6).map(function (x) {
-        return '<div data-act="goto-junction" data-id="' + x.j.id + '">' + intelCard(x.i, x.j.id) + '</div>';
-      }).join('') +
-      '<div class="hint" style="text-align:center;margin-top:6px">共 ' + all.length + ' 条情报 · 来自 ' + H.junctions.length + ' 个岔路点位</div>';
+      '<div class="hint" style="margin-top:-6px">岔路的留言不是情绪，是情报：往哪走、能不能过。</div>' +
+      (all.length ? all.slice(0, 8).map(function (x) {
+        var person = H.people[x.i.who] || { name: '山友', av: '山' };
+        return '<div data-act="goto-junction" data-id="' + x.j.id + '">' + locCard({
+          scene: U.scene(x.j.id),
+          title: esc(person.name) + ' 上报 <span class="soon-tag">示例</span>',
+          sub: '第 ' + (x.j.index || 1) + ' 个点位 · ' + (x.i.ok ? '已核验' : '待核验'),
+          heat: 0,
+          footTitle: '岔路情报 · 1 条',
+          footText: esc(x.i.title) + '（' + esc(x.i.text) + '）'
+        }) + '</div>';
+      }).join('') : '<div class="empty">没有匹配的岔路情报</div>') +
+      '<div class="hint" style="text-align:center;margin-top:6px">共 ' + all.length + ' 条情报 · 来自 ' +
+      H.junctions.length + ' 个岔路点位</div>';
+  }
+
+  /* 山头 / 岔路 共用卡片：
+     上半 = 图 + 名称 + 定位 + 热度 +「我到过」；下半 = 留言 / 情报。
+     两张卡片大小一致。 */
+  function locCard(o) {
+    var inner =
+      '<div style="display:flex;gap:12px;padding:14px">' +
+      '<span style="width:78px;height:78px;border-radius:14px;overflow:hidden;flex:0 0 auto;' +
+      'background:#EDE7DA;display:block">' + o.scene + '</span>' +
+      '<span style="flex:1;min-width:0;display:flex;flex-direction:column">' +
+      '<b style="font-size:15px;font-weight:800;line-height:1.3">' + o.title + '</b>' +
+      '<span style="font-size:11.5px;color:var(--ink3);margin-top:3px">' + o.sub + '</span>' +
+      '<span style="display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:8px">' +
+      '<span style="font-size:11px;color:var(--ink3)">热度 <b style="color:var(--coral);' +
+      'font-size:13px">' + o.heat + '</b></span>' +
+      '<span class="btn coral mini" style="margin-left:auto;padding:6px 12px;font-size:12px">' +
+      '我到过</span></span></span></div>' +
+      '<div style="border-top:1px solid var(--hair);background:#FCFAF6;padding:10px 14px">' +
+      '<div style="font-size:10.5px;color:var(--ink3);margin-bottom:4px">' + o.footTitle + '</div>' +
+      '<div style="font-size:12.5px;color:#3C3F4E;line-height:1.55">' + o.footText + '</div></div>';
+    return o.href
+      ? '<a class="card" href="' + o.href + '" style="padding:0;overflow:hidden;margin-bottom:12px;' +
+        'display:block">' + inner + '</a>'
+      : '<div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">' + inner + '</div>';
   }
 
   /* ==================== 山头页 ==================== */
@@ -1173,6 +1273,15 @@
       var input = document.getElementById('q');
       if (input) input.addEventListener('input', function () { q = this.value; refreshTrailResults(); });
     }
+    if (r.name === 'places') {
+      var pi = document.getElementById('pq');
+      if (pi) pi.addEventListener('input', function () {
+        pq = this.value;
+        render();
+        var ni = document.getElementById('pq');       /* 重渲染后把焦点和光标放回去 */
+        if (ni) { ni.focus(); ni.setSelectionRange(ni.value.length, ni.value.length); }
+      });
+    }
     if (r.name === 'home') homeInit();
 
     var isTab = !!r.tab && r.name !== 'peak' && r.name !== 'junction' && r.name !== 'trail';
@@ -1278,6 +1387,22 @@
       return;
     }
     if (act === 'seg') { seg = val; render(); return; }
+    if (act === 'pfilter') {
+      if (val === 'near' && !pgeo) {
+        if (!navigator.geolocation) { U.toast('这个浏览器不支持定位'); return; }
+        U.toast('正在获取你的位置…');
+        navigator.geolocation.getCurrentPosition(function (pos) {
+          pgeo = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          pf = 'near'; render();
+        }, function () {
+          U.toast('拿不到位置——需要授权，或换个环境试');
+        }, { timeout: 8000 });
+        return;
+      }
+      pf = val; render(); return;
+    }
+    if (act === 'pcity') { pcity = val; render(); return; }
+    if (act === 'plv') { plv = val; render(); return; }
     if (act === 'filter') { lv = val; render(); return; }
     if (act === 'filter-grp') { grp = val; render(); return; }
     if (act === 'clear-filter') { q = ''; lv = 'all'; render(); return; }

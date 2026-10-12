@@ -40,12 +40,13 @@ def main():
             name, sub = split_name(r["name"])
             h = r.get("hardest") or {}
             rid = c.execute(text("""INSERT INTO routes
-                (slug, name, sub, km, up, down, hardest_level, hours, kcal, est,
+                (slug, name, sub, city, km, up, down, hardest_level, hours, kcal, est,
                  peak_count, path, profile, status)
-                VALUES (:slug, :name, :sub, :km, :up, :down, :hl, :hours, :kcal,
+                VALUES (:slug, :name, :sub, :city, :km, :up, :down, :hl, :hours, :kcal,
                         CAST(:est AS jsonb), :pc, CAST(:path AS jsonb), CAST(:prof AS jsonb),
                         'published') RETURNING id"""),
-                {"slug": slug, "name": name, "sub": sub, "km": r["km"], "up": r["up"],
+                {"slug": slug, "name": name, "sub": sub, "city": r.get("city"),
+                 "km": r["km"], "up": r["up"],
                  "down": r["down"], "hl": h.get("level", "mid"), "hours": r.get("hours"),
                  "kcal": r.get("kcal"), "est": json.dumps(r.get("est") or {}, ensure_ascii=False),
                  "pc": len(r["peaks"]), "path": json.dumps(r["path"]),

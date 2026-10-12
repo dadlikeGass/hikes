@@ -64,6 +64,8 @@
         name: p.name,                       /* 主峰真名；空 = 待维护人命名 */
         alt: p.altitude,
         trailName: p.route_name,            /* 所属线路 */
+        city: p.city,                       /* 所在城市/区域，筛选用 */
+        level: p.level,                     /* 所属线路最难段的等级 */
         km: p.km, rise: p.rise,
         lat: p.lat, lng: p.lng,             /* 地理定位 */
         visits30: p.weekly_heat || 0,       /* 本周热度：扫码打卡次数 */
