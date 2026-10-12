@@ -97,9 +97,12 @@ section{padding:34px 0 6px}
 /* cards */
 .card{background:var(--paper);border-radius:22px;padding:18px;box-shadow:var(--shadow);margin-bottom:14px}
 .badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:7px}
-.badge.easy{background:#E6F5E2;color:#2F7A2A}
+.badge.easy{background:#E4EDFD;color:#1B4FC4}
 .badge.mid{background:#FDF2D6;color:#8A6410}
-.badge.hard{background:#FCE7E5;color:#A83027}
+.badge.hard{background:#FBE4E2;color:#B3261E}
+.badge.hidden{background:#EAE8E2;color:#22242E}
+.lvshape{display:inline-block;width:11px;height:11px;vertical-align:-1px;margin-right:5px}
+.lvshape svg{display:block;width:100%;height:100%}
 .av{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:11.5px;font-weight:700;flex:0 0 auto}
 .av.a1{background:#4F6BD8}.av.a2{background:#E08A5C}.av.a3{background:#6EA36A}.av.a4{background:#9B7BD4}
 .btn{display:block;width:100%;border:none;font:inherit;font-size:15.5px;font-weight:700;border-radius:14px;

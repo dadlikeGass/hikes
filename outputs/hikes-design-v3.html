@@ -103,9 +103,12 @@ section{padding:34px 0 6px}
 /* cards */
 .card{background:var(--paper);border-radius:22px;padding:18px;box-shadow:var(--shadow);margin-bottom:14px}
 .badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:7px}
-.badge.easy{background:#E6F5E2;color:#2F7A2A}
+.badge.easy{background:#E4EDFD;color:#1B4FC4}
 .badge.mid{background:#FDF2D6;color:#8A6410}
-.badge.hard{background:#FCE7E5;color:#A83027}
+.badge.hard{background:#FBE4E2;color:#B3261E}
+.badge.hidden{background:#EAE8E2;color:#22242E}
+.lvshape{display:inline-block;width:11px;height:11px;vertical-align:-1px;margin-right:5px}
+.lvshape svg{display:block;width:100%;height:100%}
 .av{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:11.5px;font-weight:700;flex:0 0 auto}
 .av.a1{background:#4F6BD8}.av.a2{background:#E08A5C}.av.a3{background:#6EA36A}.av.a4{background:#9B7BD4}
 .btn{display:block;width:100%;border:none;font:inherit;font-size:15.5px;font-weight:700;border-radius:14px;
@@ -340,7 +343,7 @@ figcaption b{color:var(--ink)}
 <body>
 
 <header class="top"><div class="wrap">
-  <div class="brand">hikes <span>山里见 · SEE YOU OUTSIDE</span></div>
+  <div class="brand">hikes <span>到此一游 · HIKERS</span></div>
   <div class="sub">v3 · 页面结构 / UI 设计 / 子页面布局 —— 4 个 tab＋扫一扫，首页走左上角 · 概念数据，非上线服务</div>
 </div></header>
 
@@ -369,7 +372,7 @@ figcaption b{color:var(--ink)}
       <div class="kv">
         <dt>品牌语</dt><dd>每一次上山，都算数。</dd>
         <dt>副线</dt><dd>山里，总有人与你同频。</dd>
-        <dt>英文</dt><dd>SEE YOU OUTSIDE</dd>
+        <dt>英文</dt><dd>HIKERS</dd>
         <dt>首页入口</dt><dd>左上角品牌 logo（不是 tab）</dd>
         <dt>底部导航</dt><dd>路书 / 山头·岔路 / 扫一扫 / 消息 / 我</dd>
       </div>
@@ -438,7 +441,7 @@ figcaption b{color:var(--ink)}
       <div class="ph-body">
 
         <div class="brandbar">
-          <div class="logo">山里见<em>SEE YOU OUTSIDE</em><span class="home-hint">首页</span></div>
+          <div class="logo">到此一游<em>HIKERS</em><span class="home-hint">首页</span></div>
           <div class="iconbtn"><svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg></div>
         </div>
 
@@ -451,7 +454,7 @@ figcaption b{color:var(--ink)}
               <div class="hot">近 7 天 214 人到访 · 最快 01:12</div></div>
           </div>
           <div class="slide">
-            <div class="ph scene flat" style="filter:saturate(1.15)"><i class="sun" style="left:30%"></i><span class="badge mid">■ 中等</span><i class="fav">♡</i></div>
+            <div class="ph scene flat" style="filter:saturate(1.15)"><i class="sun" style="left:30%"></i><span class="badge mid">▲ 中等</span><i class="fav">♡</i></div>
             <div class="sb"><h4>青山山脊环线</h4><div class="stat">12 km · ↗ 800 m · 约 5 小时</div>
               <div class="hot">近 7 天 96 人到访 · 最快 03:28</div></div>
           </div>
@@ -538,7 +541,7 @@ figcaption b{color:var(--ink)}
           <div class="iconbtn"><svg class="ico" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div></div>
 
         <div class="searchbar"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>搜索线路名称或地区</div>
-        <div class="chips"><span class="chip on">全部</span><span class="chip">● 简单</span><span class="chip">■ 中等</span><span class="chip">◆ 困难</span></div>
+        <div class="chips"><span class="chip on">全部</span><span class="chip">● 简单</span><span class="chip">▲ 中等</span><span class="chip">◆ 困难</span></div>
 
         <div class="sec-head"><h3>热门线路最快记录</h3><span>看全部 ›</span></div>
         <div class="carousel" style="margin-bottom:16px">
@@ -553,7 +556,7 @@ figcaption b{color:var(--ink)}
           </div>
           <div class="slide" style="flex:0 0 210px">
             <div class="sb" style="padding:14px">
-              <span class="badge mid">■ 中等</span>
+              <span class="badge mid">▲ 中等</span>
               <h4 style="margin-top:9px">青山山脊环线</h4>
               <div class="stat">12 km · ↗ 800 m</div>
               <div class="hot">最快 03:28 · 阿川</div>
@@ -581,7 +584,7 @@ figcaption b{color:var(--ink)}
           <div class="rank"><span class="pos">2</span><span class="thumb scene"><i class="sun" style="left:40%;top:30%;width:14px;height:14px"></i></span>
             <span class="nm"><b>松林环湖小径</b><em>3.8 km · ↗ 90 m</em></span><span class="tm" style="font-size:12px">● 简单</span></div>
           <div class="rank"><span class="pos">3</span><span class="thumb scene" style="filter:saturate(1.15)"><i class="sun" style="left:50%;top:32%;width:14px;height:14px"></i></span>
-            <span class="nm"><b>望春台短坡</b><em>6.1 km · ↗ 320 m</em></span><span class="tm" style="font-size:12px">■ 中等</span></div>
+            <span class="nm"><b>望春台短坡</b><em>6.1 km · ↗ 320 m</em></span><span class="tm" style="font-size:12px">▲ 中等</span></div>
         </div>
 
         <div class="sec-head"><h3>最难的线路</h3><span>看全部 ›</span></div>
@@ -593,7 +596,7 @@ figcaption b{color:var(--ink)}
         </div>
 
         <div class="rowlink"><span class="em">＋</span><div class="tx"><b>本周新增路线 4 条</b><span>由 6 位山友共建 · 查看</span></div><span class="ar">›</span></div>
-        <div class="rowlink"><span class="em">?</span><div class="tx"><b>难度分级怎么定的</b><span>● 简单 · ■ 中等 · ◆ 困难</span></div><span class="ar">›</span></div>
+        <div class="rowlink"><span class="em">?</span><div class="tx"><b>难度分级怎么定的</b><span>● 简单 · ▲ 中等 · ◆ 困难</span></div><span class="ar">›</span></div>
 
       </div>
       <nav class="tabbar">
@@ -1134,7 +1137,7 @@ figcaption b{color:var(--ink)}
       </dl>
       <h4 style="font-size:14px;margin-bottom:10px">核心组件</h4>
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
-        <span class="badge easy">● 简单</span><span class="badge mid">■ 中等</span><span class="badge hard">◆ 困难</span>
+        <span class="badge easy">● 简单</span><span class="badge mid">▲ 中等</span><span class="badge hard">◆ 困难</span>
         <span class="tag ok" style="font-size:10.5px">已核验</span><span class="tag wait" style="font-size:10.5px">待核验</span>
       </div>
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
