@@ -18,10 +18,19 @@
   function on(p) { return here.indexOf(p) === 0 ? ' class="on"' : ''; }
 
   var css = document.createElement('style');
-  css.textContent = '.tabbar{position:fixed;left:0;right:0;bottom:0;max-width:430px;margin:0 auto;z-index:50}' +
-    '@media(min-width:600px){.tabbar{left:50%;transform:translateX(-50%)}}' +
-    'body{padding-bottom:84px!important}' +
-    '.tabbar .scanb{border:none;background:none;padding:0}';
+  css.textContent = [
+    /* 页面容器：手机上铺满，桌面上固定 430px 居中——所有页面统一，不再各写各的 */
+    'html,body{margin:0;padding:0}',
+    'body>.wrap{width:100%;max-width:430px;margin:0 auto;min-height:100dvh;',
+    '  padding-bottom:84px!important}',
+    '@media(min-width:600px){',
+    '  body{background:#E0DACD}',
+    '  body>.wrap{box-shadow:0 24px 60px rgba(34,36,46,.14)}',
+    '}',
+    /* 导航栏：始终按 50% + 位移居中，不再用 left/right 拉伸 */
+    '.tabbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);',
+    '  width:100%;max-width:430px;z-index:50}'
+  ].join('');
   document.head.appendChild(css);
 
   var nav = document.createElement('nav');
