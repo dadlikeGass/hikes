@@ -165,14 +165,18 @@
           '<div class="ph">' + U.scene(t.id) +
           '<div class="scrim"></div>' +
           '<div class="ovl tl"><h4>' + esc(t.name) + '</h4>' +
-          '<div class="st">' + t.km + ' km · ↗ ' + t.up + ' m · ' + esc(t.hours) + '</div></div>' +
+          /* 左上角：名称下面是 总长 / 总爬升 / 用时 / 卡路里 */
+          '<div class="st">' + t.km + ' km · ↗ ' + t.up + ' m</div>' +
+          '<div class="st">平均 ' + esc(t.hours) + ' · ' + (t.kcal || '—') + ' kcal</div></div>' +
           '<button class="favbtn" data-act="want" data-id="' + t.id + '" data-on="♥" data-off="♡">' + (isWant(t.id) ? '♥' : '♡') + '</button>' +
           '<div class="ovl br">' + U.levelBadge(t.level) + '</div>' +
           '</div>' +
           '<a href="#/trails/' + t.id + '"><div class="sb">' + U.trackBox(t.id, 'trk-mini') +
           '<div class="sbtx">' +
-          '<div class="sline"><span>六只脚人气</span><b>' + t.visits7 + '</b></div>' +
-          '<div class="sline"><span>参考用时</span><b class="hi">' + t.fastest.time + ' · ' + (t.group === 'park' ? '跑步' : '徒步') + '估算</b></div>' +
+          /* 轨迹图右边：本周打卡 / 最快用时 / 记录保持者 */
+          '<div class="sline"><span>本周打卡</span><b>' + (t.visits7 || 0) + ' 人</b></div>' +
+          '<div class="sline"><span>最快用时</span><b class="hi">' + esc(t.fastest.time) + '</b></div>' +
+          '<div class="sline"><span>记录保持</span><b class="who">' + esc(t.fastest.who) + '</b></div>' +
           '</div></div></a>' +
           '</div>';
       }).join('') + '</div>' +
