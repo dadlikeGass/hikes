@@ -595,11 +595,27 @@ class ClaimOut(BaseModel):
     qrUrl: str = Field(description="可直接下载打印的二维码")
     shortLink: str
     scanCount: int = Field(description="已有多少次扫码")
-    needForKit: int = Field(description="还差几次扫码可申领喷漆与打孔卡")
-    canClaimKit: bool = Field(description="满 10 次扫码即可申领物料")
+    scanDays: int = Field(default=0, description="扫码分布在多少个不同日子")
+    needForKit: int = Field(description="还差几次扫码可申领物料")
+    canClaimKit: bool = Field(description="扫码满 40 次、分布满 7 天、且有维护动作")
+    tier: str = Field(default="new", description="new / warm / ready")
 
 
-KIT_THRESHOLD = 10       # 扫码满这个数就能申领喷漆和二维码打孔卡
+# ── 物料门槛：为什么是这三个数 ──────────────────────────────
+# 一套物料（打孔卡 + 喷漆 + 邮寄）约 80–100 元。一次扫码按 2 元的用户价值折算，
+# 40 次 ≈ 回本，所以门槛定 40。但"扫码次数"单独用会被刷、也不衡量维护质量，
+# 所以叠两个附加条件：① 扫码分布在 ≥7 个不同日子（防一天刷完）
+# ② 山大王本人有 ≥1 次维护动作。10 次是正反馈档，让人早点看到有人来过。
+KIT_THRESHOLD = 40       # 解锁物料申领
+HINT_THRESHOLD = 10      # 正反馈档
+KIT_DAYS = 7             # 扫码要分布在这么多天
+
+
+def _scan_stats(code: str):
+    n = q1("SELECT count(*) AS n FROM scans WHERE code = :c", c=code)["n"]
+    d = q1("SELECT count(DISTINCT created_at::date) AS d FROM scans WHERE code = :c",
+           c=code)["d"]
+    return n, d
 
 
 def _next_code() -> str:
@@ -637,12 +653,17 @@ def create_claim(body: ClaimIn, uid: int = Depends(require_user)):
 
 
 def _claim_out(code: str, name: str, nickname: str) -> ClaimOut:
-    n = q1("SELECT count(*) AS n FROM scans WHERE code = :c", c=code)["n"]
+    n, days = _scan_stats(code)
+    # 维护动作：他本人在这个点位上留过言（真做事，比"自己发内容"更能预测靠谱）
+    kept = q1("""SELECT count(*) AS n FROM comments c JOIN points p ON p.id = c.point_id
+                 WHERE p.code = :c""", c=code)["n"]
+    ready = n >= KIT_THRESHOLD and days >= KIT_DAYS and kept > 0
     return ClaimOut(code=code, target_name=name, nickname=nickname,
                     qrUrl=f"{PUBLIC_BASE}/api/qr/{code}.svg",
                     shortLink=f"{PUBLIC_BASE}/p/{code}",
-                    scanCount=n, needForKit=max(0, KIT_THRESHOLD - n),
-                    canClaimKit=n >= KIT_THRESHOLD)
+                    scanCount=n, scanDays=days, needForKit=max(0, KIT_THRESHOLD - n),
+                    canClaimKit=ready,
+                    tier="ready" if ready else ("warm" if n >= HINT_THRESHOLD else "new"))
 
 
 @app.get("/api/claims/{target_key}", response_model=ClaimOut, tags=["占山为王"],

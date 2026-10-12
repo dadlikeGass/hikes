@@ -1400,10 +1400,11 @@
           ckind = t.getAttribute('data-kind');
       U.openSheet(
         '<h3>占山为王</h3>' +
-        '<div class="sh-sub">' + esc(cn) + ' · 认领后你成为这个点位的山头主</div>' +
+        '<div class="sh-sub">' + esc(cn) + ' · 认领后你成为这个点位的山大王</div>' +
         '<div class="note" style="margin-bottom:14px;line-height:1.75">' +
         '认领后立刻拿到一个编号和二维码，<b>自己打印贴出去就能用</b>，不用等官方标牌。<br>' +
-        '有 ' + 10 + ' 个人扫过之后，可以申领喷漆和二维码打孔卡。</div>' +
+        '被扫 <b>40 次</b>（且分布在 7 个以上不同日子、你本人留过言）之后，' +
+        '可以申领喷漆和二维码打孔卡。</div>' +
         '<div class="field"><label>你的昵称</label>' +
         '<input id="clNick" type="text" value="' + esc(H.me.name) + '"></div>' +
         '<div class="field"><label>联系方式 · 选填（微信号，用于寄物料）</label>' +
@@ -1535,8 +1536,9 @@
           '<div class="progress" style="margin:8px 0 6px"><i style="width:' +
           Math.min(100, c.scanCount / 10 * 100) + '%"></i></div>' +
           '<div class="note" style="color:var(--blue-deep)">' +
-          (c.canClaimKit ? '已满 10 次，可以申领<b>喷漆和二维码打孔卡</b>了'
-                         : '再被扫 ' + c.needForKit + ' 次，可申领喷漆和二维码打孔卡') +
+          (c.canClaimKit ? '条件已满足，可以申领<b>喷漆和二维码打孔卡</b>了'
+                         : '再被扫 ' + c.needForKit + ' 次（当前 ' + c.scanCount +
+                           ' 次 / ' + c.scanDays + ' 天）可申领物料') +
           '</div></div>' +
           '<button class="btn ghost" style="margin-top:9px" data-act="close">知道了</button>');
       })
