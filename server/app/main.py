@@ -96,6 +96,9 @@ class RouteBrief(BaseModel):
         description="最难那一段的等级，不代表整条线路")
     hours: float | None = Field(default=None, description="平均完成时间（估算）")
     kcal: int | None = Field(default=None, description="大致消耗（估算）")
+    weekly_visits: int = Field(default=0, description="近 7 天打卡人次")
+    fastest_time: str | None = Field(default=None, description="最快用时；没人记过则为 null")
+    fastest_holder: str | None = Field(default=None, description="记录保持者")
     peak_count: int
     segment_count: int
     visit_count: int
@@ -232,7 +235,17 @@ def list_routes(level: str | None = None, limit: int = 20):
                     peak_count,
                     (SELECT count(*) FROM route_segments s WHERE s.route_id = r.id) AS segment_count,
                     (SELECT coalesce(sum(seq),0) FROM visits v
-                       JOIN points p ON p.id = v.point_id WHERE p.route_id = r.id) AS visit_count
+                       JOIN points p ON p.id = v.point_id WHERE p.route_id = r.id) AS visit_count,
+                    (SELECT count(*) FROM visits v JOIN points p ON p.id = v.point_id
+                       WHERE p.route_id = r.id AND v.created_at > now() - interval '7 days')
+                       AS weekly_visits,
+                    (SELECT to_char(make_interval(secs => min(v.duration_sec)), 'HH24:MI')
+                       FROM visits v JOIN points p ON p.id = v.point_id
+                       WHERE p.route_id = r.id AND v.duration_sec IS NOT NULL) AS fastest_time,
+                    (SELECT u.nickname FROM visits v
+                       JOIN points p ON p.id = v.point_id JOIN users u ON u.id = v.user_id
+                       WHERE p.route_id = r.id AND v.duration_sec IS NOT NULL
+                       ORDER BY v.duration_sec LIMIT 1) AS fastest_holder
              FROM routes r WHERE status = 'published'"""
     if level:
         sql += " AND hardest_level = :level"

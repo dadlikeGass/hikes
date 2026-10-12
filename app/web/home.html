@@ -5,12 +5,22 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>到此一游</title>
 <link rel="stylesheet" href="/theme/app.css">
+<script src="guard.js"></script>
 <style>
 body{background:#E7E1D6}
 .wrap{max-width:430px;margin:0 auto;background:var(--bg);min-height:100dvh;padding-bottom:26px;overflow:hidden}
 .sc{flex:0 0 250px}
 .sc .ph{flex:0 0 132px;height:132px}
-.sc .sb{display:block;padding:11px 13px 13px}
+.sc .sb{display:flex;gap:11px;align-items:center;padding:11px 13px 13px}
+.sc .cstrk{width:78px;height:62px;flex:0 0 auto;border-radius:11px;overflow:hidden;
+  background:#FBF9F4;border:1px solid #EFEADD;display:block}
+.sc .cstrk svg{display:block;width:100%;height:100%}
+.sc .sbtx{flex:1;min-width:0}
+.sc .sline{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:1.5px 0}
+.sc .sline span{font-size:10.5px;color:var(--ink3);white-space:nowrap}
+.sc .sline b{font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sc .sline b.hi{color:var(--coral)}
+.sc .sline b.who{font-size:11.5px;font-weight:700;color:var(--ink2)}
 .sc h4{font-size:15.5px;font-weight:800;margin-bottom:3px}
 .sc .st{font-size:11.5px;color:var(--ink2)}
 .sc .row{display:flex;gap:10px;margin-top:9px;padding-top:9px;border-top:1px solid var(--hair)}
@@ -94,6 +104,25 @@ function scene(seed) {
 }
 async function j(u) { var r = await fetch(u); if (!r.ok) throw new Error(r.status); return r.json(); }
 
+/* 卡片左下角的小轨迹图：按段着色 */
+function thumbSVG(path, segs, km) {
+  var W = 120, H = 96, pad = 10, xs = [], ys = [];
+  path.forEach(function (p) { xs.push(p[0]); ys.push(p[1]); });
+  var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
+  var y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+  var s = Math.min((W - pad * 2) / ((x1 - x0) || 1), (H - pad * 2) / ((y1 - y0) || 1));
+  var ox = (W - (x1 - x0) * s) / 2, oy = (H - (y1 - y0) * s) / 2;
+  function P(i) { return [(xs[i] - x0) * s + ox, (ys[i] - y0) * s + oy]; }
+  var n = path.length - 1, o = '<svg viewBox="0 0 ' + W + ' ' + H + '">';
+  segs.forEach(function (sg) {
+    var a = Math.round(sg.from_km / km * n), b = Math.round(sg.to_km / km * n), d = '';
+    for (var i = a; i <= b; i++) { var q = P(i); d += (i === a ? 'M' : 'L') + q[0].toFixed(1) + ' ' + q[1].toFixed(1); }
+    o += '<path d="' + d + '" fill="none" stroke="' + (C[sg.level] || '#999') +
+      '" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>';
+  });
+  return o + '</svg>';
+}
+
 (async function () {
   var car = document.getElementById('carousel'), feed = document.getElementById('feed');
   try {
@@ -101,19 +130,33 @@ async function j(u) { var r = await fetch(u); if (!r.ok) throw new Error(r.statu
     var hot = d.items.filter(function (r) { return r.km >= 12; }).slice(0, 6);
     car.innerHTML = '<div class="sec-head"><h3>值得走一趟</h3>' +
       '<a class="more" href="/routes.html">全部 ' + d.items.length + ' 条 ›</a></div>' +
-      '<div class="carousel">' + hot.map(function (r) {
+      '<div class="carousel" id="car">' + hot.map(function (r) {
+        // 左上角：名称 + 总长 / 总爬升 / 平均用时 / 卡路里
         return '<a class="slide sc" href="/routes.html#' + r.slug + '">' +
           '<div class="ph">' + scene(r.slug) + '<div class="scrim"></div>' +
           '<div class="ovl tl"><h4>' + esc(r.name) + '</h4>' +
-          '<div class="st">' + r.km + ' km · ↗ ' + r.up + ' m</div></div>' +
+          '<div class="st">' + r.km + ' km · ↗ ' + r.up + ' m</div>' +
+          '<div class="st">平均 ' + r.hours + ' h · ' + r.kcal + ' kcal</div></div>' +
           '<div class="ovl br">' + badge(r.hardest_level) + '</div></div>' +
-          '<div class="sb"><div class="row">' +
-          '<div><span>平均用时</span><b>' + r.hours + ' h</b></div>' +
-          '<div><span>消耗</span><b class="cal">' + r.kcal + '</b></div>' +
+          // 文字区：左轨迹图，右本周打卡 / 最快用时 / 记录保持者
+          '<div class="sb"><span class="cstrk" data-slug="' + r.slug + '"></span>' +
+          '<div class="sbtx">' +
+          '<div class="sline"><span>本周打卡</span><b>' + r.weekly_visits + ' 人</b></div>' +
+          '<div class="sline"><span>最快用时</span><b class="hi">' + (r.fastest_time || '—') + '</b></div>' +
+          '<div class="sline"><span>记录保持</span><b class="who">' +
+          (r.fastest_holder || '—') + '</b></div>' +
           '</div></div></a>';
       }).join('') + '</div>' +
       '<div class="hint" style="text-align:center;margin:-4px 0 0">' +
       '难度徽标 = 这条线路里最难的那一段</div>';
+
+    // 每张卡左侧的路线缩略图：并发取这几条线路的轨迹
+    await Promise.all(hot.map(function (r) {
+      return j('/api/routes/' + r.slug).then(function (d) {
+        var el = document.querySelector('.cstrk[data-slug="' + r.slug + '"]');
+        if (el) el.innerHTML = thumbSVG(d.path, d.segments, d.km);
+      }).catch(function () { });
+    }));
 
     var cm = await j('/api/points/1/comments?limit=6');
     feed.innerHTML = cm.items.length ? cm.items.map(function (c) {

@@ -108,6 +108,7 @@ CREATE TABLE visits (
   seq         INT    NOT NULL,
   visit_date  DATE   NOT NULL DEFAULT CURRENT_DATE,
   source      TEXT   NOT NULL DEFAULT 'scan' CHECK (source IN ('scan','nearby','manual')),
+  duration_sec INT,                          -- 本次用时；填了才进最快用时榜
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   -- "同一人 + 同一点位 + 同一天只算一次" 靠约束实现，不靠代码判重
   UNIQUE (user_id, point_id, visit_date)
