@@ -501,7 +501,7 @@ def short_link(code: str, request: Request):
     with engine.begin() as conn:
         conn.execute(text("""INSERT INTO scans (point_id, code, ua)
             VALUES (:pid, :code, :ua)"""), {"pid": row["point_id"], "code": code, "ua": ua[:300]})
-    return RedirectResponse(url=f"/?code={code}", status_code=302)
+    return RedirectResponse(url=f"/index.html?code={code}", status_code=302)
 
 
 # ==================== 埋点 ====================
@@ -555,4 +555,11 @@ if _theme.is_dir():
     app.mount("/theme", StaticFiles(directory=str(_theme)), name="theme")
 _static = pathlib.Path(os.getenv("STATIC_DIR", "/srv/web"))
 if _static.is_dir():
+    from fastapi.responses import FileResponse
+
+    @app.get("/", include_in_schema=False)
+    def index_page():
+        """根地址 = 产品首页。点位落地页在 /index.html?code=xxx。"""
+        return FileResponse(str(_static / "home.html"))
+
     app.mount("/", StaticFiles(directory=str(_static), html=True), name="web")
