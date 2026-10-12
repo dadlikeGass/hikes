@@ -578,6 +578,81 @@ def track(payload: dict | list[dict]) -> EventsOut:
 
 
 # ==================== 静态页面 ====================
+
+class ClaimIn(BaseModel):
+    target_key: str = Field(description="点位标识，如 sanfeng-2")
+    target_name: str
+    kind: Literal["peak", "junction"] = "peak"
+    nickname: str = Field(min_length=1, max_length=20)
+    contact: str | None = Field(default=None, max_length=60,
+                                description="微信号或手机号，用于邮寄物料")
+
+
+class ClaimOut(BaseModel):
+    code: str
+    target_name: str
+    nickname: str
+    qrUrl: str = Field(description="可直接下载打印的二维码")
+    shortLink: str
+    scanCount: int = Field(description="已有多少次扫码")
+    needForKit: int = Field(description="还差几次扫码可申领喷漆与打孔卡")
+    canClaimKit: bool = Field(description="满 10 次扫码即可申领物料")
+
+
+KIT_THRESHOLD = 10       # 扫码满这个数就能申领喷漆和二维码打孔卡
+
+
+def _next_code() -> str:
+    """编号：区域码 + 递增序号。无语义，因为标牌印出去就不能改。"""
+    n = q1("SELECT count(*) AS n FROM short_links")["n"] + 1041
+    for i in range(50):
+        code = "BJ-%04d" % (n + i)
+        if not q1("SELECT 1 AS x FROM short_links WHERE code = :c", c=code):
+            return code
+    err(500, "CODE_EXHAUSTED", "编号生成失败，请重试")
+
+
+@app.post("/api/claims", response_model=ClaimOut, tags=["占山为王"],
+          responses={**ERR_401, 409: {"description": "这个点位已经有人认领了"}},
+          summary="申请成为山头主：填信息 → 立即拿到编号与二维码")
+def create_claim(body: ClaimIn, uid: int = Depends(require_user)):
+    if q1("SELECT 1 AS x FROM claims WHERE target_key = :k", k=body.target_key):
+        err(409, "ALREADY_CLAIMED", "这个点位已经有人认领了")
+    code = _next_code()
+    with engine.begin() as conn:
+        pid = conn.execute(text("""INSERT INTO points
+            (code, type, name, level, status)
+            VALUES (:code, :type, :name, 'mid', 'published')
+            ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name
+            RETURNING id"""),
+            {"code": code, "type": body.kind, "name": body.target_name}).scalar()
+        conn.execute(text("INSERT INTO short_links (code, point_id) VALUES (:c, :p)"),
+                     {"c": code, "p": pid})
+        conn.execute(text("""INSERT INTO claims
+            (user_id, target_key, target_name, kind, nickname, contact, code)
+            VALUES (:uid, :k, :n, :kind, :nick, :ct, :code)"""),
+            {"uid": uid, "k": body.target_key, "n": body.target_name, "kind": body.kind,
+             "nick": body.nickname, "ct": body.contact, "code": code})
+    return _claim_out(code, body.target_name, body.nickname)
+
+
+def _claim_out(code: str, name: str, nickname: str) -> ClaimOut:
+    n = q1("SELECT count(*) AS n FROM scans WHERE code = :c", c=code)["n"]
+    return ClaimOut(code=code, target_name=name, nickname=nickname,
+                    qrUrl=f"{PUBLIC_BASE}/api/qr/{code}.svg",
+                    shortLink=f"{PUBLIC_BASE}/p/{code}",
+                    scanCount=n, needForKit=max(0, KIT_THRESHOLD - n),
+                    canClaimKit=n >= KIT_THRESHOLD)
+
+
+@app.get("/api/claims/{target_key}", response_model=ClaimOut, tags=["占山为王"],
+         responses={404: {"description": "还没人认领"}})
+def get_claim(target_key: str):
+    c = q1("""SELECT code, target_name, nickname FROM claims
+              WHERE target_key = :k AND status = 'active'""", k=target_key)
+    if not c:
+        err(404, "NOT_CLAIMED", "这个点位还没人认领")
+    return _claim_out(c["code"], c["target_name"], c["nickname"])
 # 挂在最后，避免覆盖 /api 路由。前端产物来自仓库 app/（同一套设计令牌）。
 import pathlib  # noqa: E402
 

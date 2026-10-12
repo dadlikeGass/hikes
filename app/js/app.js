@@ -659,6 +659,12 @@
   /* 山头 / 岔路 共用卡片：
      上半 = 图 + 名称 + 定位 + 热度 +「我到过」；下半 = 留言 / 情报。
      两张卡片大小一致。 */
+  /* 占山为王：首图右下角那颗按钮 */
+  function claimBtn(key, name, kind) {
+    return '<button class="claimbtn" data-act="claim" data-key="' + esc(key) +
+      '" data-name="' + esc(name) + '" data-kind="' + kind + '">占山为王</button>';
+  }
+
   function locCard(o) {
     var inner =
       '<div style="display:flex;gap:12px;padding:14px">' +
@@ -698,6 +704,7 @@
       '<div class="hero tall">' + U.scene(p.id) +
       '<div class="floating"><a href="#/places"><span class="pill">‹ 返回</span></a></div>' +
       '<div class="floating right"><span class="pill">山头 · 打卡点</span></div></div>' +
+      claimBtn(p.id, p.name || p.trailName, 'peak') +
       '<div class="pad">' +
       '<h2 class="arrive-h" style="margin-top:0">' + esc(p.name) + '</h2>' +
       '<p class="arrive-p">' +
@@ -739,6 +746,7 @@
       '<div class="hero tall">' + U.scene(j.id, { palette: 1 }) +
       '<div class="floating"><a href="#/places/junction"><span class="pill">‹ 返回</span></a></div>' +
       '<div class="floating right"><span class="pill">岔路 · 路书点</span></div></div>' +
+      claimBtn(j.id, j.name, 'junction') +
       '<div class="pad">' +
       '<h2 class="arrive-h" style="margin-top:0">' + esc(j.name) + '</h2>' +
       '<p class="arrive-p">' + esc(j.trailName) + ' · 第 <b style="color:var(--blue)">' + j.index + '</b>/' + j.total +
@@ -1387,6 +1395,33 @@
       return;
     }
     if (act === 'seg') { seg = val; render(); return; }
+    if (act === 'claim') {
+      var ck = t.getAttribute('data-key'), cn = t.getAttribute('data-name'),
+          ckind = t.getAttribute('data-kind');
+      U.openSheet(
+        '<h3>占山为王</h3>' +
+        '<div class="sh-sub">' + esc(cn) + ' · 认领后你成为这个点位的山头主</div>' +
+        '<div class="note" style="margin-bottom:14px;line-height:1.75">' +
+        '认领后立刻拿到一个编号和二维码，<b>自己打印贴出去就能用</b>，不用等官方标牌。<br>' +
+        '有 ' + 10 + ' 个人扫过之后，可以申领喷漆和二维码打孔卡。</div>' +
+        '<div class="field"><label>你的昵称</label>' +
+        '<input id="clNick" type="text" value="' + esc(H.me.name) + '"></div>' +
+        '<div class="field"><label>联系方式 · 选填（微信号，用于寄物料）</label>' +
+        '<input id="clContact" type="text" placeholder="例如 wx: agan"></div>' +
+        '<button class="btn coral" data-act="claim-submit" data-key="' + esc(ck) +
+        '" data-name="' + esc(cn) + '" data-kind="' + ckind + '">认领并生成二维码</button>' +
+        '<button class="btn ghost" style="margin-top:9px" data-act="close">先不认领</button>');
+      return;
+    }
+    if (act === 'claim-submit') {
+      var kb = t.getAttribute('data-key'), kn = t.getAttribute('data-name'),
+          kk = t.getAttribute('data-kind');
+      var nick = (document.getElementById('clNick') || {}).value || H.me.name;
+      var ct = (document.getElementById('clContact') || {}).value || null;
+      t.disabled = true; t.textContent = '生成中…';
+      claimSubmit(kb, kn, kk, nick, ct, t);
+      return;
+    }
     if (act === 'pfilter') {
       if (val === 'near' && !pgeo) {
         if (!navigator.geolocation) { U.toast('这个浏览器不支持定位'); return; }
@@ -1463,6 +1498,53 @@
       return;
     }
   });
+
+  /* 认领：拿开发 token 调接口，成功后把二维码和进度摆出来 */
+  function claimSubmit(key, name, kind, nick, contact, btn) {
+    fetch('/api/auth/dev-login?user_id=1', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (tk) {
+        return fetch('/api/claims', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json',
+                     'Authorization': 'Bearer ' + tk.token },
+          body: JSON.stringify({ target_key: key, target_name: name, kind: kind,
+                                 nickname: nick, contact: contact })
+        }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); });
+      })
+      .then(function (x) {
+        if (!x.ok) {
+          var msg = (x.d.detail && x.d.detail.error && x.d.detail.error.message) || '认领失败';
+          if (btn) { btn.disabled = false; btn.textContent = '认领并生成二维码'; }
+          U.toast(msg);
+          return;
+        }
+        var c = x.d;
+        U.openSheet(
+          '<h3>你是这个山头的王了</h3>' +
+          '<div class="sh-sub">' + esc(c.target_name) + ' · 编号 <b>' + esc(c.code) + '</b></div>' +
+          '<div style="text-align:center;padding:8px 0 4px">' +
+          '<img src="' + c.qrUrl + '" alt="二维码" style="width:190px;height:190px;' +
+          'border:1px solid var(--line);border-radius:14px;background:#fff;padding:8px"></div>' +
+          '<div class="note" style="text-align:center;margin-bottom:14px">' +
+          '印出来贴在山上就能用 · 短链 <b>' + esc(c.shortLink) + '</b></div>' +
+          '<a class="btn coral" href="' + c.qrUrl + '" download="' + c.code + '.svg">下载二维码</a>' +
+          '<div class="card" style="margin-top:14px;background:var(--blue-bg);box-shadow:none">' +
+          '<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0">' +
+          '<span style="color:var(--blue-deep)">已被扫码</span><b>' + c.scanCount + ' 次</b></div>' +
+          '<div class="progress" style="margin:8px 0 6px"><i style="width:' +
+          Math.min(100, c.scanCount / 10 * 100) + '%"></i></div>' +
+          '<div class="note" style="color:var(--blue-deep)">' +
+          (c.canClaimKit ? '已满 10 次，可以申领<b>喷漆和二维码打孔卡</b>了'
+                         : '再被扫 ' + c.needForKit + ' 次，可申领喷漆和二维码打孔卡') +
+          '</div></div>' +
+          '<button class="btn ghost" style="margin-top:9px" data-act="close">知道了</button>');
+      })
+      .catch(function (e) {
+        if (btn) { btn.disabled = false; btn.textContent = '认领并生成二维码'; }
+        U.toast('认领失败：' + e.message);
+      });
+  }
 
   function repaintWant() {
     U.$$('[data-act="want"]').forEach(function (b) {

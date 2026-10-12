@@ -90,7 +90,7 @@ CREATE TABLE points (
                     CHECK (level IN ('easy','mid','hard','hidden')),
   altitude        INT,                       -- 仅山峰
   guide           JSONB,                     -- {arrow,title,desc,next}
-  geom            GEOMETRY(Point, 4326) NOT NULL,
+  geom            GEOMETRY(Point, 4326),     -- 可空：用户在山头上认领时还没坐标
   maintainer_id   BIGINT REFERENCES users(id) ON DELETE SET NULL,
   status          TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
   version         INT  NOT NULL DEFAULT 1,
@@ -105,6 +105,23 @@ CREATE TABLE short_links (
   code       TEXT PRIMARY KEY,
   point_id   BIGINT NOT NULL REFERENCES points(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 占山为王：用户申请成为某个山顶 / 岔路口的"山头主"。
+-- 认领即发编号 + 二维码，他自己打印贴出去就能先用起来，不用等官方标牌。
+CREATE TABLE claims (
+  id          BIGSERIAL PRIMARY KEY,
+  user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  target_key  TEXT   NOT NULL,               -- 前端用的点位标识，如 sanfeng-2
+  target_name TEXT   NOT NULL,               -- 认领时的显示名（可能还是"未命名山顶"）
+  kind        TEXT   NOT NULL CHECK (kind IN ('peak','junction')),
+  nickname    TEXT,
+  contact     TEXT,
+  code        TEXT REFERENCES short_links(code),   -- 认领后分配的编号
+  status      TEXT   NOT NULL DEFAULT 'active'
+                CHECK (status IN ('active','revoked')),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (target_key)                        -- 一个点位只能有一个山头主
 );
 
 -- ============ 打卡 ============
