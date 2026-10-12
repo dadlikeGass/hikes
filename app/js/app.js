@@ -352,7 +352,8 @@
       '<div class="card tight">' + U.partsHTML(t.id) + '</div>' +
       segFeedback(t.id) +
 
-      '<div class="sec-head"><h3>分段路书</h3><span class="more">维护人 ' + esc(t.status.who) + ' ›</span></div>' +
+      '<div class="sec-head"><h3>分段路书</h3><span class="more">' +
+      (t.status ? '维护人 ' + esc(t.status.who) + ' ›' : '待维护人确认 ›') + '</span></div>' +
       '<div class="card tight">' + rows + '</div>' +
 
       (t.status
