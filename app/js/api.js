@@ -68,6 +68,29 @@
     });
 
     H.points = points;
+
+    /* 我：真实打卡记录（先拿开发登录的 token，微信登录接上后换掉） */
+    return fetch('/api/auth/dev-login?user_id=1', { method: 'POST' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .catch(function () { return null; })
+      .then(function (tk) {
+        if (!tk) return;
+        return fetch('/api/me/visits', { headers: { Authorization: 'Bearer ' + tk.token } })
+          .then(function (r) { return r.ok ? r.json() : []; })
+          .catch(function () { return []; })
+          .then(function (vs) {
+            if (window.APP_S && vs.length) {
+              window.APP_S.visited = vs.map(function (v) {
+                return {
+                  id: v.pointId, type: 'peak', name: v.name, seq: v.seq,
+                  when: new Date(v.at).toLocaleDateString('zh-CN'),
+                  level: v.level
+                };
+              });
+            }
+          });
+      });
+  }).then(function () {
     g.API.ok = true;
     return true;
     });

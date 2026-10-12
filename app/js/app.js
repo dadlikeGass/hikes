@@ -24,6 +24,7 @@
     ['visited', 'want', 'joined', 'claps', 'myComments', 'myIntel', 'intelUp',
       'letters', 'friends', 'pb', 'mySeqs', 'myActs', 'segFb', 'mySegFb'].forEach(function (k) { U.save(k, S[k]); });
   }
+  window.APP_S = S;          /* 让 api.js 把后端数据灌进来 */
 
   /* ==================== 查询 ==================== */
   function trail(id) { return H.trails.filter(function (t) { return t.id === id; })[0]; }
@@ -342,15 +343,18 @@
       (t.group === 'park' ? runCard(t) : '') +
       U.levelBasis(t.id) +
       U.signage(t, { code: 'TH-' + t.id.toUpperCase() }) +
-      '<div class="tracewrap"><span class="trk" style="width:100%;height:150px">' + U.gradientSVG(t.id) + '</span>' +
-      '<div class="tcap"><span>' + (U.isRealTrack(t.id) ? 'GPX 轨迹 · 按坡度着色' : '示例轨迹 · 按坡度着色') + '</span>' +
+      '<div class="tracewrap">' + apiTrackSVG(t) +
+      '<div class="tcap"><span>GPX 轨迹 · 按难度分段着色</span>' +
       '<span>' + t.km + ' km · ↗ ' + t.up + ' m</span></div></div>' +
 
       '<div class="sec-head"><h3>按坡度自动分段</h3>' +
-      '<span class="more">' + (U.isRealTrack(t.id) ? 'GPX 自动生成' : '示例剖面') + '</span></div>' +
-      '<div class="profilebox">' + U.profileSVG(t.id) + '</div>' +
-      '<div class="card tight">' + U.partsHTML(t.id) + '</div>' +
-      segFeedback(t.id) +
+      '<span class="more">服务端按 GPX 生成</span></div>' +
+      '<div class="profilebox">' + apiProfileSVG(t) + '</div>' +
+      '<div class="card tight">' + apiSegTable(t) +
+      '<div style="font-size:11.5px;color:var(--ink3);padding:10px 0 2px;line-height:1.7">' +
+      '段难度只看<strong>爬升高度</strong>与<strong>平均坡度</strong>：爬升 ≤200 / 200–500 / &gt;500 m，' +
+      '坡度 ≤15 / 15–25 / &gt;25%。距离不进难度——它体现在用时与消耗里。' +
+      '是否要手脚并用、是否需要绳索冰爪，由山友和维护人确认。</div></div>' +
 
       '<div class="sec-head"><h3>分段路书</h3><span class="more">' +
       (t.status ? '维护人 ' + esc(t.status.who) + ' ›' : '待维护人确认 ›') + '</span></div>' +
@@ -394,6 +398,90 @@
     return pad(Math.floor(total / 60)) + ':' + pad(total % 60);
   }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
+
+  /* ============ 详情页：全部读服务端算好的结果，前端不再重算（P6） ============ */
+  var LV_C = { easy: '#2563EB', mid: '#F2B62C', hard: '#E4453A', hidden: '#22242E' };
+  var LV_T = { easy: '简单', mid: '中等', hard: '困难', hidden: '隐藏' };
+  var KND = { climb: '爬升', desc: '下降', flat: '平缓' };
+
+  /* ① 轨迹图：按段着色，山顶标海拔 */
+  function apiTrackSVG(t) {
+    var path = t.path || [];
+    if (path.length < 2) return '';
+    var W = 380, H = 210, pad = 26, xs = [], ys = [];
+    path.forEach(function (p) { xs.push(p[0]); ys.push(p[1]); });
+    var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
+    var y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+    var s = Math.min((W - pad * 2) / ((x1 - x0) || 1), (H - pad * 2) / ((y1 - y0) || 1));
+    var ox = (W - (x1 - x0) * s) / 2, oy = (H - (y1 - y0) * s) / 2;
+    function P(i) { return [(xs[i] - x0) * s + ox, (ys[i] - y0) * s + oy]; }
+    var n = path.length - 1;
+    var o = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" ' +
+      'style="display:block;width:100%;height:230px">';
+    o += '<g fill="none" stroke="#EFEADD" stroke-width="1">';
+    [40, 78, 116, 154, 192].forEach(function (y) {
+      o += '<path d="M0 ' + y + ' q 70 -12 140 0 t 200 0"/>';
+    });
+    o += '</g>';
+    /* 段边界：服务端给的是公里数，path 是等距重采样的，按比例换算成下标 */
+    (t.segments || []).forEach(function (sg) {
+      var a = Math.round(sg.from_km / t.km * n), b = Math.round(sg.to_km / t.km * n), d = '';
+      for (var i = a; i <= b; i++) {
+        var q = P(i); d += (i === a ? 'M' : 'L') + q[0].toFixed(1) + ' ' + q[1].toFixed(1);
+      }
+      o += '<path d="' + d + '" fill="none" stroke="' + (LV_C[sg.level] || '#999') +
+        '" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>';
+    });
+    (t.peakList || []).forEach(function (pk) {
+      var q = P(Math.round(pk.km / t.km * n));
+      o += '<circle cx="' + q[0].toFixed(1) + '" cy="' + q[1].toFixed(1) + '" r="6.5" fill="#22242E"/>' +
+        '<text x="' + q[0].toFixed(1) + '" y="' + (q[1] - 11).toFixed(1) +
+        '" text-anchor="middle" font-size="10.5" font-weight="700" fill="#22242E">' +
+        pk.altitude + '</text>';
+    });
+    return o + '</svg>';
+  }
+
+  /* ② 海拔剖面 + 底部难度色带 */
+  function apiProfileSVG(t) {
+    var prof = t.profile || [];
+    if (prof.length < 2) return '';
+    var W = 340, H = 96, pad = 8, n = prof.length, xs = [], ys = [];
+    for (var i = 0; i < n; i++) {
+      xs.push(pad + (i / (n - 1)) * (W - pad * 2));
+      ys.push(H - 16 - prof[i] * (H - 30));
+    }
+    var line = xs.map(function (x, i) {
+      return (i ? 'L' : 'M') + x.toFixed(1) + ' ' + ys[i].toFixed(1); }).join(' ');
+    var o = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" ' +
+      'style="display:block;width:100%;height:74px">';
+    o += '<path d="' + line + ' L' + xs[n - 1].toFixed(1) + ' ' + (H - 12) + ' L' +
+      xs[0].toFixed(1) + ' ' + (H - 12) + ' Z" fill="#EDF1FD"/>';
+    o += '<path d="' + line + '" fill="none" stroke="#3455F5" stroke-width="2" stroke-linejoin="round"/>';
+    (t.segments || []).forEach(function (sg) {
+      var a = pad + (sg.from_km / t.km) * (W - pad * 2);
+      var b = pad + (sg.to_km / t.km) * (W - pad * 2);
+      o += '<rect x="' + a.toFixed(1) + '" y="' + (H - 10) + '" width="' +
+        Math.max(1, b - a).toFixed(1) + '" height="7" fill="' + (LV_C[sg.level] || '#999') + '"/>';
+    });
+    return o + '</svg>';
+  }
+
+  /* ③ 分段表：每段一行 */
+  function apiSegTable(t) {
+    if (!t.segments || !t.segments.length) return '';
+    return t.segments.map(function (s) {
+      return '<div style="display:flex;align-items:center;gap:9px;padding:10px 0;' +
+        'border-bottom:1px solid var(--hair);font-size:12.5px">' +
+        '<span style="width:10px;height:10px;border-radius:3px;flex:0 0 auto;background:' +
+        (LV_C[s.level] || '#999') + '"></span>' +
+        '<span style="font-weight:800;flex:0 0 56px">' + s.no + '. ' + KND[s.kind] + '</span>' +
+        '<span style="color:var(--ink2);flex:0 0 96px">' + s.from_km + '–' + s.to_km + ' km</span>' +
+        '<span style="flex:1;color:var(--ink2)">' + (s.rise > 0 ? '+' : '') + s.rise + ' m · ' +
+        (s.pct > 0 ? '+' : '') + s.pct + '%</span>' +
+        U.levelBadge(s.level) + '</div>';
+    }).join('');
+  }
 
   /* 公园跑道的跑步参考：单圈距离 / 常见路面 / 常见配速换算 */
   function fmtClock(sec) {
@@ -609,11 +697,14 @@
     }).join('');
     var best = H.summits.slice().sort(function (a, b) { return a.time.localeCompare(b.time); })[0];
     return '<div class="card record">' +
-      '<div class="row-between" style="margin-bottom:4px"><h3 style="font-size:16px;font-weight:800">我的 record</h3>' +
+      '<div class="row-between" style="margin-bottom:4px"><h3 style="font-size:16px;font-weight:800">' +
+      '我的 record<span class="soon-tag">待开发</span></h3>' +
       '<span class="tiny muted">' + H.summits.length + ' 座 ›</span></div>' +
       '<div class="tiny muted" style="margin-bottom:8px">登顶时间 · 最快一次是 ' + esc(best.name) + ' ' + best.time + '</div>' +
-      rows +
+      '<div class="soon-block">' + rows + '</div>' +
       '<div class="tiny muted" style="margin-top:10px">蓝色是个人最好成绩；时间只和自己比，不同山峰之间不排名。</div>' +
+      '<div class="tiny" style="margin-top:8px;color:var(--ink3)">' +
+      '上面这几座是示例——后端还没有「登顶时间」这张表。</div>' +
       '</div>';
   }
 
@@ -638,7 +729,8 @@
       recordCard() +
       rowlink('#/me/visited', '✓', '我去过的地方 ' + visitedCount, '地图 / 拼图两种看') +
       rowlink('#/me/want', '♡', '我想去的地方 ' + S.want.length, '到访后会自动从「想去」移到「去过」') +
-      rowlink('#/me/peak', '⛰', '我的山头 · ' + esc(H.me.claim), '已 23 天未更新 · 4 条待处理情报', true) +
+      rowlink('#/me/peak', '⛰', '我的山头 · ' + esc(H.me.claim) +
+        '<span class="soon-tag">待开发</span>', '认领与维护关系表还没建', true) +
       rowlink('#/me/records', '★', '我的纪录', '东灵山 PB ' + (S.pb.dongling || H.me.pb) + ' · 连续 ' + H.me.streak + ' 周上山') +
       rowlink('#/me/letters', '✉', '山间信箱 ' + (H.letters.length + S.letters.length), '1 封今天到期 · ' + S.letters.length + ' 条留给下一位') +
       rowlink('#/me/activity', '＋', '发起周末活动', '选一条路，约人一起走') +
