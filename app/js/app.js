@@ -605,7 +605,7 @@
           return okQ && okF && (pcity === 'all' || p.city === pcity) &&
             (plv === 'all' || p.level === plv);
         });
-      return head + bar +
+      return head + bar + newKingEntry() +
         '<div class="sec-head" style="margin-top:4px"><h3>山头热门排行榜</h3>' +
         '<span class="more">' + (pq || pf !== 'all' ? board.length + ' 个结果' : '按海拔 ›') + '</span></div>' +
         (board.length ? board.slice(0, 12).map(function (p, i) {
@@ -649,7 +649,7 @@
       return okQ && okF;
     });
     all.sort(function (a, b) { return (b.i.mine ? 1 : 0) - (a.i.mine ? 1 : 0) || (b.i.ok ? 0 : 1) - (a.i.ok ? 0 : 1); });
-    return head + bar +
+    return head + bar + newKingEntry() +
       '<div class="sec-head" style="margin-top:4px"><h3>岔路情报 · 最新</h3><span class="more">全部 ›</span></div>' +
       '<div class="hint" style="margin-top:-6px">岔路的留言不是情绪，是情报：往哪走、能不能过。</div>' +
       (all.length ? all.slice(0, 8).map(function (x) {
@@ -675,6 +675,117 @@
      上半 = 图 + 名称 + 定位 + 热度 +「我到过」；下半 = 留言 / 情报。
      两张卡片大小一致。 */
   /* 占山为王：首图右下角那颗按钮 */
+  function newKingEntry() {
+    return '<button class="kingcard" data-act="new-point">' +
+      '<span class="tx">' +
+      '<b>我要成为山大王</b>' +
+      '<p>自己有座山？建个点位，立刻拿到编号和二维码，印出来贴上去就能用。</p>' +
+      '<span class="meta">必须上传 GPX 轨迹 · 初级可建 <b>' + 3 + '</b> 个</span>' +
+      '</span>' +
+      '<span class="imp">' + patrolImp() + '</span></button>';
+  }
+
+  /* 大王叫我来巡山 —— 小妖，举着令旗 */
+  function patrolImp() {
+    return '<svg viewBox="0 0 100 100" aria-hidden="true">' +
+      '<ellipse cx="50" cy="92" rx="26" ry="4" fill="#22242E" opacity=".07"/>' +
+      /* 旗 */
+      '<line x1="72" y1="20" x2="72" y2="80" stroke="#B6AE9C" stroke-width="3" ' +
+      'stroke-linecap="round"/>' +
+      '<path d="M72 22 L94 29 L72 38 Z" fill="#3455F5"/>' +
+      '<text x="80" y="33" font-size="7" font-weight="700" fill="#fff" ' +
+      'text-anchor="middle">巡山</text>' +
+      /* 身体 */
+      '<path d="M38 44 q16 0 16 18 v14 q0 6 -6 6 h-20 q-6 0 -6 -6 v-14 q0 -18 16 -18 Z" ' +
+      'fill="#FF714E"/>' +
+      /* 手臂举旗 */
+      '<path d="M52 56 q12 -4 20 -10" stroke="#FF714E" stroke-width="7" ' +
+      'stroke-linecap="round" fill="none"/>' +
+      /* 头 */
+      '<circle cx="38" cy="30" r="17" fill="#FF8B6B"/>' +
+      /* 角 */
+      '<path d="M27 18 L21 7 L32 14 Z" fill="#D9502C"/>' +
+      '<path d="M49 18 L55 7 L44 14 Z" fill="#D9502C"/>' +
+      /* 眼睛和嘴 */
+      '<circle cx="32" cy="29" r="2.7" fill="#22242E"/>' +
+      '<circle cx="44" cy="29" r="2.7" fill="#22242E"/>' +
+      '<path d="M33 37 q5 5 10 0" stroke="#22242E" stroke-width="2" fill="none" ' +
+      'stroke-linecap="round"/>' +
+      /* 腿 */
+      '<path d="M30 82 q0 7 -6 8" stroke="#D9502C" stroke-width="4" fill="none" ' +
+      'stroke-linecap="round"/>' +
+      '<path d="M46 82 q0 7 6 8" stroke="#D9502C" stroke-width="4" fill="none" ' +
+      'stroke-linecap="round"/>' +
+      '</svg>';
+  }
+
+  var npGeo = { lat: null, lng: null };
+  function newPointSheet(kind) {
+    npGeo = { lat: null, lng: null };
+    U.openSheet(
+      '<h3>我要成为山大王</h3>' +
+      '<div class="sh-sub">建好立刻拿到编号和二维码，印出来贴上去就能用</div>' +
+      '<div class="field"><label>这座山叫什么</label>' +
+      '<input id="npName" type="text" maxlength="30" placeholder="没名字也行，比如「老鹰嘴」"></div>' +
+      '<div class="field"><label>一句话介绍 · 必填</label>' +
+      '<input id="npIntro" type="text" maxlength="200" ' +
+      'placeholder="怎么走、什么样。这句话会成为第一条留言"></div>' +
+      '<div class="field"><label>位置</label>' +
+      '<button class="btn ghost" id="npGeo" style="font-size:13px;padding:10px">取当前位置</button>' +
+      '<div class="note" id="npGeoMsg" style="margin-top:8px">取不到定位就填个大致位置：</div>' +
+      '<input id="npArea" type="text" maxlength="40" placeholder="例如 门头沟 妙峰山附近"></div>' +
+      '<div class="field"><label>海拔 · 选填</label>' +
+      '<input id="npAlt" type="text" placeholder="例如 1180"></div>' +
+      '<div class="field"><label>你的昵称</label>' +
+      '<input id="npNick" type="text" maxlength="20" value="' + esc(H.me.name) + '"></div>' +
+      '<div class="field"><label>微信号 · 选填（将来寄物料用）</label>' +
+      '<input id="npContact" type="text" maxlength="60" placeholder="例如 wx: agan"></div>' +
+      '<button class="btn coral" data-act="new-point-submit" data-kind="' + kind +
+      '">建好并生成二维码</button>' +
+      '<button class="btn ghost" style="margin-top:9px" data-act="close">先不建</button>');
+    document.getElementById('npGeo').onclick = function () {
+      var m = document.getElementById('npGeoMsg');
+      if (!navigator.geolocation) { m.textContent = '这个浏览器不支持定位，填大致位置吧'; return; }
+      m.textContent = '正在取位置…';
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        npGeo = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        m.textContent = '✓ 已取到 ' + npGeo.lat.toFixed(5) + ', ' + npGeo.lng.toFixed(5);
+      }, function () { m.textContent = '拿不到位置，填个大致位置也一样'; }, { timeout: 8000 });
+    };
+  }
+
+  function newPointSend(kind, btn) {
+    var v = function (id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
+    var body = {
+      name: v('npName'), intro: v('npIntro'), nickname: v('npNick') || H.me.name,
+      kind: kind, lat: npGeo.lat, lng: npGeo.lng,
+      area: v('npArea') || null,
+      altitude: v('npAlt') ? parseInt(v('npAlt'), 10) : null,
+      contact: v('npContact') || null
+    };
+    if (!body.name) { U.toast('先起个名字'); return; }
+    if (body.intro.length < 4) { U.toast('写一句怎么走、什么样（至少 4 个字）'); return; }
+    btn.disabled = true; btn.textContent = '创建中…';
+    fetch('/api/auth/dev-login?user_id=1', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (tk) {
+        return fetch('/api/points', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk.token },
+          body: JSON.stringify(body)
+        }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); });
+      })
+      .then(function (x) {
+        btn.disabled = false; btn.textContent = '建好并生成二维码';
+        if (!x.ok) {
+          U.toast((x.d.detail && x.d.detail.error && x.d.detail.error.message) || '创建失败');
+          return;
+        }
+        showQrSheet(x.d);
+      })
+      .catch(function (e) { btn.disabled = false; btn.textContent = '建好并生成二维码'; U.toast('创建失败：' + e.message); });
+  }
+
   function footInner(label, list, i) {
     var m = list[i] || { who: '', text: '' };
     var dots = list.length > 1

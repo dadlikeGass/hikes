@@ -3,9 +3,11 @@
 实现在 docs/API.md 里定义的契约。全部返回体声明 response_model，错误响应也列出，
 否则 /docs 里响应是空的，前端没法照着联调。
 """
-import json
 import io
+import json
+import math
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
@@ -865,6 +867,163 @@ def get_claim(target_key: str):
 
 
 class KingOut(BaseModel):
+    pass
+
+
+class NewPointIn(BaseModel):
+    """用户自己创建山头。字段刻意少——多了没人填。
+    必填只有三项：名称、一句话介绍、昵称。位置能取到就自动带上。"""
+    name: str = Field(min_length=1, max_length=30, description="这座山 / 这个点位叫什么")
+    intro: str = Field(min_length=4, max_length=200,
+                       description="一句话介绍：怎么走、什么样。它同时会成为第一条留言")
+    nickname: str = Field(min_length=1, max_length=20)
+    kind: Literal["peak", "junction", "trailhead"] = "peak"
+    lat: float | None = Field(default=None, description="取到定位就带上")
+    lng: float | None = None
+    area: str | None = Field(default=None, max_length=40,
+                             description="取不到定位时，填大致位置，例如「门头沟 妙峰山附近」")
+    altitude: int | None = None
+    contact: str | None = Field(default=None, max_length=60,
+                                description="微信号，将来寄物料用")
+    gpx: str | None = Field(default=None,
+                            description="GPX 原文。必填——没有轨迹不能建点位")
+
+
+# ── GPX 解析与校验 ────────────────────────────────────────────
+def _parse_gpx(text: str):
+    """返回 [(lat, lng, ele|None), ...]。兼容 GPX trkpt 和 KML coordinates。"""
+    pts = []
+    for m in re.finditer(r"<(?:trkpt|rtept)\b[^>]*?lat=\"([-\d.]+)\"[^>]*?lon=\"([-\d.]+)\""
+                         r"[^>]*?>([\s\S]*?)</(?:trkpt|rtept)>", text, re.S):
+        e = re.search(r"<ele>\s*([-\d.]+)", m.group(3))
+        pts.append((float(m.group(1)), float(m.group(2)), float(e.group(1)) if e else None))
+    if not pts:
+        inner = re.search(r"<coordinates>([\s\S]*?)</coordinates>", text, re.I)
+        if inner:
+            for pair in inner.group(1).split():
+                v = pair.split(",")
+                if len(v) >= 2:
+                    try:
+                        pts.append((float(v[1]), float(v[0]), float(v[2]) if len(v) > 2 else None))
+                    except ValueError:
+                        pass
+    return pts
+
+
+def _gpx_summary(pts):
+    """距离、累计爬升、归一化路径。累计爬升按原始高程 + 3 m 滞回。"""
+    R = 6371000.0
+    r = math.pi / 180
+    dist = 0.0
+    for i in range(1, len(pts)):
+        a, b = pts[i - 1], pts[i]
+        dlat, dlng = (b[0] - a[0]) * r, (b[1] - a[1]) * r
+        x = (math.sin(dlat / 2) ** 2 +
+             math.cos(a[0] * r) * math.cos(b[0] * r) * math.sin(dlng / 2) ** 2)
+        dist += 2 * R * math.asin(math.sqrt(x))
+    up, ref = 0.0, None
+    for p in pts:
+        if p[2] is None:
+            continue
+        if ref is None:
+            ref = p[2]
+            continue
+        d = p[2] - ref
+        if d >= 3:
+            up += d
+            ref = p[2]
+        elif d <= -3:
+            ref = p[2]
+    lats = [p[0] for p in pts]
+    lngs = [p[1] for p in pts]
+    mnx, mxx, mny, mxy = min(lngs), max(lngs), min(lats), max(lats)
+    dx, dy = (mxx - mnx) or 1e-6, (mxy - mny) or 1e-6
+    s = max(dx, dy)
+    path = []
+    for p in pts:
+        path.append([round((p[1] - mnx + (s - dx) / 2) / s, 5),
+                     round(1 - (p[0] - mny + (s - dy) / 2) / s, 5)])
+    return dist, up, path
+
+
+def _nearest_m(pts, lat, lng):
+    """点位声明的位置离轨迹最近多少米——太远说明这条轨迹根本不经过这里。"""
+    R = 6371000.0
+    r = math.pi / 180
+    best = 9e9
+    for p in pts:
+        dlat, dlng = (p[0] - lat) * r, (p[1] - lng) * r
+        x = (math.sin(dlat / 2) ** 2 +
+             math.cos(lat * r) * math.cos(p[0] * r) * math.sin(dlng / 2) ** 2)
+        best = min(best, 2 * R * math.asin(math.sqrt(x)))
+    return best
+
+
+MAX_OFF_TRACK_M = 500      # 点位距轨迹超过这个距离就拒绝
+MIN_TRACK_PTS = 10         # 轨迹点太少说明是随便画的
+
+
+@app.post("/api/points", response_model=ClaimOut, tags=["占山为王"],
+          status_code=201,
+          responses={**ERR_401, 403: {"description": "配额已满"}},
+          summary="自己创建一个山头，成为它的山大王")
+def create_point(body: NewPointIn, uid: int = Depends(require_user)):
+    """先发码、后核验——冷启动阶段最重要的是让点位先长出来。
+    配额与认领共用一套等级（初级 3 个）。"""
+    lv, _nx, used, _p, _k = _king_level(uid)
+    if used >= lv["quota"]:
+        err(403, "QUOTA_FULL",
+            f"{lv['name']}山大王最多持有 {lv['quota']} 个点位（已用 {used} 个）。"
+            "名下点位被更多人扫码即可升级。")
+    # ── 必须有轨迹：没有 GPX 不能建点位 ──
+    if not body.gpx or "<trkpt" not in body.gpx and "<coordinates>" not in body.gpx:
+        err(400, "GPX_REQUIRED",
+            "必须上传 GPX 轨迹文件。有轨迹才能证明你真的走过，也才能算出路书。")
+    pts = _parse_gpx(body.gpx)
+    if len(pts) < MIN_TRACK_PTS:
+        err(400, "GPX_TOO_SHORT",
+            f"轨迹只有 {len(pts)} 个点，至少要 {MIN_TRACK_PTS} 个。"
+            "请上传完整的记录文件，不要自己画。")
+    with_ele = sum(1 for p in pts if p[2] is not None)
+    if with_ele < len(pts) * 0.5:
+        err(400, "GPX_NO_ELE",
+            "轨迹里没有海拔数据，算不出爬升。换一个带海拔的记录文件。")
+    dist, up, path = _gpx_summary(pts)
+    if body.lat is not None and body.lng is not None:
+        off = _nearest_m(pts, body.lat, body.lng)
+        if off > MAX_OFF_TRACK_M:
+            err(400, "POINT_OFF_TRACK",
+                f"你填的位置离这条轨迹最近也有 {int(off)} 米，"
+                f"超过 {MAX_OFF_TRACK_M} 米。要么位置填错了，要么传错了轨迹。")
+    code = _next_code()
+    has_geo = body.lat is not None and body.lng is not None
+    name = body.name.strip()
+    if not has_geo and body.area:
+        name = name + "（" + body.area.strip() + "）"      # 没坐标时把大致位置写进名字
+    with engine.begin() as conn:
+        pid = conn.execute(text("""INSERT INTO points
+            (code, type, name, level, altitude, status, geom,
+             track_path, track_km, track_up, track_points)
+            VALUES (:code, :type, :name, 'mid', :alt, 'published',
+                    CASE WHEN :lat IS NULL THEN NULL
+                         ELSE ST_SetSRID(ST_MakePoint(:lng, :lat), 4326) END,
+                    CAST(:path AS jsonb), :tkm, :tup, :tpts)
+            RETURNING id"""),
+            {"code": code, "type": body.kind, "name": name, "alt": body.altitude,
+             "lat": body.lat, "lng": body.lng, "path": json.dumps(path),
+             "tkm": round(dist / 1000, 2), "tup": round(up), "tpts": len(pts)}).scalar()
+        conn.execute(text("INSERT INTO short_links (code, point_id) VALUES (:c, :p)"),
+                     {"c": code, "p": pid})
+        conn.execute(text("""INSERT INTO claims
+            (user_id, target_key, target_name, kind, nickname, contact, code)
+            VALUES (:uid, :k, :n, :kind, :nick, :ct, :code)"""),
+            {"uid": uid, "k": "point:" + code, "n": name, "kind": body.kind,
+             "nick": body.nickname, "ct": body.contact, "code": code})
+        # 那句介绍直接成为这个点位的第一条留言
+        conn.execute(text("""INSERT INTO comments (point_id, user_id, text)
+            VALUES (:pid, :uid, :txt)"""),
+            {"pid": pid, "uid": uid, "txt": body.intro.strip()})
+    return _claim_out(code, name, body.nickname)
     level: int
     levelName: str
     quota: int

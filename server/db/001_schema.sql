@@ -91,6 +91,11 @@ CREATE TABLE points (
   altitude        INT,                       -- 仅山峰
   guide           JSONB,                     -- {arrow,title,desc,next}
   geom            GEOMETRY(Point, 4326),     -- 可空：用户在山头上认领时还没坐标
+  -- 用户创建点位时必须上传 GPX 轨迹：既是真实性证明，也是路书数据
+  track_path      JSONB,                     -- 归一化 0-1 坐标，前端直接画
+  track_km        NUMERIC(6,2),
+  track_up        INT,
+  track_points    INT,
   maintainer_id   BIGINT REFERENCES users(id) ON DELETE SET NULL,
   status          TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
   version         INT  NOT NULL DEFAULT 1,
