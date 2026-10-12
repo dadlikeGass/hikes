@@ -625,6 +625,42 @@ KIT_DAYS = 7             # 扫码要分布在这么多天
 TRIAL_DAYS = 7           # 试用期长度
 MIN_PEOPLE = 3           # 试用期内至少这么多个不同的人
 
+# ── 山大王等级：按名下所有点位的累计去重扫码人数升级，等级决定能认领几个点位 ──
+# 初级只给 3 个——够认领自己常走的两三条线，但不够"圈地占坑"。
+# 升级同时看量和质：高等级要求有维护记录（留言/核验），防刷量升上去的人不干活。
+KING_LEVELS = [
+    {"lv": 1, "name": "初级",   "need": 0,    "quota": 3,  "kept": 0},
+    {"lv": 2, "name": "常客",   "need": 300,  "quota": 8,  "kept": 3},
+    {"lv": 3, "name": "山主",   "need": 1000, "quota": 20, "kept": 10},
+    {"lv": 4, "name": "巡山使", "need": 3000, "quota": 99, "kept": 30},
+]
+
+
+def _king_stats(uid: int):
+    """名下点位的累计去重扫码人数 + 维护记录数。"""
+    people = q1("""SELECT count(DISTINCT coalesce(s.user_id::text, s.ip_hash)) AS n
+                   FROM scans s JOIN claims c ON c.code = s.code
+                   WHERE c.user_id = :uid AND c.status = 'active'""", uid=uid)["n"]
+    kept = q1("""SELECT count(*) AS n FROM comments cm
+                 JOIN points p  ON p.id = cm.point_id
+                 JOIN claims cl ON cl.code = p.code
+                 WHERE cl.user_id = :uid""", uid=uid)["n"]
+    return people, kept
+
+
+def _king_level(uid: int):
+    """当前等级、下一级、已用配额、累计人数、维护数。冻结的点位不占配额。"""
+    people, kept = _king_stats(uid)
+    cur = KING_LEVELS[0]
+    for L in KING_LEVELS:
+        if people >= L["need"] and kept >= L["kept"]:
+            cur = L
+    codes = [r["code"] for r in q("""SELECT code FROM claims
+                                     WHERE user_id = :uid AND status = 'active'""", uid=uid)]
+    used = sum(1 for c in codes if c and _claim_state(c) != "frozen")
+    nxt = next((L for L in KING_LEVELS if L["lv"] == cur["lv"] + 1), None)
+    return cur, nxt, used, people, kept
+
 # ── 满月考核：领码 1 个月内不到门槛也失效 ────────────────────
 # 注意：这是「扫码人数」，不是「经过人数」。扫码率通常只有 1–5%，
 # 所以 100 人/月 ≈ 每天 3–4 人扫码 ≈ 实际经过 100–400 人/天 —— 已经是景区级。
@@ -742,6 +778,11 @@ def _next_code() -> str:
 def create_claim(body: ClaimIn, uid: int = Depends(require_user)):
     if q1("SELECT 1 AS x FROM claims WHERE target_key = :k", k=body.target_key):
         err(409, "ALREADY_CLAIMED", "这个点位已经有人认领了")
+    lv, _nx, used, _p, _k = _king_level(uid)
+    if used >= lv["quota"]:
+        err(403, "QUOTA_FULL",
+            f"{lv['name']}山大王最多认领 {lv['quota']} 个点位（已用 {used} 个）。"
+            "名下点位被更多人扫码即可升级，升级后能认领更多。")
     code = _next_code()
     with engine.begin() as conn:
         pid = conn.execute(text("""INSERT INTO points
@@ -790,6 +831,33 @@ def get_claim(target_key: str):
     if not c:
         err(404, "NOT_CLAIMED", "这个点位还没人认领")
     return _claim_out(c["code"], c["target_name"], c["nickname"])
+
+
+class KingOut(BaseModel):
+    level: int
+    levelName: str
+    quota: int
+    used: int
+    people: int = Field(description="名下所有点位的累计去重扫码人数")
+    kept: int = Field(description="维护记录数（留言 / 核验）")
+    nextName: str | None = None
+    nextNeedPeople: int | None = None
+    nextNeedKept: int | None = None
+    nextQuota: int | None = None
+    canClaimMore: bool
+
+
+@app.get("/api/me/king", response_model=KingOut, tags=["占山为王"],
+         responses=ERR_401, summary="我的等级与可认领配额")
+def my_king(uid: int = Depends(require_user)):
+    lv, nxt, used, people, kept = _king_level(uid)
+    return KingOut(level=lv["lv"], levelName=lv["name"], quota=lv["quota"], used=used,
+                   people=people, kept=kept,
+                   nextName=nxt["name"] if nxt else None,
+                   nextNeedPeople=nxt["need"] if nxt else None,
+                   nextNeedKept=nxt["kept"] if nxt else None,
+                   nextQuota=nxt["quota"] if nxt else None,
+                   canClaimMore=used < lv["quota"])
 # 挂在最后，避免覆盖 /api 路由。前端产物来自仓库 app/（同一套设计令牌）。
 import pathlib  # noqa: E402
 

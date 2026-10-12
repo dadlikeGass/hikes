@@ -610,9 +610,12 @@
             sub: '海拔 ' + p.alt + ' m' + (p.city ? ' · ' + esc(p.city) : '') +
                  (pgeo && p.lat ? ' · 距你 ' + distKm(pgeo.lat, pgeo.lng, p.lat, p.lng).toFixed(1) + ' km' : ''),
             heat: p.visits30 || 0,
-            footTitle: '山顶留言 · 1 条',
-            footText: '小鱼：风很大，但看到日出那一刻觉得都值了。' +
-                      ' <span class="soon-tag">示例</span>'
+            footTitle: '山顶留言',
+            foots: [
+              { who: '小鱼', text: '风很大，但看到日出那一刻觉得都值了。' },
+              { who: '阿川', text: '登顶打卡第 100 位，是我！' },
+              { who: '阿楠', text: '石阶结露，慢慢走，别赶。' }
+            ]
           });
         }).join('') : '<div class="empty">没有匹配的山头</div>') +
         '<div class="hint" style="text-align:center">共 ' + H.peaks.length + ' 个山顶 · ' +
@@ -648,8 +651,12 @@
           title: esc(person.name) + ' 上报 <span class="soon-tag">示例</span>',
           sub: '第 ' + (x.j.index || 1) + ' 个点位 · ' + (x.i.ok ? '已核验' : '待核验'),
           heat: 0,
-          footTitle: '岔路情报 · 1 条',
-          footText: esc(x.i.title) + '（' + esc(x.i.text) + '）'
+          footTitle: '岔路情报',
+          foots: [
+            { who: person.name, text: esc(x.i.title) },
+            { who: '维护人', text: esc(x.i.text) },
+            { who: '路况', text: x.i.ok ? '已核验，可以放心走。' : '还没人核验，走过去留意一下。' }
+          ]
         }) + '</div>';
       }).join('') : '<div class="empty">没有匹配的岔路情报</div>') +
       '<div class="hint" style="text-align:center;margin-top:6px">共 ' + all.length + ' 条情报 · 来自 ' +
@@ -660,6 +667,44 @@
      上半 = 图 + 名称 + 定位 + 热度 +「我到过」；下半 = 留言 / 情报。
      两张卡片大小一致。 */
   /* 占山为王：首图右下角那颗按钮 */
+  function footInner(label, list, i) {
+    var m = list[i] || { who: '', text: '' };
+    var dots = list.length > 1
+      ? '<span style="margin-left:6px">' + list.map(function (_, k) {
+          return '<i style="display:inline-block;width:4px;height:4px;border-radius:2px;' +
+            'margin-left:3px;background:' + (k === i ? 'var(--coral)' : '#D6D0C1') + '"></i>';
+        }).join('') + '</span>' : '';
+    return '<div style="display:flex;align-items:baseline;gap:8px">' +
+      '<span style="font-size:10.5px;color:var(--ink3)">' + esc(label) + ' · ' + list.length +
+      ' 条' + dots + '</span>' +
+      '<span style="margin-left:auto;font-size:11px;font-weight:700;color:var(--ink2)">' +
+      esc(m.who) + '</span></div>' +
+      '<div style="font-size:12.5px;color:#3C3F4E;line-height:1.55;margin-top:4px;' +
+      'min-height:38px">' + m.text + '</div>';
+  }
+
+  /* 每 5 秒换下一条留言。换页时先清旧定时器，否则会越积越多 */
+  var footTimer = null;
+  function startFootRotate() {
+    if (footTimer) { clearInterval(footTimer); footTimer = null; }
+    if (!document.querySelectorAll('.footbox').length) return;
+    footTimer = setInterval(function () {
+      Array.prototype.forEach.call(document.querySelectorAll('.footbox'), function (el) {
+        var list;
+        try { list = JSON.parse(el.getAttribute('data-foot')); } catch (e) { return; }
+        if (!list || list.length < 2) return;
+        var i = (parseInt(el.getAttribute('data-i'), 10) + 1) % list.length;
+        el.setAttribute('data-i', i);
+        el.style.transition = 'opacity .3s';
+        el.style.opacity = '.2';
+        setTimeout(function () {
+          el.innerHTML = footInner(el.getAttribute('data-label'), list, i);
+          el.style.opacity = '1';
+        }, 150);
+      });
+    }, 5000);
+  }
+
   function claimBtn(key, name, kind) {
     return '<button class="claimbtn" data-act="claim" data-key="' + esc(key) +
       '" data-name="' + esc(name) + '" data-kind="' + kind + '">占山为王</button>';
@@ -678,9 +723,9 @@
       'font-size:13px">' + o.heat + '</b></span>' +
       '<span class="btn coral mini" style="margin-left:auto;padding:6px 12px;font-size:12px">' +
       '我到过</span></span></span></div>' +
-      '<div style="border-top:1px solid var(--hair);background:#FCFAF6;padding:10px 14px">' +
-      '<div style="font-size:10.5px;color:var(--ink3);margin-bottom:4px">' + o.footTitle + '</div>' +
-      '<div style="font-size:12.5px;color:#3C3F4E;line-height:1.55">' + o.footText + '</div></div>';
+      /* 下半：左边标签，右边留言人；内容每 5 秒自动换下一条 */
+      '<div class="footbox" data-foot=\'' + JSON.stringify(o.foots) + '\' data-i="0" ' +
+      'data-label="' + esc(o.footTitle) + '">' + footInner(o.footTitle, o.foots, 0) + '</div>';
     return o.href
       ? '<a class="card" href="' + o.href + '" style="padding:0;overflow:hidden;margin-bottom:12px;' +
         'display:block">' + inner + '</a>'
@@ -1282,6 +1327,7 @@
       if (input) input.addEventListener('input', function () { q = this.value; refreshTrailResults(); });
     }
     if (r.name === 'places') {
+      startFootRotate();
       var pi = document.getElementById('pq');
       if (pi) pi.addEventListener('input', function () {
         pq = this.value;
