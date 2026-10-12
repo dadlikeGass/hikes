@@ -55,6 +55,20 @@ body{background:#E7E1D6}
 .rankhd span{font-size:11.5px;color:var(--ink3)}
 .rankhd .seeall{border:none;background:none;font:inherit;font-size:12.5px;font-weight:700;
   color:var(--blue);padding:2px 0;font-family:inherit}
+.rankhd small{font-size:11.5px;color:var(--ink3);font-weight:400;margin-left:6px}
+.rlrow{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--hair);
+  color:inherit}
+.rlrow:last-child{border-bottom:none}
+.rlno{width:18px;text-align:center;font-size:12.5px;font-weight:800;color:#B8B3A6;flex:0 0 auto}
+.rlnm{flex:1;min-width:0}
+.rlnm b{display:block;font-size:14px}
+.rlnm em{font-style:normal;font-size:11.5px;color:var(--ink3)}
+.entryrow{display:flex;align-items:center;gap:12px;width:100%;background:#fff;border:none;
+  border-radius:16px;padding:15px 16px;margin-top:11px;box-shadow:var(--shadow);font-family:inherit;
+  color:inherit;text-align:left}
+.entryrow .em{font-size:18px;width:24px;text-align:center;color:var(--blue);flex:0 0 auto}
+.entryrow .tx b{display:block;font-size:14px}
+.entryrow .tx span{font-size:11.5px;color:var(--ink3)}
 .hero4{height:210px;position:relative;overflow:hidden}
 .hero4>svg{display:block;width:100%;height:100%}
 .hero4 .scrim{position:absolute;inset:0;z-index:1;background:linear-gradient(180deg,
@@ -192,32 +206,57 @@ function miniCard(r, k, v) {
     '<div class="m"><span>' + k + '</span><b class="hi">' + v(r) + '</b></div></a>';
 }
 
+/* 竖排列表行：序号 · 线路名 · 距离爬升 · 难度（设计稿里榜单的形态） */
+function rankRow(r, i) {
+  return '<a class="rlrow" href="#' + r.slug + '">' +
+    '<span class="rlno">' + i + '</span>' +
+    '<span class="rlnm"><b>' + esc(r.name) + '</b>' +
+    '<em>' + r.km + ' km · ↗ ' + r.up + ' m</em></span>' +
+    badge(r.hardest_level) + '</a>';
+}
+
 function rankGroups() {
   var g = [];
+  /* 唯一横滑的一栏 —— 设计稿里只有「热门线路最快记录」是横滑的 */
   var fast = ALL.filter(function (r) { return r.fastest_time; })
     .sort(function (a, b) { return a.fastest_time.localeCompare(b.fastest_time); });
   if (fast.length) {
-    g.push(['热门线路最快记录', '每条线路各自成榜',
-      fast.map(function (r) { return miniCard(r, '最快', function (x) { return x.fastest_time; }); })]);
+    g.push('<div class="rankhd"><h3>热门线路最快记录</h3>' +
+      '<button class="seeall" data-g="热门线路最快记录">看全部 ›</button></div>' +
+      '<div class="rankrow">' + fast.map(function (r) {
+        return miniCard(r, '最快', function (x) { return x.fastest_time; }); }).join('') + '</div>');
   }
-  g.push(['新手小白线路', '用时最短',
-    ALL.slice().sort(function (a, b) { return a.hours - b.hours; }).slice(0, 5)
-      .map(function (r) { return miniCard(r, '平均用时', function (x) { return x.hours + ' h'; }); })]);
+  /* 口径说明（设计稿里的蓝底卡） */
+  g.push('<div class="card" style="background:var(--blue-bg);box-shadow:none;padding:13px 15px;' +
+    'font-size:12.5px;color:#2A3A9E;margin:2px 0 6px">' +
+    '<b>口径</b>　用时只在同一条线路上比较，每条线路各自成榜；跨线路不排名。</div>');
+
+  g.push('<div class="rankhd"><h3>新手小白线路<small>平缓 · 3 小时内</small></h3>' +
+    '<button class="seeall" data-g="新手小白线路">看全部 ›</button></div>' +
+    '<div class="card tight">' + ALL.slice().sort(function (a, b) { return a.hours - b.hours; })
+      .slice(0, 3).map(function (r, i) { return rankRow(r, i + 1); }).join('') + '</div>');
+
   var hard = ALL.filter(function (r) {
     return r.hardest_level === 'hard' || r.hardest_level === 'hidden'; })
     .sort(function (a, b) { return b.up - a.up; });
   if (hard.length) {
-    g.push(['最难的线路', '有陡段 · 需预留整日',
-      hard.map(function (r) { return miniCard(r, '消耗', function (x) { return x.kcal + ' kcal'; }); })]);
+    g.push('<div class="rankhd"><h3>最难的线路</h3>' +
+      '<button class="seeall" data-g="最难的线路">看全部 ›</button></div>' +
+      '<div class="card tight">' + hard.slice(0, 3).map(function (r, i) {
+        return rankRow(r, i + 1); }).join('') + '</div>');
   }
-  g.push(['最长的线路', '距离优先',
-    ALL.slice().sort(function (a, b) { return b.km - a.km; }).slice(0, 5)
-      .map(function (r) { return miniCard(r, '平均用时', function (x) { return x.hours + ' h'; }); })]);
-  return g.map(function (x) {
-    return '<div class="rankhd"><h3>' + x[0] + '</h3>' +
-      '<button class="seeall" data-g="' + x[0] + '">看全部 ›</button></div>' +
-      '<div class="rankrow">' + x[2].join('') + '</div>';
-  }).join('');
+  g.push('<div class="rankhd"><h3>最长的线路</h3>' +
+    '<button class="seeall" data-g="最长的线路">看全部 ›</button></div>' +
+    '<div class="card tight">' + ALL.slice().sort(function (a, b) { return b.km - a.km; })
+      .slice(0, 3).map(function (r, i) { return rankRow(r, i + 1); }).join('') + '</div>');
+
+  /* 两个入口行（设计稿：＋ 本周新增路线 ／ ? 难度分级怎么定的） */
+  g.push('<button class="entryrow"><span class="em">＋</span>' +
+    '<span class="tx"><b>本周新增路线</b><span>由山友共建 · 查看</span></span></button>');
+  g.push('<button class="entryrow" id="docbtn"><span class="em">?</span>' +
+    '<span class="tx"><b>难度分级怎么定的</b>' +
+    '<span>形状 + 颜色 · 中美瑞对照</span></span></button>');
+  return g.join('');
 }
 
 function renderList() {
@@ -261,7 +300,8 @@ async function list() {
     '<div class="hint" style="margin:0 2px 10px">难度徽标只代表<strong>这条线路里最难的那一段</strong>，' +
     '不代表整条线路。用时与消耗是估算。</div>' +
     '<div id="rankbox"></div>' +            /* 榜单（或筛选结果）—— 文档顺序排在第三 */
-    '<div class="rankhd" style="margin-top:10px"><h3>关于难度</h3><span>形状 + 颜色</span></div>' +
+    '<div id="docbox" hidden><div class="rankhd" style="margin-top:16px">' +
+    '<h3>关于难度</h3><span>形状 + 颜色</span></div>' +
     '<div class="card">' +
     ['easy', 'mid', 'hard', 'hidden'].map(function (k) {
       return '<div style="display:flex;gap:12px;align-items:center;padding:9px 0">' +
@@ -282,7 +322,7 @@ async function list() {
     '我们的隐藏档对应 Class 4 以上。</p>' +
     '<p><b>瑞士 · SAC</b>　T1–T6，颜色直接印在实体路标上：T1 徒步道（黄）、' +
     'T2–T3 山地步道（红）、T4–T6 高山步道（蓝）。和我们用形状区分是同一个思路。</p>' +
-    '</div></details>' +
+    '</div></details></div>' +
     '<div class="hint" style="text-align:center;margin-top:14px">' +
     '用时与消耗为估算 · 线路数据来自真实 GPX</div>';
 
@@ -297,6 +337,12 @@ async function list() {
     renderList();
   });
   document.getElementById('rankbox').addEventListener('click', function (e) {
+    if (e.target.closest('#docbtn')) {
+      var db = document.getElementById('docbox');
+      db.hidden = !db.hidden;
+      if (!db.hidden) db.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
     var b = e.target.closest('.seeall'); if (!b) return;
     GROUP = b.dataset.g || '';
     if (GROUP) {
