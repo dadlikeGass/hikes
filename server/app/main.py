@@ -525,6 +525,7 @@ def short_link(code: str, request: Request):
     row = q1("SELECT point_id FROM short_links WHERE code = :c", c=code)
     if not row:
         err(404, "POINT_NOT_FOUND", f"编号 {code} 不存在")
+    # 冻结不拦：牌子还在山上，扫了才可能复活
     ua = request.headers.get("user-agent", "")
     with engine.begin() as conn:
         conn.execute(text("""INSERT INTO scans (point_id, code, ua)
@@ -546,6 +547,7 @@ def qr_svg(code: str, box: int = 10, border: int = 2):
         err(503, "QR_UNAVAILABLE", "服务端缺少 qrcode 依赖，重建镜像后可用")
     if not q1("SELECT 1 AS x FROM short_links WHERE code = :c", c=code):
         err(404, "POINT_NOT_FOUND", f"编号 {code} 不存在，不能生成二维码")
+    # 冻结不阻止生成二维码：牌子已印出去，拦着没意义
     url = f"{PUBLIC_BASE}/p/{code}"
     img = qrcode.make(url, image_factory=qrcode.image.svg.SvgPathImage,
                       box_size=box, border=border)
@@ -599,6 +601,12 @@ class ClaimOut(BaseModel):
     needForKit: int = Field(description="还差几次扫码可申领物料")
     canClaimKit: bool = Field(description="扫码满 40 次、分布满 7 天、且有维护动作")
     tier: str = Field(default="new", description="new / warm / ready")
+    state: str = Field(default="trial",
+                       description="trial 试用 / watching 观察 / active 已通过 / frozen 已冻结")
+    trialPeople: int = Field(default=0, description="试用期内已有多少个不同的人扫码")
+    trialDaysLeft: int = Field(default=7, description="试用期还剩几天")
+    monthPeople: int = Field(default=0, description="首月累计多少个不同的人扫码（满月考核用）")
+    monthNeed: int = Field(default=30, description="满月失效线；达到 100 才够格投物料")
 
 
 # ── 物料门槛：为什么是这三个数 ──────────────────────────────
@@ -609,6 +617,106 @@ class ClaimOut(BaseModel):
 KIT_THRESHOLD = 40       # 解锁物料申领
 HINT_THRESHOLD = 10      # 正反馈档
 KIT_DAYS = 7             # 扫码要分布在这么多天
+
+# ── 试用期：领码起的头 7 天，不到 3 个人扫码就失效 ──────────────
+# 这是"只判一次"的门槛，不是滚动窗口。目的：逼山大王在领码当周就动起来——
+# 贴出去、让朋友扫。第一周就有人来的点位，才值得后面投物料。
+# 去重按「人」算：登录用户看 user_id，匿名扫码看 ip_hash（一个人扫 3 次不算 3 个人）。
+TRIAL_DAYS = 7           # 试用期长度
+MIN_PEOPLE = 3           # 试用期内至少这么多个不同的人
+
+# ── 满月考核：领码 1 个月内不到门槛也失效 ────────────────────
+# 注意：这是「扫码人数」，不是「经过人数」。扫码率通常只有 1–5%，
+# 所以 100 人/月 ≈ 每天 3–4 人扫码 ≈ 实际经过 100–400 人/天 —— 已经是景区级。
+# 北京野山点位绝大多数到不了，所以分档而不是一刀切：
+#   ≥100 人/月  优先投物料、进官方标牌名单
+#   30–100      保留观察，不发物料
+#   <30         失效（连续一个月每天不到 1 个人扫，这个牌子就是死的）
+MONTH_DAYS = 30
+MONTH_MIN = 30           # 失效线
+MONTH_HOT = 100          # 热门线：够格投物料
+
+
+def _claim_state(code: str):
+    """返回 trial 试用中 / watching 观察中 / active 已通过 / frozen 已冻结 / None。"""
+    c = q1("""SELECT created_at FROM claims
+              WHERE code = :c AND status = 'active'""", c=code)
+    if not c:
+        return None
+    try:
+        t0 = c["created_at"]
+        days = q1("""SELECT extract(day from now() - (:t)::timestamptz)::int AS d""",
+                  t=t0)["d"]
+        if days < TRIAL_DAYS:
+            return "trial"                        # 第一周内，没到判定时间
+        n7 = _people_between(code, t0, TRIAL_DAYS)
+        if n7 < MIN_PEOPLE:
+            return _frozen_or_revived(code)       # 第一周没人来 → 冻结
+        if days < MONTH_DAYS:
+            return "watching"                     # 第一周过了，等满月再审
+        n30 = _people_between(code, t0, MONTH_DAYS)
+        if n30 < MONTH_MIN:
+            return _frozen_or_revived(code)       # 满月不够 → 冻结
+        return "active" if n30 >= MONTH_HOT else "watching"
+    except Exception:                            # noqa: BLE001
+        return "trial"
+
+
+def _frozen_or_revived(code: str) -> str:
+    """冻结不是作废——牌子还在山上。最近 7 天又有 ≥3 个不同的人扫码就复活。"""
+    n = q1("""SELECT count(DISTINCT coalesce(user_id::text, ip_hash)) AS n
+              FROM scans WHERE code = :c AND created_at > now() - interval '7 days'""",
+           c=code)["n"]
+    return "watching" if n >= MIN_PEOPLE else "frozen"
+
+
+def _people_between(code, t0, days: int) -> int:
+    """某段时间内，有多少个**不同的人**扫过。一个人扫 3 次算 1 个人。"""
+    return q1("""SELECT count(DISTINCT coalesce(user_id::text, ip_hash)) AS n
+                 FROM scans WHERE code = :c
+                   AND created_at <= (:t)::timestamptz + (:d * interval '1 day')""",
+              c=code, t=t0, d=days)["n"]
+
+
+def _ct0(code):
+    c = q1("""SELECT created_at FROM claims WHERE code = :c AND status = 'active'""", c=code)
+    return c["created_at"] if c else None
+
+
+def _trial_progress(code: str):
+    """试用期进度：已经有多少个不同的人来扫过，还剩几天。"""
+    c = q1("""SELECT created_at FROM claims
+              WHERE code = :c AND status = 'active'""", c=code)
+    if not c:
+        return 0, TRIAL_DAYS
+    n = q1("""SELECT count(DISTINCT coalesce(user_id::text, ip_hash)) AS n
+              FROM scans WHERE code = :c
+                AND created_at <= (:t)::timestamptz + interval '7 days'""",
+           c=code, t=c["created_at"])["n"]
+    left = q1("""SELECT greatest(0, 7 - extract(day from now() - (:t)::timestamptz))::int AS d""",
+              t=c["created_at"])["d"]
+    return n, left
+
+
+def _expired_page(code: str):
+    return Response(
+        "<!doctype html><html lang=zh-CN><meta charset=utf-8>"
+        "<meta name=viewport content='width=device-width,initial-scale=1'>"
+        "<body style=\"max-width:430px;margin:0 auto;padding:52px 22px;"
+        "font:15px/1.8 -apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;"
+        "color:#22242E;background:#F7F3EC;min-height:100vh\">"
+        "<div style='font-size:20px;font-weight:800'>到此一游</div>"
+        f"<div style='font-size:11px;letter-spacing:2px;color:#FF714E;font-weight:700;"
+        f"margin:4px 0 24px'>HIKERS</div>"
+        "<div style='background:#FFF1EC;border-left:4px solid #FF714E;border-radius:12px;"
+        "padding:16px 18px'><b>这个点位的二维码已经失效</b><br>"
+        "<span style='color:#6B6E7E;font-size:13.5px'>已经连续 7 天没有 3 个人来扫码了。"
+        "可能是这条路最近没人走，也可能是标牌掉了。</span></div>"
+        f"<div style='margin-top:20px;font-size:13px;color:#6B6E7E'>编号 <code>{code}</code><br>"
+        "如果你是这里的山大王，重贴一张牌、或者让朋友来扫一次，它就会自动恢复。</div>"
+        "<a href='/' style='display:inline-block;margin-top:22px;background:#3455F5;color:#fff;"
+        "font-weight:700;text-decoration:none;padding:12px 22px;border-radius:12px'>去首页看看</a>"
+        "</body></html>", media_type="text/html", status_code=410)
 
 
 def _scan_stats(code: str):
@@ -657,13 +765,21 @@ def _claim_out(code: str, name: str, nickname: str) -> ClaimOut:
     # 维护动作：他本人在这个点位上留过言（真做事，比"自己发内容"更能预测靠谱）
     kept = q1("""SELECT count(*) AS n FROM comments c JOIN points p ON p.id = c.point_id
                  WHERE p.code = :c""", c=code)["n"]
-    ready = n >= KIT_THRESHOLD and days >= KIT_DAYS and kept > 0
+    st0 = _claim_state(code) or "trial"
+    # 冻结（或还在试用期）不能申领物料和正式卡纸——这是冻结唯一的实际后果
+    ready = (n >= KIT_THRESHOLD and days >= KIT_DAYS and kept > 0
+             and st0 not in ("frozen", "trial"))
     return ClaimOut(code=code, target_name=name, nickname=nickname,
                     qrUrl=f"{PUBLIC_BASE}/api/qr/{code}.svg",
                     shortLink=f"{PUBLIC_BASE}/p/{code}",
                     scanCount=n, scanDays=days, needForKit=max(0, KIT_THRESHOLD - n),
                     canClaimKit=ready,
-                    tier="ready" if ready else ("warm" if n >= HINT_THRESHOLD else "new"))
+                    tier="ready" if ready else ("warm" if n >= HINT_THRESHOLD else "new"),
+                    state=st0,
+                    trialPeople=_trial_progress(code)[0],
+                    trialDaysLeft=_trial_progress(code)[1],
+                    monthPeople=_people_between(code, _ct0(code), MONTH_DAYS) if _ct0(code) else 0,
+                    monthNeed=MONTH_MIN)
 
 
 @app.get("/api/claims/{target_key}", response_model=ClaimOut, tags=["占山为王"],
