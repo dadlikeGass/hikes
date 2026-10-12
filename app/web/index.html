@@ -152,7 +152,7 @@ async function j(url, opt) {
       (route
         ? '<div class="sec-head"><h3>' + esc(route.name) + '</h3>' +
           '<span class="more">' + route.km + ' km · ↗ ' + route.up + ' m</span></div>' +
-          '<div class="hint" style="margin-top:-6px">' + badge(route.level) +
+          '<div class="hint" style="margin-top:-6px">' + badge(route.hardest_level) +
           ' 5 个山顶 · 6 段 · 数据来自数据库</div>' +
           '<div class="trk2">' + trackSVG(route.path, route.segments, route.km, route.peaks) + '</div>' +
           '<div class="card" style="padding:6px 14px">' +
