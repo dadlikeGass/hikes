@@ -728,11 +728,13 @@
 
       recordCard() +
       rowlink('#/me/visited', '✓', '我去过的地方 ' + visitedCount, '地图 / 拼图两种看') +
-      rowlink('#/me/want', '♡', '我想去的地方 ' + S.want.length, '到访后会自动从「想去」移到「去过」') +
+      rowlink('#/me/want', '♡', '我想去的地方 ' + S.want.length +
+        '<span class="soon-tag">待开发</span>', '收藏关系表还没建，下面是示例') +
       rowlink('#/me/peak', '⛰', '我的山头 · ' + esc(H.me.claim) +
         '<span class="soon-tag">待开发</span>', '认领与维护关系表还没建', true) +
       rowlink('#/me/records', '★', '我的纪录', '东灵山 PB ' + (S.pb.dongling || H.me.pb) + ' · 连续 ' + H.me.streak + ' 周上山') +
-      rowlink('#/me/letters', '✉', '山间信箱 ' + (H.letters.length + S.letters.length), '1 封今天到期 · ' + S.letters.length + ' 条留给下一位') +
+      rowlink('#/me/letters', '✉', '山间信箱 ' + (H.letters.length + S.letters.length) +
+        '<span class="soon-tag">待开发</span>', '未来信数据表还没建，下面是示例') +
       rowlink('#/me/activity', '＋', '发起周末活动', '选一条路，约人一起走') +
       '<button class="btn ghost" style="margin-top:14px" data-act="reset">清空我的演示数据</button>';
   }
