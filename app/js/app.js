@@ -476,7 +476,9 @@
   function apiSegTable(t) {
     if (!t.segments || !t.segments.length) return '';
     return t.segments.map(function (s) {
-      return '<div style="display:flex;align-items:center;gap:9px;padding:10px 0;' +
+      /* 每一段可点：进去看别人对这一段的留言，也留一句 */
+      return '<div data-act="seg-comments" data-id="' + s.id + '" data-no="' + s.no + '" ' +
+        'style="display:flex;align-items:center;gap:9px;padding:11px 0;cursor:pointer;' +
         'border-bottom:1px solid var(--hair);font-size:12.5px">' +
         '<span style="width:10px;height:10px;border-radius:3px;flex:0 0 auto;background:' +
         (LV_C[s.level] || '#999') + '"></span>' +
@@ -484,7 +486,8 @@
         '<span style="color:var(--ink2);flex:0 0 96px">' + s.from_km + '–' + s.to_km + ' km</span>' +
         '<span style="flex:1;color:var(--ink2)">' + (s.rise > 0 ? '+' : '') + s.rise + ' m · ' +
         (s.pct > 0 ? '+' : '') + s.pct + '%</span>' +
-        U.levelBadge(s.level) + '</div>';
+        U.levelBadge(s.level) +
+        '<span style="color:#C9C3B4;font-size:14px;margin-left:4px">›</span></div>';
     }).join('');
   }
 
@@ -1474,6 +1477,14 @@
       claimSubmit(kb, kn, kk, nick, ct, t);
       return;
     }
+    if (act === 'seg-comments') {
+      segComments(t.getAttribute('data-id'), t.getAttribute('data-no'));
+      return;
+    }
+    if (act === 'seg-send') {
+      segSend(t.getAttribute('data-id'), t);
+      return;
+    }
     if (act === 'pfilter') {
       if (val === 'near' && !pgeo) {
         if (!navigator.geolocation) { U.toast('这个浏览器不支持定位'); return; }
@@ -1550,6 +1561,61 @@
       return;
     }
   });
+
+  /* 分段留言：弹层里看别人对这一段的说明，也留一句 */
+  function segComments(sid, no) {
+    U.openSheet(
+      '<h3>第 ' + esc(no) + ' 段</h3>' +
+      '<div class="sh-sub">走这一段的人留下的话</div>' +
+      '<div id="segList" style="min-height:52px"><div class="skel"></div></div>' +
+      '<div class="field" style="margin-top:12px"><label>写一句给走这一段的人</label>' +
+      '<input id="segTxt" type="text" maxlength="200" placeholder="例如：石阶有青苔，雨后很滑"></div>' +
+      '<button class="btn coral" data-act="seg-send" data-id="' + sid + '">发布</button>' +
+      '<button class="btn ghost" style="margin-top:9px" data-act="close">关闭</button>');
+    loadSeg(sid);
+  }
+  function loadSeg(sid) {
+    fetch('/api/segments/' + sid + '/comments')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var box = document.getElementById('segList');
+        if (!box) return;
+        box.innerHTML = d.items.length
+          ? d.items.map(function (c) {
+              return '<div class="comment" style="box-shadow:none;background:#fff;' +
+                'border:1px solid var(--line)"><div class="ph">' +
+                esc(c.nickname || '山友') + '</div><p>' + esc(c.text) + '</p></div>';
+            }).join('')
+          : '<div class="note">这一段还没有人留言。你是第一个走到的。</div>';
+      })
+      .catch(function () {
+        var box = document.getElementById('segList');
+        if (box) box.innerHTML = '<div class="note">留言加载失败</div>';
+      });
+  }
+  function segSend(sid, btn) {
+    var el = document.getElementById('segTxt');
+    var txt = el ? el.value.trim() : '';
+    if (!txt) { if (el) el.focus(); return; }
+    btn.disabled = true;
+    fetch('/api/auth/dev-login?user_id=1', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (tk) {
+        return fetch('/api/segments/' + sid + '/comments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk.token },
+          body: JSON.stringify({ text: txt })
+        });
+      })
+      .then(function (r) {
+        btn.disabled = false;
+        if (!r.ok) { U.toast('发布失败'); return; }
+        if (el) el.value = '';
+        loadSeg(sid);
+        U.toast('已发布到这一段');
+      })
+      .catch(function () { btn.disabled = false; U.toast('发布失败'); });
+  }
 
   /* 认领：拿开发 token 调接口，成功后把二维码和进度摆出来 */
   function claimSubmit(key, name, kind, nick, contact, btn) {

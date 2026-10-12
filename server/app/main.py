@@ -114,6 +114,7 @@ class RouteListOut(BaseModel):
 
 
 class SegmentOut(BaseModel):
+    id: int = Field(description="分段 id，留言挂在它上面")
     no: int
     from_km: float
     to_km: float
@@ -263,7 +264,7 @@ def get_route(slug: str):
     r = q1("SELECT * FROM routes WHERE slug = :slug", slug=slug)
     if not r:
         err(404, "ROUTE_NOT_FOUND", "线路不存在")
-    segs = q("""SELECT no, from_km, to_km, km, rise, pct, level, kind, source, confirmed
+    segs = q("""SELECT id, no, from_km, to_km, km, rise, pct, level, kind, source, confirmed
                 FROM route_segments WHERE route_id = :id ORDER BY no""", id=r["id"])
     peaks = q("SELECT idx, km, altitude, rise FROM route_peaks WHERE route_id = :id ORDER BY idx",
               id=r["id"])
@@ -475,6 +476,36 @@ def list_comments(point_id: int, limit: int = 20, cursor: int | None = None):
     rows = q(sql, pid=point_id, limit=limit, cursor=cursor)
     items = [CommentOut(**dict(r)) for r in rows]
     return CommentListOut(items=items, nextCursor=items[-1].id if len(items) == limit else None)
+
+
+# ── 分段留言：挂在 route_segments 上 ──────────────────────────
+_SEG_SQL = """SELECT c.id, c.text, c.like_count, c.bad_count, c.status, c.created_at,
+                     u.nickname, false AS is_maintainer
+              FROM comments c JOIN users u ON u.id = c.user_id
+              WHERE c.segment_id = :sid AND c.status <> 'hidden'"""
+# 分段没有维护人，只按净分 → 时间排
+_SEG_ORDER = """ ORDER BY (c.like_count - c.bad_count) DESC,
+                          c.created_at DESC, c.id DESC """
+
+
+@app.get("/api/segments/{sid}/comments", response_model=CommentListOut, tags=["留言"],
+         summary="某一段路上的留言（维护人置顶 → 净分 → 时间）")
+def list_seg_comments(sid: int, limit: int = 20):
+    rows = q(_SEG_SQL + _SEG_ORDER + " LIMIT :limit", sid=sid, limit=limit)
+    return CommentListOut(items=[CommentOut(**dict(r)) for r in rows], nextCursor=None)
+
+
+@app.post("/api/segments/{sid}/comments", response_model=CommentOut, tags=["留言"],
+          status_code=201, responses={**ERR_401, **ERR_404})
+def add_seg_comment(body: CommentIn, sid: int = Path(ge=1), uid: int = Depends(require_user)):
+    if not q1("SELECT 1 AS x FROM route_segments WHERE id = :i", i=sid):
+        err(404, "SEGMENT_NOT_FOUND", "分段不存在")
+    with engine.begin() as conn:
+        cid = conn.execute(text("""INSERT INTO comments (segment_id, user_id, text)
+            VALUES (:sid, :uid, :txt) RETURNING id"""),
+            {"sid": sid, "uid": uid, "txt": body.text.strip()}).scalar()
+    row = q1(_SEG_SQL + " AND c.id = :cid", sid=sid, cid=cid)
+    return CommentOut(**dict(row))
 
 
 @app.post("/api/points/{point_id}/comments", response_model=CommentOut, tags=["留言"],

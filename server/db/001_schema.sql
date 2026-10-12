@@ -143,16 +143,21 @@ CREATE INDEX idx_visits_point  ON visits (point_id, created_at DESC);
 -- ============ 留言 ============
 CREATE TABLE comments (
   id          BIGSERIAL PRIMARY KEY,
-  point_id    BIGINT NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+  -- 留言挂在「点位」或「线路分段」上，二选一。
+  -- 分段没有编号、也不是打卡点，但同样需要能留言（"这一段滑，慢点"）。
+  point_id    BIGINT REFERENCES points(id) ON DELETE CASCADE,
+  segment_id  BIGINT REFERENCES route_segments(id) ON DELETE CASCADE,
   user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   text        TEXT   NOT NULL CHECK (char_length(text) BETWEEN 1 AND 200),
   like_count  INT    NOT NULL DEFAULT 0,
   bad_count   INT    NOT NULL DEFAULT 0,
   status      TEXT   NOT NULL DEFAULT 'normal' CHECK (status IN ('normal','flagged','hidden')),
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK ((point_id IS NULL) <> (segment_id IS NULL))
 );
 -- 游标分页用 (created_at, id)，不用 offset
 CREATE INDEX idx_comments_point ON comments (point_id, created_at DESC, id DESC);
+CREATE INDEX idx_comments_segment ON comments (segment_id, created_at DESC, id DESC);
 CREATE INDEX idx_comments_flagged ON comments (status) WHERE status <> 'normal';
 
 CREATE TABLE comment_votes (
