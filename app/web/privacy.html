@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>隐私政策 · 到此一游</title>
+<link rel="stylesheet" href="/theme/app.css">
+<style>
+body{background:#E7E1D6}
+.wrap{max-width:430px;margin:0 auto;background:var(--bg);min-height:100dvh;padding:18px 16px 48px}
+h1{font-size:20px;margin:6px 0 2px}
+.meta{font-size:11.5px;color:var(--ink3);margin-bottom:14px}
+h2{font-size:14px;margin:20px 0 7px;color:var(--ink)}
+p,li{font-size:13px;line-height:1.75;color:var(--ink2)}
+ul{padding-left:18px;margin:6px 0}
+code{background:#F1ECE2;padding:1px 4px;border-radius:4px;font-size:12px}
+.card{background:#fff;border-radius:14px;padding:14px 15px;box-shadow:0 1px 0 var(--hair)}
+a{color:var(--blue)}
+.fill{background:var(--coral-bg);color:var(--coral);font-weight:700;border-radius:5px;padding:0 4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>隐私政策</h1>
+  <div class="meta">版本 1.0 · 生效日期：<span class="fill">待定稿后填写</span></div>
+
+  <div class="card">
+    <p>这份政策说明「到此一游」在什么情况下收集哪些信息、拿来做什么、保留多久，以及你可以怎么要求删除。写的是我们代码里真的在做的事。</p>
+  </div>
+
+  <h2>1. 不注册也能用</h2>
+  <p>浏览路书、看留言、扫码打卡都不需要账号。不注册时，你的浏览器会生成一个随机字符串作为「游客身份」（放在浏览器本地存储里），服务器保存的只有这个随机字符串和它创建的时间，不包含你的姓名或手机号。</p>
+
+  <h2>2. 注册时会收集什么</h2>
+  <ul>
+    <li><b>用户名</b>（必填，用来登录）、<b>密码</b>（以 Argon2 哈希保存，我们不保存也不能还原你的明文密码）</li>
+    <li><b>邮箱</b>（可选，用于日后找回密码；当前版本还没有邮件找回功能）</li>
+    <li><b>昵称、头像</b>（可选，用于在留言旁显示署名）</li>
+    <li>注册时间、最近一次使用时间</li>
+  </ul>
+  <p>我们不收集手机号，也没有接入微信登录；代码里预留的微信标识字段目前是空的。</p>
+
+  <h2>3. 你使用过程中产生的记录</h2>
+  <ul>
+    <li><b>打卡</b>：点位、日期、序号、来源（扫码或其他）；游客身份下的打卡记在游客身份上，注册后可并入账号</li>
+    <li><b>留言</b>：正文、点赞与踩、发布时间、挂在哪个点位或路段</li>
+    <li><b>私人纪念与未发布草稿</b>：只有你自己能看到，你不点「发布」就不会公开</li>
+    <li><b>我上传的轨迹</b>：GPX 解析出的距离、爬升、路径与海拔剖面</li>
+    <li><b>想去清单</b>、<b>占山为王申请</b>（申请时填写的位置称呼与联系方式，仅用于与你联系维护事宜）</li>
+    <li><b>举报</b>：举报内容不公开，只有你本人和内容审核员能看到</li>
+  </ul>
+
+  <h2>4. 为防滥用而记录的技术信息</h2>
+  <p>写操作（留言、打卡、举报等）超频时，我们会记录一条限流事件：作用范围、<b>来源 IP 的 SHA-256 哈希</b>（不是明文 IP）、身份标识、访问路径与时间，用于判断误伤还是恶意刷。扫码接口另外会记录浏览器标识（User-Agent）与 IP 哈希。</p>
+
+  <h2>5. 我们不做什么</h2>
+  <ul>
+    <li>不读取通讯录、相册、精确位置权限；页面不加载第三方统计或广告脚本</li>
+    <li>登录状态放在你自己浏览器的本地存储里，不用 Cookie 在浏览器与服务端之间传递身份</li>
+    <li>不把你的邮箱、昵称用于我们没写在这里的用途</li>
+  </ul>
+
+  <p class="fill">注意：当前首页从 Google 字体服务加载一款字体，该请求会让 Google 看到你的 IP 与来源页面。上线前建议改为本站字体（本地字体文件已在仓库里），改成之后本段会删掉。</p>
+
+  <h2>6. 保留多久</h2>
+  <ul>
+    <li>账号与内容：保留到你注销或要求删除为止</li>
+    <li>数据库备份：最多保留 14 天，滚动覆盖</li>
+    <li>限流事件与访问日志：计划保留 30 天后清理</li>
+  </ul>
+
+  <h2>7. 谁会看到</h2>
+  <p>公开留言对所有人可见（包括未注册访客）。私人纪念、草稿、举报内容与会审核数据只有你本人和平台内容审核员可以访问；服务端对每条数据都会校验身份与权限，越权请求返回 401 或 403。</p>
+
+  <h2>8. 你的权利与账号注销</h2>
+  <p>你可以要求更正或删除自己的信息。注销账号的效果是：</p>
+  <ul>
+    <li><b>删除</b>：位置轨迹、到访记录、想去清单、私人纪念与未发布草稿、点赞与踩、你提交的举报与申请、你作为作者的申诉</li>
+    <li><b>保留但不署你的名字</b>：公开留言正文、审核与处置记录（它们对其他人仍有参考价值或必须留痕，但会与你的身份脱钩，页面上显示为「山友」）</li>
+    <li>注销后旧登录凭证立刻失效，同一个用户名可以重新注册，但那是新账号，不继承任何历史</li>
+  </ul>
+  <p>目前注销通过邮件联系处理：<span class="fill">待填写正式邮箱</span>。自助注销入口在开发中。</p>
+
+  <h2>9. 未成年人</h2>
+  <p>本服务面向成年户外爱好者设计。不满十四周岁请在监护人同意并陪同下使用；我们不会主动收集儿童信息。</p>
+
+  <h2>10. 政策变更与联系</h2>
+  <p>政策有实质变更时会在本页更新版本号与生效日期。隐私相关问题请联系：<span class="fill">待填写正式邮箱</span>。</p>
+
+  <p style="margin-top:22px"><a href="/">← 回到首页</a> · <a href="/terms.html">用户协议</a> · <a href="/rules.html">留言规范</a></p>
+</div>
+</body>
+</html>

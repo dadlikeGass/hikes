@@ -68,6 +68,10 @@
     var free = list.filter(function (p) { return !p.claimed; });
     var pending = 4;
 
+    /* 广告待审队列：维护人是运营角色，广告必须过审才上架。
+       数据要带登录态，所以渲染完再异步填（页面不阻塞）。 */
+    setTimeout(fillAdQueue, 0);
+
     function row(p) {
       return '<a class="rowlink" href="#/admin/p/' + p.id + '">' +
         '<span class="em">' + U.levelMark(p.level, '') + '</span>' +
@@ -94,12 +98,98 @@
       '<button class="btn coral" data-act="new-point">新建点位 · 自动生成二维码</button>' +
       '<div class="hint">编号按「区域 + 类型 + 顺序 + 校验位」自动分配，不用手写。</div>' +
 
+      '<div id="adqueue"><div class="sec-head" style="margin-top:12px"><h3>广告待审</h3>' +
+      '<span class="more">加载中…</span></div></div>' +
+
       '<div class="sec-head"><h3>还没人认领</h3><span class="more">' + free.length + ' 个</span></div>' +
       free.slice(0, 4).map(function (p) {
         return '<div class="rowlink"><span class="em">' + U.levelMark(p.level, '') + '</span>' +
           '<div class="tx"><b>' + esc(p.name) + '</b><span>' + esc(p.code) + ' · ' + TYPES[p.type].label + '</span></div>' +
           '<button class="btn ghost mini" data-act="claim-point" data-id="' + p.id + '">认领</button></div>';
       }).join('');
+  }
+
+  /* ---------- 广告待审队列 ---------- */
+  function fillAdQueue() {
+    var box = document.getElementById('adqueue');
+    if (!box) return;
+    Promise.all([
+      window.API.ja('/api/admin/ads?status=pending'),
+      window.API.ja('/api/admin/ads?status=approved')
+    ]).then(function (res) {
+      var pend = res[0] || [], live = (res[1] || []).slice(0, 8);
+      var meta = function (a) {
+        return '<div style="font-size:11.5px;color:var(--ink3);margin:6px 0 9px">' +
+          esc(a.peakName || '') + ' · ' + esc(a.pointCode || '') +
+          ' · 投放至 ' + String(a.endsAt).slice(0, 10) + '</div>';
+      };
+      box.innerHTML =
+        '<div class="sec-head" style="margin-top:12px"><h3>广告待审</h3>' +
+        '<span class="more">' + pend.length + ' 条</span></div>' +
+        (pend.length ? pend.map(function (a) {
+          return '<div class="card" style="padding:12px 14px;margin-bottom:10px">' +
+            '<b style="font-size:13.5px">' + esc(a.title) + '</b>' +
+            (a.body ? '<div style="font-size:12.5px;color:var(--ink2);margin-top:4px">' + esc(a.body) + '</div>' : '') +
+            meta(a) +
+            '<div class="mini-actions">' +
+            '<button class="pill-btn acc" data-act="ad-approve" data-id="' + a.id + '">通过 · 留言区</button>' +
+            '<button class="pill-btn acc" data-act="ad-approve-top" data-id="' + a.id + '">通过 · 放第一屏</button>' +
+            '<button class="pill-btn ign" data-act="ad-reject" data-id="' + a.id + '">驳回</button>' +
+            '</div></div>';
+        }).join('') : '<div class="empty">没有待审广告。</div>') +
+
+        /* 已上架的可以随时调位置：默认在留言区顶部，"提到第一屏"是运营手里的开关 */
+        (live.length
+          ? '<div class="sec-head" style="margin-top:14px"><h3>已上架 · 位置</h3>' +
+            '<span class="more">默认在留言区顶部</span></div>' +
+            live.map(function (a) {
+              return '<div class="card" style="padding:11px 14px;margin-bottom:9px">' +
+                '<b style="font-size:13px">' + esc(a.title) + '</b>' +
+                '<div style="font-size:11.5px;color:var(--ink3);margin:5px 0 8px">' +
+                esc(a.pointCode || '') + ' · ' +
+                (a.promoted ? '<b style="color:var(--coral)">已在第一屏</b>' : '在留言区顶部') + '</div>' +
+                '<button class="pill-btn ' + (a.promoted ? '' : 'acc') + '" data-act="ad-promote" data-id="' +
+                a.id + '" data-val="' + (a.promoted ? '1' : '0') + '">' +
+                (a.promoted ? '退回留言区' : '提到第一屏') + '</button></div>';
+            }).join('')
+          : '');
+    }).catch(function () {
+      box.innerHTML = '<div class="hint">广告审核与首屏提升由系统审核员处理。</div>';
+    });
+  }
+
+  function fillCollaborationQueue() {
+    var box = document.getElementById('collaborationQueue');
+    if (!box) return;
+    window.API.ja('/api/admin/collaboration-applications?status=pending').then(function (items) {
+      box.innerHTML = '<div class="sec-head"><h3>维护协作待审</h3><span class="more">' + items.length + ' 条</span></div>' +
+        (items.length ? items.map(function (a) {
+          return '<div class="card"><b>' + esc(a.boardName || '山顶板 #' + a.boardId) +
+            ' · ' + esc(a.applicantName || '申请人 #' + a.applicantId) + '</b>' +
+            '<div class="hint">' + esc(a.message) + '</div><div class="mini-actions">' +
+            '<button class="pill-btn acc" data-act="collaboration-approve" data-id="' + a.id + '">通过</button>' +
+            '<button class="pill-btn ign" data-act="collaboration-reject" data-id="' + a.id + '">驳回</button>' +
+            '</div></div>';
+        }).join('') : '<div class="empty">没有待审申请。</div>');
+    }).catch(function () { box.innerHTML = ''; });
+  }
+
+  function fillCommentAppeals() {
+    var box = document.getElementById('commentAppeals');
+    if (!box) return;
+    window.API.ja('/api/admin/comment-appeals?status=pending').then(function (items) {
+      box.innerHTML = '<div class="sec-head"><h3>留言申诉待审</h3><span class="more">' + items.length + ' 条</span></div>' +
+        (items.length ? items.map(function (a) {
+          return '<div class="card"><b>' + esc(a.pointName || a.pointCode || '山顶留言板') +
+            ' · ' + esc(a.authorName || '山友') + '</b>' +
+            '<div class="hint">原留言：' + esc(a.commentText || '') + '</div>' +
+            '<div class="hint">隐藏理由：' + esc(a.hiddenReason || '历史记录无理由') + '</div>' +
+            '<div class="hint">申诉理由：' + esc(a.reason) + '</div><div class="mini-actions">' +
+            '<button class="pill-btn acc" data-act="appeal-restore" data-id="' + a.id + '">恢复</button>' +
+            '<button class="pill-btn ign" data-act="appeal-reject" data-id="' + a.id + '">驳回</button>' +
+            '</div></div>';
+        }).join('') : '<div class="empty">没有待审申诉。</div>');
+    }).catch(function () { box.innerHTML = ''; });
   }
 
   /* ---------- 单个点位 ---------- */
@@ -186,9 +276,167 @@
   /* ---------- 动作 ---------- */
   function field(id) { var el = document.getElementById(id); return el ? el.value : null; }
 
-  g.EXTRA_VIEWS = { admin: listView, 'admin-p': pointView };
+  function liveListView() {
+    setTimeout(function () {
+      var box = document.getElementById('maintenanceList');
+      if (!box) return;
+      window.API.ja('/api/me/summits').then(function (items) {
+        H.mySummits = items;
+        box.innerHTML = items.length ? items.map(function (p) {
+          return '<a class="rowlink" href="#/admin/p/' + esc(p.code) + '">' +
+            '<span class="em">' + U.icon('hill') + '</span><div class="tx"><b>' + esc(p.name || p.code) + '</b>' +
+            '<span>' + esc(p.code) + ' · 未读留言 ' + p.unread + ' 条 · 近 7 天到访 ' + p.heat7 + '</span></div>' +
+            '<span class="ar">›</span></a>';
+        }).join('') : '<div class="empty">还没有负责的山头。先到山头页查看招募。</div>';
+      }).catch(function () { box.innerHTML = '<div class="empty">请先登录，再查看维护任务。</div>'; });
+      fillAdQueue();
+      fillCollaborationQueue();
+      fillCommentAppeals();
+    }, 0);
+    return '<div class="pad"><div class="sec-head"><h3>我维护的山头</h3></div>' +
+      '<div id="maintenanceList" class="card tight"><div class="empty">正在读取…</div></div>' +
+      '<div id="adqueue"></div><div id="collaborationQueue"></div><div id="commentAppeals"></div></div>';
+  }
+
+  function livePointView(r) {
+    setTimeout(function () {
+      var box = document.getElementById('maintenancePoint');
+      if (!box) return;
+      window.API.ja('/api/me/summits').then(function (mine) {
+        var membership = mine.filter(function (p) {
+          return p.code === r.id || (p.boardPointCodes || []).indexOf(r.id) >= 0;
+        })[0];
+        if (!membership) throw new Error('无维护权限');
+        return Promise.all([
+          fetch('/api/points/' + encodeURIComponent(r.id)).then(function (x) { return x.json(); }),
+          membership.role === 'collaborator' ? Promise.resolve(null) :
+            window.API.ja('/api/points/' + encodeURIComponent(r.id) + '/ads'),
+          Promise.resolve(membership.role)
+        ]);
+      }).then(function (res) {
+        var p = res[0], ads = res[1], collaborator = res[2] === 'collaborator';
+        box.innerHTML = '<h2 class="arrive-h">' + esc(p.name || p.code) + '</h2>' +
+          '<div class="hint">' + esc(p.code) + ' · 待核验 ' + p.pendingCount + ' 条 · 当前版本 v' + p.version + '</div>' +
+          (collaborator ? '' : '<div class="card"><div class="field"><label>点位名称</label><input id="livePointName" value="' + esc(p.name || '') + '"></div>' +
+          '<div class="field"><label>现场说明</label><textarea id="livePointGuide" maxlength="500">' +
+          esc(p.guide && p.guide.desc || '') + '</textarea></div>' +
+          '<button class="btn blue" data-act="real-save-point" data-id="' + p.id + '">保存点位信息</button></div>') +
+          '<div class="sec-head"><h3>待核验留言</h3></div>' +
+          '<div id="liveFlagged" class="card tight"><div class="empty">正在读取…</div></div>' +
+          (collaborator ? '' : '<button class="btn ghost" data-act="ad-panel" data-code="' + esc(p.code) + '">广告素材与审核状态</button>' +
+          '<div class="hint">已提交 ' + (ads.mine || []).length + ' 条广告；审核及首屏提升由系统负责。</div>');
+        loadFlagged(p.id);
+      }).catch(function (e) { box.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+    }, 0);
+    return '<div class="pad" id="maintenancePoint"><div class="empty">正在读取维护任务…</div></div>';
+  }
+
+  function loadFlagged(pointId) {
+    window.API.ja('/api/points/' + pointId + '/comments?limit=50').then(function (d) {
+      var box = document.getElementById('liveFlagged');
+      if (!box) return;
+      var flagged = (d.items || []).filter(function (c) { return c.status === 'flagged'; });
+      box.innerHTML = flagged.length ? flagged.map(function (c) {
+        return '<div class="rowlink"><div class="tx"><b>' + esc(c.nickname || '山友') + '</b><span>' +
+          esc(c.text) + '</span></div><button class="btn ghost mini" data-act="real-hide-comment" data-id="' +
+          c.id + '" data-val="' + pointId + '">隐藏</button></div>';
+      }).join('') : '<div class="empty">没有待核验留言。</div>';
+    }).catch(function () { var box = document.getElementById('liveFlagged'); if (box) box.textContent = '留言加载失败'; });
+  }
+
+  g.EXTRA_VIEWS = { admin: liveListView, 'admin-p': livePointView };
   g.EXTRA_TITLES = { admin: '维护台', 'admin-p': '管理点位' };
   g.EXTRA_ACTIONS = {
+    'appeal-restore': function (t, o) {
+      var note = prompt('恢复依据（至少 8 字）');
+      if (note === null) return;
+      if (note.trim().length < 8) { U.toast('请填写至少 8 字复核依据'); return; }
+      t.disabled = true;
+      window.API.ja('/api/admin/comment-appeals/' + o.id + '/review', {
+        method: 'POST', body: JSON.stringify({ decision: 'restored', note: note.trim() })
+      }).then(function () { U.toast('留言已恢复'); fillCommentAppeals(); })
+        .catch(function () { U.toast('复核失败'); t.disabled = false; });
+    },
+    'appeal-reject': function (t, o) {
+      var note = prompt('驳回理由（至少 8 字）');
+      if (note === null) return;
+      if (note.trim().length < 8) { U.toast('请填写至少 8 字复核依据'); return; }
+      t.disabled = true;
+      window.API.ja('/api/admin/comment-appeals/' + o.id + '/review', {
+        method: 'POST', body: JSON.stringify({ decision: 'rejected', note: note.trim() })
+      }).then(function () { U.toast('申诉已驳回'); fillCommentAppeals(); })
+        .catch(function () { U.toast('复核失败'); t.disabled = false; });
+    },
+    'collaboration-approve': function (t, o) {
+      var note = prompt('审核依据（至少 8 字）');
+      if (note === null) return;
+      if (note.trim().length < 8) { U.toast('请填写至少 8 字的审核依据'); return; }
+      t.disabled = true;
+      window.API.ja('/api/admin/collaboration-applications/' + o.id + '/review', {
+        method: 'POST', body: JSON.stringify({ decision: 'approved', note: note.trim() })
+      }).then(function () { U.toast('已授权本板协作'); fillCollaborationQueue(); })
+        .catch(function () { U.toast('审核失败'); t.disabled = false; });
+    },
+    'collaboration-reject': function (t, o) {
+      var note = prompt('驳回理由（至少 8 字）');
+      if (note === null) return;
+      if (note.trim().length < 8) { U.toast('请填写至少 8 字的理由'); return; }
+      t.disabled = true;
+      window.API.ja('/api/admin/collaboration-applications/' + o.id + '/review', {
+        method: 'POST', body: JSON.stringify({ decision: 'rejected', note: note.trim() })
+      }).then(function () { U.toast('已驳回'); fillCollaborationQueue(); })
+        .catch(function () { U.toast('审核失败'); t.disabled = false; });
+    },
+    'real-save-point': function (t, o) {
+      var name = (field('livePointName') || '').trim();
+      var desc = (field('livePointGuide') || '').trim();
+      if (!name) { U.toast('请填写点位名称'); return; }
+      t.disabled = true;
+      window.API.ja('/api/points/' + o.id, { method: 'PATCH',
+        body: JSON.stringify({ name: name, guide: { desc: desc } })
+      }).then(function () { U.toast('已保存'); }).catch(function () { U.toast('保存失败，请检查权限'); })
+        .then(function () { t.disabled = false; });
+    },
+    'real-hide-comment': function (t, o) {
+      var reason = prompt('隐藏理由（至少 8 字）');
+      if (reason === null) return;
+      if (reason.trim().length < 8) { U.toast('请填写至少 8 字理由'); return; }
+      t.disabled = true;
+      window.API.ja('/api/comments/' + o.id + '/hide', { method: 'POST',
+        body: JSON.stringify({ reason: reason.trim() }) })
+        .then(function () { U.toast('已隐藏'); loadFlagged(o.val); })
+        .catch(function () { U.toast('处理失败，请检查权限'); t.disabled = false; });
+    },
+    /* 广告审核：通过即上架（进入首页/路书页/山头页的轮播位），驳回要写理由 */
+    'ad-approve': function (t, o) {
+      window.API.ja('/api/admin/ads/' + o.id + '/review', {
+        method: 'POST', body: JSON.stringify({ approve: true })
+      }).then(function () { U.toast('已上架'); fillAdQueue(); })
+        .catch(function () { U.toast('审核失败，稍后再试'); });
+    },
+    /* 通过并提升：默认位置是留言区顶部，这条把它提到第一屏 */
+    'ad-approve-top': function (t, o) {
+      window.API.ja('/api/admin/ads/' + o.id + '/review', {
+        method: 'POST', body: JSON.stringify({ approve: true, promote: true })
+      }).then(function () { U.toast('已上架，并放到第一屏'); fillAdQueue(); })
+        .catch(function () { U.toast('审核失败，稍后再试'); });
+    },
+    /* 已上架的广告可以随时调位置：提到第一屏 / 退回留言区 */
+    'ad-promote': function (t, o) {
+      var on = o.val === '1';                 /* 当前是否已在第一屏 */
+      window.API.ja('/api/admin/ads/' + o.id + '/promote?promote=' + (on ? 'false' : 'true'),
+                    { method: 'POST' })
+        .then(function () { U.toast(on ? '已退回留言区' : '已提到第一屏'); fillAdQueue(); })
+        .catch(function () { U.toast('调整失败'); });
+    },
+    'ad-reject': function (t, o) {
+      var reason = prompt('驳回理由（会显示给投放的维护人）', '与户外无关');
+      if (reason === null) return;
+      window.API.ja('/api/admin/ads/' + o.id + '/review', {
+        method: 'POST', body: JSON.stringify({ approve: false, reason: reason || '不符合投放规范' })
+      }).then(function () { U.toast('已驳回'); fillAdQueue(); })
+        .catch(function () { U.toast('审核失败，稍后再试'); });
+    },
     'new-point': function () {
       var id = 'np' + Date.now();
       var code = nextCode('peak');

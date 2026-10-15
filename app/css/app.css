@@ -1,4 +1,7 @@
 /* ===== hikes · 山里见 ===== */
+@font-face{font-family:"Zhi Mang Xing";src:url("../fonts/zmx-112.woff2") format("woff2");font-display:swap;unicode-range:U+5360}
+@font-face{font-family:"Zhi Mang Xing";src:url("../fonts/zmx-116.woff2") format("woff2");font-display:swap;unicode-range:U+5C71,U+738B}
+@font-face{font-family:"Zhi Mang Xing";src:url("../fonts/zmx-118.woff2") format("woff2");font-display:swap;unicode-range:U+4E3A}
 :root{
   --bg:#F7F3EC; --paper:#fff; --ink:#22242E; --ink2:#6B6E7E; --ink3:#9A9CAA;
   --line:#E9E2D5; --hair:#F4F0E7;
@@ -39,7 +42,7 @@ input,textarea,select{font:inherit;color:inherit}
 .topbar.row{display:flex;align-items:center;gap:10px;padding-bottom:9px}
 .brand{display:inline-flex;flex-direction:column;line-height:1}
 .brand b{font-size:21px;font-weight:800;letter-spacing:-.6px}
-.brand em{font-style:normal;font-size:8.5px;font-weight:600;letter-spacing:2.4px;color:var(--coral);margin-top:2px}
+.brand em{font-style:normal;font-size:8.5px;font-weight:600;letter-spacing:1.15px;color:var(--coral);margin-top:3px}
 .brand.mini b{font-size:11px;font-weight:700;letter-spacing:.4px;color:var(--ink3)}
 .brand.mini em{display:none}
 .brand-tap{display:inline-flex;align-items:center;gap:8px;padding:2px 4px 2px 0;border-radius:10px}
@@ -55,7 +58,7 @@ input,textarea,select{font:inherit;color:inherit}
 .ico.s{width:17px;height:17px}
 
 /* ---------- scroll view ---------- */
-.view{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:0 16px 26px;scroll-behavior:smooth}
+.view{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;padding:0 16px 26px;scroll-behavior:smooth}
 .view.flush{padding:0 0 26px}
 
 /* ---------- tab bar ---------- */
@@ -66,10 +69,6 @@ input,textarea,select{font:inherit;color:inherit}
 /* 待开发：暂时不做或还没接数据的功能，灰显 + 标记，不隐藏也不假装能用 */
 .tabbar a.soon,.soon{opacity:.38;filter:grayscale(1)}
 .tabbar a.soon .ico{stroke:#9A9CAA}
-.soonwrap{position:relative}
-.soonwrap::after{content:'待开发';position:absolute;z-index:9;background:#9A9CAA;color:#fff;
-  font-size:9.5px;font-weight:700;border-radius:5px;padding:1px 5px;letter-spacing:.3px;
-  top:-2px;right:-6px;transform:scale(.92)}
 .soonrow{background:#F4F1EA!important;box-shadow:none!important;border:1px dashed #DED7C8}
 /* 用高优先级选择器，否则会被 .rowlink .tx span 之类的规则改掉颜色，
    变成灰字灰底、等于隐形（踩过一次） */
@@ -105,7 +104,6 @@ input,textarea,select{font:inherit;color:inherit}
 
 .scene{display:block;width:100%;height:100%}
 .ph{position:relative;overflow:hidden;background:#EDE7DA}
-.ph .overlay{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:flex-start;padding:10px}
 .ph .cap{position:absolute;left:0;right:0;bottom:0;padding:26px 13px 11px;color:#fff;font-size:12.5px;
   line-height:1.5;text-shadow:0 1px 6px rgba(20,18,40,.55);
   background:linear-gradient(transparent,rgba(20,18,40,.45))}
@@ -130,6 +128,9 @@ input,textarea,select{font:inherit;color:inherit}
 .btn{display:block;width:100%;font-size:15.5px;font-weight:700;border-radius:14px;padding:13px;
   text-align:center;letter-spacing:.2px;transition:transform .08s ease}
 .btn:active{transform:scale(.985)}
+.btn .btn-note{display:block;font-size:10.5px;font-weight:600;opacity:.82;
+  letter-spacing:.2px;margin-top:3px}
+.btn.ghost .btn-note{opacity:.7}
 .btn.coral{background:var(--coral);color:#fff;box-shadow:0 6px 16px rgba(255,113,78,.32)}
 .btn.blue{background:var(--blue);color:#fff;box-shadow:0 6px 16px rgba(52,85,245,.28)}
 .btn.ghost{background:transparent;color:#3E4150;border:1.5px solid var(--line)}
@@ -144,6 +145,8 @@ input,textarea,select{font:inherit;color:inherit}
   background:var(--coral);color:#fff;font-size:14px;font-weight:700;margin:2px 0 16px;
   box-shadow:0 8px 20px rgba(255,113,78,.3)}
 .scanstrip .ico{stroke:#fff;width:19px;height:19px;stroke-width:1.9}
+.scanstrip .lbl{margin-left:0;font-size:14px;font-weight:700;opacity:1}
+.scanstrip b{font-weight:900}
 .scanstrip span{margin-left:auto;opacity:.9;font-weight:600;font-size:12.5px}
 
 .carousel{display:flex;gap:12px;overflow-x:auto;margin:0 -16px;padding:2px 16px 6px;
@@ -197,6 +200,29 @@ input,textarea,select{font:inherit;color:inherit}
 .chip{font-size:12.5px;font-weight:700;padding:8px 14px;border-radius:999px;background:#fff;color:var(--ink2);
   box-shadow:var(--shadow);white-space:nowrap}
 .chip.on{background:var(--ink);color:#fff}
+.filter-trigger{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+  margin:-2px 0 16px;padding:10px 11px 10px 14px;border:1px solid #E8E1D6;border-radius:14px;
+  background:#FFFCF8;text-align:left;box-shadow:0 3px 12px rgba(34,36,46,.045)}
+.filter-trigger span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:12.5px;color:#696D78}
+.filter-trigger b{flex:none;border-radius:10px;padding:8px 12px;background:#E8EEFF;color:#2A4DA4;font-size:12px}
+.filter-trigger.peak b{background:#FFF0E8;color:#B9462B}
+.filter-trigger.junction b{background:#E8EEF6;color:#315787}
+.filter-sheet-body{max-height:min(52vh,410px);overflow-y:auto;padding:1px 0 7px}
+.filter-group{padding:3px 0 14px;border-bottom:1px solid var(--line);margin-bottom:13px}
+.filter-group:last-child{border-bottom:0;margin-bottom:0}
+.filter-group h4{font-size:13px;font-weight:800;margin:0 0 9px;color:var(--ink)}
+.filter-options{display:flex;gap:8px;flex-wrap:wrap}
+.filter-option{border:1px solid var(--line);background:#fff;color:var(--ink2);border-radius:10px;
+  padding:8px 11px;font-size:12.5px;font-weight:700}
+.filter-option.on{border-color:var(--blue);background:var(--blue-bg);color:var(--blue-deep)}
+.filter-sheet-actions{display:flex;gap:9px;padding-top:11px;border-top:1px solid var(--line)}
+.filter-sheet-actions .btn:first-child{width:32%;flex:none}
+.list-pager{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0 16px;
+  color:var(--ink2);font-size:12px;font-weight:700}
+.list-pager button{background:#fff;border:1px solid var(--line);color:var(--ink);border-radius:10px;
+  padding:9px 11px;font-size:12px;font-weight:700;box-shadow:var(--shadow)}
+.list-pager button:disabled{opacity:.35;box-shadow:none}
 
 .trailcard{flex:0 0 244px;background:#fff;border-radius:20px;padding:14px 15px 15px;box-shadow:var(--shadow);
   scroll-snap-align:start;display:flex;flex-direction:column}
@@ -261,22 +287,134 @@ input,textarea,select{font:inherit;color:inherit}
   background:rgba(255,255,255,.94);color:var(--ink);box-shadow:0 4px 14px rgba(20,18,40,.28)}
 .claimbtn:active{transform:scale(.97)}
 .footbox{border-top:1px solid var(--hair);background:#FCFAF6;padding:10px 14px;min-height:76px}
-/* 我要成为山大王 —— 卡片，右边站个巡山的小妖 */
-.kingcard{display:flex;gap:12px;align-items:center;width:100%;text-align:left;
-  background:#fff;border:none;border-radius:20px;padding:16px;margin:8px 0 4px;
-  box-shadow:var(--shadow);font-family:inherit;color:inherit;cursor:pointer;
-  border-left:4px solid var(--coral)}
-.kingcard:active{transform:scale(.99)}
-.kingcard .tx{flex:1;min-width:0}
-.kingcard .tx b{display:block;font-size:16px;font-weight:800;letter-spacing:-.2px}
-.kingcard .tx p{margin:5px 0 0;font-size:12.5px;color:var(--ink2);line-height:1.55}
-.kingcard .tx .meta{margin-top:9px;font-size:11px;color:var(--ink3)}
-.kingcard .tx .meta b{display:inline;font-size:11px;color:var(--coral);font-weight:700}
-.kingcard .imp{width:86px;height:86px;flex:0 0 auto}
-.kingcard .imp svg{display:block;width:100%;height:100%}
+/* 山头与岔路入口卡：同一套布局，两位山野伙伴分别亮相 */
+.kingcard{position:relative;display:flex;align-items:center;gap:4px;width:100%;min-height:192px;text-align:left;
+  border:1px solid rgba(255,255,255,.64);border-radius:24px;padding:25px 13px 25px 19px;margin:12px 0 16px;
+  background:radial-gradient(circle at 91% 14%,rgba(255,245,217,.64),transparent 35%),
+    linear-gradient(122deg,#F75F3D 0%,#E84C35 55%,#B92C2D 100%);
+  box-shadow:0 13px 25px rgba(151,65,41,.21),inset 0 1px 0 rgba(255,255,255,.35);
+  font-family:inherit;color:#fff;cursor:pointer;overflow:hidden;isolation:isolate;
+  transition:box-shadow .2s ease,transform .2s ease}
+.kingcard.npc{background:radial-gradient(circle at 90% 10%,rgba(226,241,247,.45),transparent 37%),
+  linear-gradient(120deg,#315787 0%,#335071 55%,#203C60 100%);
+  box-shadow:0 13px 25px rgba(45,78,112,.22),inset 0 1px 0 rgba(255,255,255,.28)}
+.kingcard:not(.npc){min-height:158px;padding-top:17px;padding-bottom:17px;
+  margin-top:31px;overflow:visible}
+.kingcard:not(.npc) .kk-big{font-size:56px;line-height:1.1;letter-spacing:-2px;
+  font-family:"Zhi Mang Xing","Ma Shan Zheng","STKaiti",KaiTi,"Kaiti SC",楷体,serif;
+  color:#FFF9E9;-webkit-text-stroke:.65px #FFF9E9;
+  text-shadow:2px 3px 0 rgba(105,24,18,.38),0 8px 16px rgba(61,19,18,.3);
+  transform:rotate(-3deg);transform-origin:left center}
+.kingcard:not(.npc) .kk-sub:first-of-type{margin-top:8px}
+.kingcard:not(.npc) .kk-tx{padding-right:6px}
+.kingcard:not(.npc) .kk-imp{position:absolute;top:-42px;right:4px;width:142px;
+  pointer-events:none}
+.kingcard:not(.npc) .kk-say{align-self:flex-end;margin-right:16px}
+.kingcard:not(.npc) .kk-mascot{width:148px;height:153px;margin-top:-13px;
+  filter:drop-shadow(0 9px 7px rgba(62,20,19,.28))}
+.kingcard:not(.npc) .kk-go{position:absolute;right:14px;top:162px;
+  border-bottom:1px solid rgba(255,255,255,.65)}
+.kingcard::before{content:"";position:absolute;right:-20px;top:-40px;width:190px;height:190px;
+  border:1px solid rgba(255,255,255,.19);border-radius:50%;pointer-events:none}
+.kingcard::after{content:"";position:absolute;right:3px;top:-17px;width:145px;height:145px;
+  border:1px solid rgba(255,255,255,.13);border-radius:50%;pointer-events:none}
+.kingcard:hover{box-shadow:0 17px 30px rgba(151,65,41,.29)}
+.kingcard.npc:hover{box-shadow:0 17px 30px rgba(45,78,112,.3)}
+.kingcard:focus-visible{outline:3px solid var(--blue);outline-offset:3px}
+.kingcard:active{transform:scale(.985)}
+.kingcard .kk-ridge{position:absolute;left:0;right:0;bottom:-1px;height:62px;pointer-events:none;opacity:.68}
+.kingcard.npc .kk-ridge{filter:hue-rotate(165deg) saturate(.55);opacity:.42}
+.kingcard .kk-ridge svg{display:block;width:100%;height:100%}
+.kingcard .kk-tx{position:relative;z-index:2;flex:1;min-width:0;
+  display:flex;flex-direction:column;align-items:flex-start}
+/* 「占山为王」四个字：毛笔楷书，不要外圈，撑满左边，压住整张卡 */
+.kingcard .kk-big{display:block;white-space:nowrap;
+  font-family:"Ma Shan Zheng","STKaiti",KaiTi,"Kaiti SC",楷体,serif;
+  font-size:51px;font-weight:400;line-height:1.08;letter-spacing:0;
+  text-shadow:0 3px 12px rgba(71,24,14,.23)}
+/* 岔路 tab 用的是同一张卡的另一套字：「我是NPC指路人」七个字比「占山为王」宽，
+   小妖缩一号、标题降到 30px，整行才不至于被挤出卡外 */
+.kingcard.npc{min-height:158px;padding-top:15px;padding-bottom:15px;
+  margin-top:31px;overflow:visible}
+.kingcard.npc .kk-tx{max-width:235px}
+.kingcard.npc .kk-big{font-size:34px;line-height:.94;letter-spacing:-1px;
+  color:#FFF9EE;text-shadow:2px 3px 0 rgba(14,38,75,.62),0 8px 15px rgba(8,24,49,.35);
+  transform:rotate(-3deg);transform-origin:left center}
+.kingcard.npc .kk-line{display:block;white-space:nowrap}
+.kingcard.npc .kk-line em{font:900 .72em/1 system-ui,sans-serif;font-style:italic;letter-spacing:-2px}
+.kingcard.npc .kk-line-big{font-size:1.33em;letter-spacing:1px}
+.kingcard.npc .kk-sub:first-of-type{margin-top:8px}
+.kingcard.npc .kk-imp{position:absolute;top:-42px;right:4px;width:142px;
+  pointer-events:none}
+.kingcard.npc .kk-say{z-index:3;align-self:flex-end;margin-right:16px;transform:translateY(8px)}
+.kingcard.npc .kk-mascot{width:148px;height:153px;margin-top:-13px;
+  filter:drop-shadow(0 9px 7px rgba(8,24,49,.32))}
+.kingcard.npc .kk-go{position:absolute;right:14px;top:162px;
+  border-bottom:1px solid rgba(255,255,255,.65)}
+.kingcard .kk-sub{display:block;margin-top:4px;font-size:11px;font-weight:500;
+  line-height:1.48;letter-spacing:.15px;color:rgba(255,255,255,.9)}
+.kingcard .kk-sub:first-of-type{margin-top:11px}
+.kingcard .kk-go{margin-top:3px;display:inline-flex;align-items:center;gap:4px;
+  font-size:10.5px;font-weight:800;color:#fff;white-space:nowrap}
+.kingcard .kk-go i{font-style:normal;font-size:12px;line-height:1}
+.kingcard .kk-imp{position:relative;z-index:2;flex:0 0 auto;width:110px;
+  display:flex;flex-direction:column;align-items:center;gap:3px}
+.kingcard .kk-say{position:relative;background:#FFF8EC;color:#71372F;font-size:9px;
+  font-weight:800;padding:4px 7px;border-radius:7px;white-space:nowrap;
+  box-shadow:0 3px 9px rgba(47,26,24,.14)}
+.kingcard.npc .kk-say{color:#294665}
+.kingcard .kk-say::after{content:"";position:absolute;left:50%;bottom:-3px;width:7px;height:7px;
+  background:#FFF8EC;transform:translateX(-50%) rotate(45deg)}
+.kingcard .kk-mascot{display:block;width:119px;height:127px;object-fit:contain;
+  filter:drop-shadow(0 7px 6px rgba(52,22,25,.25));
+  transform-origin:50% 85%;animation:mascot-scout 3.5s ease-in-out infinite}
+.kingcard.npc .kk-mascot{animation-name:mascot-guide}
+.kingcard:hover .kk-mascot,.kingcard:focus-visible .kk-mascot{animation-duration:1.6s}
+@keyframes mascot-scout{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-5px) rotate(2deg)}}
+@keyframes mascot-guide{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-4px) rotate(-2deg)}}
+@media(prefers-reduced-motion:reduce){.kingcard .kk-mascot{animation:none}}
 
 .pill{background:rgba(20,18,40,.34);backdrop-filter:blur(6px);color:#fff;border-radius:999px;padding:6px 12px;
   font-size:12.5px;font-weight:600}
+
+/* ---------- 热门登顶榜：一张卡一座山 ---------- */
+.hotcard{margin-bottom:10px;background:#fff;border-radius:18px;box-shadow:var(--shadow);
+  overflow:hidden}
+.hotcard .hc-main{display:flex;align-items:center;gap:11px;padding:13px 14px}
+.hotcard .hc-route{display:block;padding:8px 14px;border-top:1px solid var(--hair);
+  background:#FCFAF6;font-size:11.5px;font-weight:700;color:var(--blue)}
+.hotcard .l .st2{display:block;margin-top:4px;font-size:11px;color:var(--ink3)}
+.hotcard .no{width:26px;height:26px;flex:0 0 auto;border-radius:9px;background:#F1EDE3;
+  display:grid;place-items:center;font-size:12.5px;font-weight:800;color:var(--ink3)}
+.hotcard .no.top{background:var(--coral);color:#fff;box-shadow:0 3px 9px rgba(255,113,78,.34)}
+.hotcard .l{flex:1;min-width:0}
+.hotcard .l b{display:block;font-size:15.5px;font-weight:800;line-height:1.32;letter-spacing:-.3px}
+.hotcard .l b em{font-style:normal;font-size:11.5px;font-weight:600;color:var(--ink3);
+  letter-spacing:0;margin-left:2px}
+.hotcard .l .st{display:flex;flex-wrap:wrap;align-items:baseline;gap:3px;
+  margin-top:6px;font-size:11px;color:var(--ink2)}
+.hotcard .l .st span{white-space:nowrap}
+.hotcard .l .st i{font-style:normal;font-weight:800;color:var(--ink)}
+.hotcard .l .st s{text-decoration:none;color:#D6D0C1;margin:0 2px}
+.hotcard .r{flex:0 0 auto;text-align:right;padding-left:10px;border-left:1px solid var(--hair)}
+.hotcard .r .rb{display:block;font-size:15px;font-weight:900;color:var(--coral);
+  letter-spacing:-.4px;line-height:1.2}
+.hotcard .r .rh{display:block;font-size:12px;font-weight:700;color:var(--ink);
+  margin-top:7px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hotcard .r i{font-style:normal;display:block;font-size:10px;color:var(--ink3);margin-top:1px}
+
+.hotrow{display:flex;align-items:center;gap:11px;padding:11px 2px;
+  border-top:1px solid var(--hair)}
+.hotrow:first-child{border-top:none}
+.hotrow .no{width:24px;height:24px;flex:0 0 auto;border-radius:8px;background:#F1EDE3;
+  display:grid;place-items:center;font-size:12px;font-weight:800;color:var(--ink3)}
+.hotrow .no.top{background:var(--coral);color:#fff;
+  box-shadow:0 3px 9px rgba(255,113,78,.34)}
+.hotrow .nm{flex:1;min-width:0}
+.hotrow .nm b{display:block;font-size:14px;font-weight:800;line-height:1.3}
+.hotrow .nm em{font-style:normal;display:block;font-size:11px;color:var(--ink3);margin-top:2px}
+.hotrow .mt{flex:0 0 auto;text-align:right;font-size:10.5px;color:var(--ink3);line-height:1.5}
+.hotrow .mt b{font-size:15px;font-weight:900;color:var(--coral)}
 
 .guide{background:var(--blue-bg);border-radius:20px;padding:16px;margin-bottom:14px}
 .guide .gtag{font-size:12px;font-weight:800;color:var(--blue);letter-spacing:.4px;margin-bottom:11px}
@@ -335,11 +473,43 @@ input,textarea,select{font:inherit;color:inherit}
 .profile span{font-size:12.5px;color:var(--ink2)}
 .progress{height:7px;border-radius:4px;background:#EDE7DA;overflow:hidden;margin:10px 0 6px}
 .progress i{display:block;height:100%;background:var(--blue);border-radius:4px;transition:width .4s}
-.puzzle{display:grid;grid-template-columns:repeat(8,1fr);gap:5px;margin-top:13px}
-.puzzle i{aspect-ratio:1;border-radius:7px;background:#E4DED0;display:block}
-.puzzle i.done{background:linear-gradient(140deg,#7E9AE8,#5468D0)}
-.puzzle i.peak{background:linear-gradient(140deg,#F2A26B,#DE6F4C)}
+/* 山径拼图：一格 = 一座山（山脚 + 山顶两个扫码点）。
+   格里三样：名字 + 用时 / 两个扫码点 / 打卡人·时间·次数 */
+.pzrow{margin-top:14px}
+.pzrow .pzh{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}
+.pzrow .pzh b{font-size:13.5px;font-weight:800}
+.pzrow .pzh span{margin-left:auto;font-size:11px;color:var(--ink3)}
+.pzrow .pzh span i{font-style:normal;color:var(--blue);font-weight:700}
+.pzgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pzcell{display:block;text-align:left;padding:8px 10px;border-radius:14px;background:#E9E3D6;
+  font-family:inherit;overflow:hidden}
+.pzcell .h{display:flex;align-items:baseline;gap:6px}
+.pzcell .h b{flex:1;min-width:0;font-size:13px;font-weight:800;color:var(--ink2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pzcell .h i{font-style:normal;font-size:12.5px;font-weight:900;color:var(--coral);
+  letter-spacing:-.3px}
+.pzcell .pts{display:flex;gap:5px;margin-top:5px}
+.pzcell .pts em{font-style:normal;font-size:10px;font-weight:700;color:var(--ink3);
+  border:1px solid #D5CDBC;border-radius:999px;padding:1px 7px}
+.pzcell .pts em.on{background:var(--coral);border-color:var(--coral);color:#fff}
+.pzcell .mt{display:block;margin-top:5px;font-size:10px;color:var(--ink3);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pzcell.lit{background:linear-gradient(140deg,#F2A26B,#DE6F4C);
+  box-shadow:0 6px 16px rgba(222,111,76,.28)}
+.pzcell.lit .h b,.pzcell.lit .mt{color:#fff}
+.pzcell.lit .h i{color:#FFF3C4}
+.pzcell.lit .mt{opacity:.95}
+.pzcell.lit .pts em{background:none;border-color:rgba(255,255,255,.38);
+  color:rgba(255,255,255,.62)}
+.pzcell.lit .pts em.on{background:#fff;border-color:#fff;color:#DE6F4C}
 
+/* 传轨迹入口：微信三步走，写在入口上面当注释用 */
+.upbox{margin-top:16px;padding-top:14px;border-top:1px solid var(--hair)}
+.upbox .ubt{font-size:13px;font-weight:800;margin-bottom:7px}
+.upbox .ubn{font-size:11.5px;color:var(--ink2);line-height:1.85;margin-bottom:9px}
+.upbox .ubn b{color:var(--ink)}
+.upbox .btn{margin-top:2px}
+.pzcell.cand:active{transform:scale(.98)}
 /* ---------- 到达 / 纪念卡 ---------- */
 .seal{display:inline-block;border:2.5px solid var(--coral);color:var(--coral);border-radius:10px;padding:2px 11px;
   font-size:20px;font-weight:800;transform:rotate(-3deg);background:#FFF6F2}
@@ -430,7 +600,6 @@ input,textarea,select{font:inherit;color:inherit}
 /* ---------- 轨迹缩略图 ---------- */
 .trk{position:relative;border-radius:12px;overflow:hidden;background:#FBF9F4;border:1px solid #EFEADD;flex:0 0 auto}
 .trk svg{display:block;width:100%;height:100%}
-.trk-lg{width:136px;height:90px}
 .trk-sm{width:80px;height:58px}
 .trk-xs{width:46px;height:46px;border-radius:11px}
 .slide .sb{display:flex;gap:11px;align-items:flex-start}
@@ -553,3 +722,6 @@ input,textarea,select{font:inherit;color:inherit}
 .signage .qr{width:66px;height:66px}
 .signage .qrbox{flex:0 0 auto}
 .signage .meta{flex:1;min-width:0}
+.lcvia{display:block;padding:9px 14px;border-top:1px solid var(--hair);
+  font-size:11.5px;color:var(--blue);font-weight:700;background:#FCFAF6}
+.tbd{color:var(--ink3);font-weight:700}

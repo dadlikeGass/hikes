@@ -193,7 +193,9 @@
       '<span class="signlvl">' + L.short + ' · ' + L.en + '</span>' +
       '<span class="signorg">I HAVE BEEN HERE</span>' +
       '</span>' +
-      '<span class="qrbox"><span class="qr">' + qrSVG(code) + '</span><span class="qrcap">示例二维码</span></span>' +
+      '<span class="qrbox"><span class="qr">' + (opt.realQR
+        ? '<img src="/api/qr/' + encodeURIComponent(code) + '.svg" alt="点位二维码" style="width:100%;height:100%">'
+        : qrSVG(code)) + '</span><span class="qrcap">' + (opt.realQR ? '点位 ' + code : '示例二维码') + '</span></span>' +
       '</div>';
   }
 

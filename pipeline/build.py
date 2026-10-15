@@ -26,10 +26,16 @@ MIN_GAP_KM = 0.5      # 相邻山顶最小间距
 def parse(path):
     s = path.read_text(encoding="utf-8", errors="ignore")
     pts = []
-    for m in re.finditer(r'<trkpt[^>]*?lat="([-\d.]+)"[^>]*?lon="([-\d.]+)"[^>]*?>(.*?)</trkpt>',
-                         s, re.S):
-        e = re.search(r"<ele>\s*([-\d.]+)", m.group(3))
-        pts.append((float(m.group(1)), float(m.group(2)), float(e.group(1)) if e else 0.0))
+    # 属性顺序不定：赛事 GPX（UTMB 那批）写的是 lon 在前、lat 在后，
+    # 老写法只认 lat 在前，会整条轨迹一个点都读不到。分开取属性，不看顺序。
+    for m in re.finditer(r"<trkpt\b([^>]*)>(.*?)</trkpt>", s, re.S):
+        attrs, body = m.group(1), m.group(2)
+        la = re.search(r'lat="([-\d.]+)"', attrs)
+        lo = re.search(r'lon="([-\d.]+)"', attrs)
+        if not (la and lo):
+            continue
+        e = re.search(r"<ele>\s*([-\d.]+)", body)
+        pts.append((float(la.group(1)), float(lo.group(1)), float(e.group(1)) if e else 0.0))
     return pts
 
 
@@ -105,7 +111,7 @@ def pickup(pt):
     sm = [sum(ys[max(0, i - SMOOTH):min(n, i + SMOOTH + 1)]) /
           len(ys[max(0, i - SMOOTH):min(n, i + SMOOTH + 1)]) for i in range(n)]
 
-    # 山顶：取所有局部最高点，排序后按「与相邻山顶之间的鞍部高差」过滤
+    # 山顶候选按峰高排序并做最小间距抑制；相对高度用相邻较低鞍部计算。
     cand = sorted([k for k in range(1, n - 1) if sm[k] >= sm[k - 1] and sm[k] > sm[k + 1]],
                   key=lambda p: -sm[p])
     top = []
@@ -115,16 +121,17 @@ def pickup(pt):
     top.sort()
     peaks = []
     for i, p in enumerate(top):
-        lo_i = top[i - 1] if i > 0 else 0
-        hi_i = top[i + 1] if i + 1 < len(top) else n - 1
-        rel = sm[p] - min(sm[lo_i:hi_i + 1])
+        left_saddle = min(sm[top[i - 1]:p + 1]) if i > 0 else None
+        right_saddle = min(sm[p:top[i + 1] + 1]) if i + 1 < len(top) else None
+        saddles = [x for x in (left_saddle, right_saddle) if x is not None]
+        rel = sm[p] - max(saddles) if saddles else 0
         if rel >= MIN_REL:
             # 经纬度：采样时就存了，之前没输出——有了坐标才能做"附近的山"和导航
             peaks.append({"km": round(xs[p], 2), "ele": round(sm[p]), "rel": round(rel),
                           "lat": round(ll[p][0], 6), "lng": round(ll[p][1], 6)})
     peak_idx = {round(xs[p], 2): p for p in top}
 
-    # 分段：以山顶为切点，段难度 = max(爬升档, 距离档, 坡度档)
+    # 分段：以候选山顶为切点；下坡不冒充登顶难度。
     marks = sorted(set([0, n - 1] + [peak_idx[p["km"]] for p in peaks if p["km"] in peak_idx]))
     segs = []
     for k in range(len(marks) - 1):
@@ -135,8 +142,9 @@ def pickup(pt):
         de = sm[i1] - sm[i0]
         pct = de / dm * 100 if dm > 0 else 0
         km = xs[i1] - xs[i0]
-        # 爬升档取下坡的绝对值——"下坡就是反向的爬坡"，否则 -768 m 的下降会被算成没爬升
-        lv = REV[max(ORD[band(BAND_GRAD, abs(pct))], ORD[band(BAND_GAIN, abs(de))])]
+        lv = (REV[max(ORD[band(BAND_GRAD, pct)],
+                      ORD[band(BAND_GAIN, de)])]
+              if de > 0 else "easy")
         segs.append({"no": len(segs) + 1, "from": round(xs[i0], 2), "to": round(xs[i1], 2),
                      "km": round(km, 2), "rise": round(de), "pct": round(pct), "level": lv,
                      "kind": "climb" if pct > 3 else ("desc" if pct < -3 else "flat"),
@@ -165,7 +173,8 @@ def pickup(pt):
         mc = re.search(r"北京([^：:]+)[：:]", md.group(1))
         if mc:
             city = "北京 · " + mc.group(1).strip().replace("/", " / ")
-    return {"slug": pt.stem, "city": city,
+    return {"slug": pt.stem, "algorithmVersion": "2",
+        "city": city,
         "name": (re.search(r"<name>([^<]+)</name>", txt) or [None, pt.stem])[1],
         "km": round(total / 1000, 1), "up": round(up), "down": round(dn),
         "hardest": {"level": hardest["level"], "no": hardest["no"],

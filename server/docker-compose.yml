@@ -10,7 +10,9 @@ services:
     ports: ["5432:5432"]
     volumes:
       - dbdata:/var/lib/postgresql/data
-      - ./db/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+      # 注意：不再挂 docker-entrypoint-initdb.d。
+      # 建表统一走 alembic（见 server/migrations/README.md），
+      # 空库执行 `docker compose exec api alembic upgrade head`。
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U hikes -d hikes"]
       interval: 3s
@@ -23,14 +25,26 @@ services:
       DATABASE_URL: postgresql+psycopg://hikes:hikes@db:5432/hikes
       JWT_SECRET: dev-only-change-me
       ALLOW_DEV_LOGIN: "1"        # 仅本地联调；生产必须去掉
+      # 写接口限流阈值（每小时）。留空用代码默认值：留言 10/30、打卡 60/120、举报 10/30
+      # （前者按账号或游客身份，后者按来源 IP）。口径见 docs/API.md「写接口限流」。
+      RATE_LIMIT_COMMENT_PER_IDENTITY_HOUR: ${RATE_LIMIT_COMMENT_PER_IDENTITY_HOUR:-}
+      RATE_LIMIT_COMMENT_PER_IP_HOUR: ${RATE_LIMIT_COMMENT_PER_IP_HOUR:-}
+      RATE_LIMIT_VISIT_PER_IDENTITY_HOUR: ${RATE_LIMIT_VISIT_PER_IDENTITY_HOUR:-}
+      RATE_LIMIT_VISIT_PER_IP_HOUR: ${RATE_LIMIT_VISIT_PER_IP_HOUR:-}
+      RATE_LIMIT_REPORT_PER_IDENTITY_HOUR: ${RATE_LIMIT_REPORT_PER_IDENTITY_HOUR:-}
+      RATE_LIMIT_REPORT_PER_IP_HOUR: ${RATE_LIMIT_REPORT_PER_IP_HOUR:-}
     ports: ["8000:8000"]
     volumes:
       - ./app:/srv/app:ro
       - ./seeds:/srv/seeds:ro
+      - ./db:/srv/db:ro                # 基线修订要按文件名读 001–023
+      - ./migrations:/srv/migrations:ro
+      - ./alembic.ini:/srv/alembic.ini:ro
       - ../app/js:/srv/route-data:ro   # pipeline 工程化之前，种子数据从已算好的产物读
       - ../app/web:/srv/web:ro         # 真实页面（同源，免 CORS）
       - ../app/css:/srv/theme:ro       # 前端设计令牌与样式（同一份，不复制）
       - ../pipeline/out:/srv/routes-data:ro   # pipeline 生成的分级结果
+      - ../pipeline:/srv/pipeline:ro          # 给山顶找名字的脚本要在这里跑
       - ../app:/srv/webapp:ro                 # app/index.html 原型（接后端用）
     depends_on:
       db:

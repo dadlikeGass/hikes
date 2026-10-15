@@ -223,7 +223,9 @@
     { id: 'l2', from: '小鱼', when: '63 天前写在溪谷平台', text: '上面风大，记得带件外套。', place: '溪谷平台' }
   ];
 
-  var WANT_SEED = ['wangchun', 'yingzui', 'yunhai', 'guyidao', 'beibi', 'songlin', 'qunfeng', 'xigu'];
+  /* 想去 / 收藏：真实来源是服务端的 wants 表（api.js 灌进 S.want）。
+    以前这里塞了 8 个 mock 线路 id，接口数据进来后全都对不上，页面就是空的。 */
+  var WANT_SEED = [];
   var VISITED_SEED = [
     { id: 'xigu', type: 'trail', name: '溪谷森林步道', seq: 128, when: '9 月 21 日' },
     { id: 'qingshan', type: 'peak', name: '青山顶', seq: 100, when: '9 月 21 日' },
@@ -241,11 +243,23 @@
     { id: 'zhou', name: '老周', pb: '07:05', visits: 112, tone: 'a4' }
   ];
 
+  /* 单段难度：只看两个数字，取高的那一档。线条本身标的就是"某一段难不难"，
+     所以描述里不许再提总距离、总爬升——那是线路级的事，见 ROUTE_FACTORS。 */
   var DIFFICULTY_DOC = [
-    { key: 'easy', title: '简单 · 绿色圆形', body: '以缓坡林道、环湖路为主，单程 3–8 km，累计爬升通常在 300 m 以内，2–3 小时可完成。适合第一次上山、带娃或轻装出行。' },
-    { key: 'mid', title: '中等 · 蓝色三角形', body: '有持续爬升或较长距离，6–14 km，累计爬升 300–900 m，需要一定体力与登山鞋，通常 3–6 小时。' },
-    { key: 'hard', title: '困难 · 深红色菱形', body: '长距离或复杂地形，14 km 以上或累计爬升超过 900 m，可能需要过夜、补给规划或结伴同行，建议预留整日。' },
-    { key: 'hidden', title: '隐藏 · 黑色六边形', body: '从起点到登顶、以及登顶之后的下山，整段的技术难度。只要出现需要绳索、冰爪或头盔的路段就会标成这一档——不是"更难"，而是"需要技术准备"。默认不在列表里主动推荐，只有维护人确认过装备与季节条件才展示。' }
+    { key: 'easy', title: '简单 · 蓝色圆形', body: '这一段爬升不超过 200 m，坡度不陡于 15%。缓坡林道、环湖路，路面明确，全程不用手。' },
+    { key: 'mid', title: '中等 · 黄色三角形', body: '这一段爬升 200–500 m，或者坡度 15–25%。有持续爬升，需要体力和登山鞋，通常要留一上午。' },
+    { key: 'hard', title: '困难 · 深红色菱形', body: '这一段爬升超过 500 m，或者坡度超过 25%。又陡又长，碎石、窄径、少树，建议结伴并留足时间。' },
+    { key: 'hidden', title: '隐藏 · 黑色六边形', body: '出现需要绳索、冰爪或头盔的路段就归这一档——不是"更难"，而是"需要技术准备、需要人确认"。自动判定给不出这一档，只能由维护人设定。' }
+  ];
+
+  /* 线路综合难度：一个颜色装不下，要这几项一起看。
+     单段难度是机器算的，综合难度是维护人判的——这两层必须分开讲。 */
+  var ROUTE_FACTORS = [
+    { key: 'time',   label: '平均完成时间',   hint: '大部队走完要多久。4 小时和 10 小时是两种运动。' },
+    { key: 'peak',   label: '登顶难度',       hint: '取全线路最难的那一段，不是平均——最难的那一段决定你走不走得完。' },
+    { key: 'dist',   label: '距离与累计爬升', hint: '决定要不要预留整日、要不要补给规划、膝盖扛不扛得住。' },
+    { key: 'ground', label: '路况',           hint: '碎石、湿滑、塌方、灌木、岔路多易迷路，都会单独加分。' },
+    { key: 'tech',   label: '技术动作',       hint: '要不要手脚并用、要不要绳索冰爪。这一项一旦有，整条线路都要另做说明。' }
   ];
 
   /* 难度的判定依据：维护人需要提供的三项信息 */
@@ -300,7 +314,7 @@
 
   g.HIKES = {
     appName: '到此一游',
-    brandEn: 'HIKERS',
+    brandEn: 'mark mountains',
     cha: 'CHA · China Hikers Association',
     slogan: '每一次上山，都算数。',
     subSlogan: '山里，总有人与你同频。',
@@ -309,7 +323,8 @@
     trails: TRAILS, peaks: PEAKS, junctions: JUNCTIONS,
     posts: POSTS, activities: ACTIVITIES, messages: MESSAGES, letters: LETTERS,
     wantSeed: WANT_SEED, visitedSeed: VISITED_SEED, difficultyDoc: DIFFICULTY_DOC,
-    gradeRefs: GRADE_REFS, tracks: TRACKS, summits: SUMMITS,
+    routeFactors: ROUTE_FACTORS,
+    gradeRefs: GRADE_REFS, tracks: TRACKS, mySummits: SUMMITS,
     gradeInputs: GRADE_INPUTS, terrains: TERRAINS
   };
 })(window);

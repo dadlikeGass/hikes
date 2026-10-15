@@ -5,11 +5,13 @@
 ```bash
 cd server
 docker compose up --build
+docker compose exec api alembic upgrade head   # 建表/升级；空库第一次必须跑
 ```
 
 - API：http://localhost:8000 · 接口文档 http://localhost:8000/docs
 - Postgres + PostGIS：localhost:5432（hikes / hikes / hikes）
-- `db/001_schema.sql` 会在首次启动时自动执行，建表 + 装 PostGIS
+- 建表不再由 Docker 启动时执行 SQL 完成（2026-10-14 起），统一走 `alembic upgrade head`；
+  `db/001`–`023` 是基线修订读取的历史脚本，升级台账见 `migrations/README.md`
 
 ## 导入种子数据（三峰连穿）
 
@@ -52,12 +54,12 @@ curl -s -X POST localhost:8000/api/points/1/visit \
 
 （`X-User-Id` 用 seed 打印出来的演示用户 id，默认是 1。）
 
-## 现在还没做的（W2 补）
+## 现在还没做的（W2 时代的清单，多数已实现，保留作历史记录）
 
 - 微信登录 + JWT（现在是 `X-User-Id` 头，只为联调）
 - 短链路由 `GET /p/{code}`（表已经建好）
 - 留言接口 + 赞/踩（表已经建好）
 - 埋点接口 `POST /api/events`
-- 迁移改用 alembic（现在是启动时执行 SQL，只适合初始化）
+- ~~迁移改用 alembic~~：2026-10-14 已完成，见 `migrations/README.md`
 - **`seq` 的并发安全**：现在用 `max(seq)+1` 算，并发打卡可能撞号。
   1 万用户以下实际很难触发，但 W2 要改成点位级序列或加行锁。

@@ -34,7 +34,7 @@ body{background:#E7E1D6;padding:0 0 40px}
 <body>
 <div class="wrap">
   <div class="topbar home" style="padding:16px">
-    <span class="brand"><b>到此一游</b><em>HIKERS</em></span>
+    <span class="brand"><b>到此一游</b><em>For all hikers</em></span>
   </div>
   <div id="view" style="padding:0 16px 24px">
     <div class="skel" style="width:60%;height:22px"></div>
@@ -105,18 +105,25 @@ function trackSVG(path, segs, km, peaks) {
 }
 async function j(url, opt) {
   var r = await fetch(url, opt);
-  if (!r.ok) throw new Error((await r.json().catch(function () { return {}; })).detail
-    ? JSON.stringify((await r.json()).detail) : r.status);
+  if (!r.ok) {
+    var errBody = await r.json().catch(function () { return {}; });
+    var error = new Error(errBody.detail ? JSON.stringify(errBody.detail) : r.status);
+    error.status = r.status;
+    throw error;
+  }
   return r.json();
 }
 (async function () {
   var v = document.getElementById('view');
-  var code = new URLSearchParams(location.search).get('code') || 'QS-P1092';
+  var code = (new URLSearchParams(location.search).get('code') || '').trim().toUpperCase();
+  if (!code) {
+    v.innerHTML = '<div class="errbox"><b>没有识别到点位</b><br>请使用标牌二维码，或检查链接里的点位编号。</div>';
+    return;
+  }
   try {
     var p = await j('/api/points/' + code);
-    var route = p.route_id ? await j('/api/routes/sanfeng') : null;
-    var token = null;
-    try { token = (await j('/api/auth/dev-login?user_id=1', { method: 'POST' })).token; } catch (e) { }
+    var route = p.route_id && p.route_slug
+      ? await j('/api/routes/' + encodeURIComponent(p.route_slug)) : null;
 
     v.innerHTML =
       '<div class="hero3" style="margin:0 -16px">' + scene(p.code) +
@@ -128,8 +135,8 @@ async function j(url, opt) {
       (p.route_name ? '属于「' + esc(p.route_name) + '」' : '') +
       ' · 已有 ' + p.visitCount + ' 人在这里留下痕迹</div>' +
       '<div class="card" style="text-align:center">' +
-      '<div class="bigseq" id="seq">' + (p.visitCount ? '第 ' + (p.visitCount + 1) + ' 位' : '第 1 位') + '</div>' +
-      '<div class="muted tiny" style="margin:8px 0 14px">还没有留下你的痕迹</div>' +
+      '<div class="bigseq" id="seq">我到了</div>' +
+      '<div class="muted tiny" style="margin:8px 0 14px">打卡后生成本次到访凭证</div>' +
       '<button class="btn coral" id="ck">留下我的打卡</button>' +
       '<div id="ckmsg" class="tiny" style="margin-top:10px;color:var(--blue)"></div></div>' +
 
@@ -146,15 +153,45 @@ async function j(url, opt) {
       'style="width:100%;border:1.5px solid var(--line);border-radius:12px;padding:11px;' +
       'font:inherit;font-size:14px;resize:none;outline:none;background:#fff"></textarea>' +
       '<div style="display:flex;align-items:center;gap:10px;margin-top:10px">' +
-      '<span class="tiny muted" id="cmhint">发布后挂在这一点位上</span>' +
+      '<span class="tiny muted" id="cmhint">先保存为草稿；注册 / 登录后可署名发布</span>' +
       '<button class="btn coral" id="cmsend" style="width:auto;margin-left:auto;' +
-      'padding:10px 22px;font-size:14px">发布</button></div></div>' +
+      'padding:10px 22px;font-size:14px">保存草稿</button></div></div>' +
+      '<div class="card" style="padding:14px;margin-top:12px">' +
+      '<label for="privateNote" style="display:block;font-weight:800;margin-bottom:8px">私人纪念</label>' +
+      '<textarea id="privateNote" rows="2" maxlength="500" placeholder="只留给自己，不会公开" ' +
+      'style="width:100%;border:1.5px solid var(--line);border-radius:12px;padding:11px;' +
+      'font:inherit;font-size:14px;resize:none;outline:none;background:#fff"></textarea>' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-top:10px">' +
+      '<span class="tiny muted" id="privateHint">最多 500 字，仅自己可见</span>' +
+      '<button class="btn ghost" id="privateSave" style="width:auto;margin-left:auto;' +
+      'padding:10px 16px;font-size:14px">保存纪念</button></div></div>' +
+      '<button class="btn blue" id="accountPrompt" style="margin-top:12px">注册 / 登录并保存到账号</button>' +
+      '<div class="card" id="accountBox" style="display:none;padding:14px;margin-top:12px">' +
+      '<div style="display:flex;gap:8px;margin-bottom:12px">' +
+      '<button class="btn coral" id="registerMode" aria-pressed="true" style="flex:1">注册</button>' +
+      '<button class="btn ghost" id="loginMode" aria-pressed="false" style="flex:1">登录</button></div>' +
+      '<label style="display:block;font-size:12px;font-weight:700;margin:8px 0 5px">用户名</label>' +
+      '<input id="authUsername" autocomplete="username" maxlength="32" placeholder="3–32 位字母、数字或下划线" ' +
+      'style="width:100%;border:1px solid var(--line);border-radius:10px;padding:11px;font:inherit">' +
+      '<label id="authEmailLabel" style="display:block;font-size:12px;font-weight:700;margin:8px 0 5px">邮箱（可选）</label>' +
+      '<input id="authEmail" type="email" autocomplete="email" maxlength="254" placeholder="用于后续找回账号" ' +
+      'style="width:100%;border:1px solid var(--line);border-radius:10px;padding:11px;font:inherit">' +
+      '<label id="authNicknameLabel" style="display:block;font-size:12px;font-weight:700;margin:8px 0 5px">显示称呼（可选）</label>' +
+      '<input id="authNickname" maxlength="32" placeholder="留言时显示的称呼" ' +
+      'style="width:100%;border:1px solid var(--line);border-radius:10px;padding:11px;font:inherit">' +
+      '<label style="display:block;font-size:12px;font-weight:700;margin:8px 0 5px">密码（至少 12 位）</label>' +
+      '<input id="authPassword" type="password" autocomplete="new-password" maxlength="128" ' +
+      'style="width:100%;border:1px solid var(--line);border-radius:10px;padding:11px;font:inherit">' +
+      '<button class="btn coral" id="authSubmit" style="margin-top:12px">创建账号并合并记录</button>' +
+      '<div id="authMessage" class="tiny muted" style="margin-top:9px"></div>' +
+      '<button class="btn ghost" id="publishDraft" style="display:none;margin-top:10px">发布这条留言</button>' +
+      '</div>' +
 
       (route
         ? '<div class="sec-head"><h3>' + esc(route.name) + '</h3>' +
           '<span class="more">' + route.km + ' km · ↗ ' + route.up + ' m</span></div>' +
           '<div class="hint" style="margin-top:-6px">' + badge(route.hardest_level) +
-          ' 5 个山顶 · 6 段 · 数据来自数据库</div>' +
+          ' ' + route.peaks.length + ' 个山顶 · ' + route.segments.length + ' 段 · 数据来自数据库</div>' +
           '<div class="trk2">' + trackSVG(route.path, route.segments, route.km, route.peaks) + '</div>' +
           '<div class="card" style="padding:6px 14px">' +
           route.segments.map(function (s) {
@@ -168,19 +205,74 @@ async function j(url, opt) {
         : '') +
       '</div>';
 
+    function guestToken() {
+      var key = 'hikes.guest.token', saved = null;
+      try { saved = localStorage.getItem(key); } catch (e) { }
+      if (saved) return Promise.resolve(saved);
+      return j('/api/guest', { method: 'POST' }).then(function (d) {
+        try { localStorage.setItem(key, d.token); } catch (e) { }
+        return d.token;
+      });
+    }
+    var userToken = null;
+    try { userToken = localStorage.getItem('hikes.auth.token'); } catch (e) { }
+    function accountHeaders() {
+      return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + userToken };
+    }
+    function showPublishAction() {
+      document.getElementById('publishDraft').style.display = 'block';
+    }
+    function loadAccountDraft() {
+      if (!userToken) return Promise.resolve();
+      return j('/api/me/arrival-drafts', { headers: accountHeaders() }).then(function (drafts) {
+        var d = drafts.find(function (item) { return item.code === p.code; });
+        if (!d) return;
+        if (d.privateNote && !document.getElementById('privateNote').value)
+          document.getElementById('privateNote').value = d.privateNote;
+        if (d.publicCommentDraft) {
+          document.getElementById('cminput').value = d.publicCommentDraft;
+          showPublishAction();
+        }
+      }).catch(function (e) {
+        if (e.status !== 401) return;
+        userToken = null;
+        try { localStorage.removeItem('hikes.auth.token'); } catch (e2) { }
+        document.getElementById('accountBox').style.display = 'none';
+        document.getElementById('accountPrompt').textContent = '登录已过期 · 注册 / 登录并保存到账号';
+      });
+    }
+    guestToken().then(function (guest) {
+      return j('/api/guest/arrival-draft?code=' + encodeURIComponent(p.code), {
+        headers: { 'X-Guest-Token': guest }
+      });
+    }).then(function (draft) {
+      if (draft.privateNote && !document.getElementById('privateNote').value)
+        document.getElementById('privateNote').value = draft.privateNote;
+      if (draft.publicCommentDraft && !document.getElementById('cminput').value)
+        document.getElementById('cminput').value = draft.publicCommentDraft;
+    }).catch(function () { });
+    loadAccountDraft();
     document.getElementById('ck').onclick = async function () {
       var btn = this;
       btn.disabled = true;
       try {
-        var r = await j('/api/points/' + p.id + '/visit', {
+        var guest = await guestToken();
+        var r = await j('/api/guest/visit', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-          body: JSON.stringify({ source: 'scan' })
+          headers: { 'Content-Type': 'application/json', 'X-Guest-Token': guest },
+          body: JSON.stringify({ code: p.code, source: 'scan' })
         });
+        if (userToken) {
+          await j('/api/me/merge-guest', { method: 'POST', headers: {
+            'Authorization': 'Bearer ' + userToken,
+            'X-Guest-Token': guest
+          } });
+          try { localStorage.removeItem('hikes.guest.token'); } catch (e) { }
+        }
         document.getElementById('seq').textContent = '第 ' + r.seq + ' 位';
-        document.getElementById('ckmsg').textContent = r.message +
-          (r.isFirstVisit ? '' : '（今天已经打过卡了）');
-        btn.textContent = '已打卡';
+        document.getElementById('ckmsg').textContent =
+          new Date(r.visitedAt).toLocaleString('zh-CN') + (r.isFirstToday ? ' · 到访凭证已生成' : ' · 今天已打卡，凭证已恢复');
+        btn.textContent = r.isFirstToday ? '已打卡' : '查看我的凭证';
       } catch (e) {
         btn.disabled = false;
         btn.textContent = '打卡失败，重试';
@@ -189,7 +281,7 @@ async function j(url, opt) {
     };
 
     /* ---------------- 留言 ---------------- */
-    var H = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+    var H = { 'Content-Type': 'application/json' };
     function fmt(iso) {
       var m = Math.round((new Date() - new Date(iso)) / 60000);
       if (m < 1) return '刚刚';
@@ -218,11 +310,16 @@ async function j(url, opt) {
           '</div></div>';
       }).join('');
       box.querySelectorAll('[data-v]').forEach(function (b) {
+        if (!userToken) {
+          b.disabled = true;
+          b.title = '注册后可参与互动';
+          return;
+        }
         b.onclick = async function () {
           b.disabled = true;
           try {
             await j('/api/comments/' + b.dataset.c + '/vote',
-              { method: 'POST', headers: H, body: JSON.stringify({ value: b.dataset.v }) });
+              { method: 'POST', headers: accountHeaders(), body: JSON.stringify({ value: b.dataset.v }) });
             await loadComments();
           } catch (e) { b.disabled = false; }
         };
@@ -233,14 +330,123 @@ async function j(url, opt) {
       if (!t) { el.focus(); return; }
       this.disabled = true;
       try {
-        await j('/api/points/' + p.id + '/comments',
-          { method: 'POST', headers: H, body: JSON.stringify({ text: t }) });
+        var draftBody = JSON.stringify({ code: p.code, publicCommentDraft: t });
+        if (userToken) {
+          await j('/api/me/arrival-drafts', { method: 'PUT', headers: accountHeaders(), body: draftBody });
+        } else {
+          var guest = await guestToken();
+          await j('/api/guest/arrival-draft', { method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Guest-Token': guest }, body: draftBody });
+        }
         el.value = '';
-        await loadComments();
+        document.getElementById('cmhint').textContent = userToken ? '账号草稿已保存，发布前仍可修改' : '草稿已保存；注册 / 登录后可署名发布';
+        if (userToken) showPublishAction();
       } catch (e) {
         document.getElementById('cmhint').textContent = '发布失败：' + String(e.message).slice(0, 80);
       } finally { this.disabled = false; }
     };
+    document.getElementById('privateSave').onclick = async function () {
+      var el = document.getElementById('privateNote'), note = el.value.trim();
+      if (!note) { el.focus(); return; }
+      this.disabled = true;
+      try {
+        var privateBody = JSON.stringify({ code: p.code, privateNote: note });
+        if (userToken) {
+          await j('/api/me/arrival-drafts', { method: 'PUT', headers: accountHeaders(), body: privateBody });
+        } else {
+          var guest = await guestToken();
+          await j('/api/guest/arrival-draft', { method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Guest-Token': guest }, body: privateBody });
+        }
+        document.getElementById('privateHint').textContent = userToken ? '私人纪念已保存到账号，不会公开' : '私人纪念已保存到游客记录';
+        el.value = '';
+      } catch (e) {
+        document.getElementById('privateHint').textContent = '保存失败：' + String(e.message).slice(0, 80);
+      } finally { this.disabled = false; }
+    };
+    var authMode = 'register';
+    var accountBox = document.getElementById('accountBox');
+    document.getElementById('accountPrompt').onclick = function () {
+      accountBox.style.display = accountBox.style.display === 'none' ? 'block' : 'none';
+    };
+    function setAuthMode(mode) {
+      authMode = mode;
+      var isRegister = mode === 'register';
+      var registerButton = document.getElementById('registerMode');
+      var loginButton = document.getElementById('loginMode');
+      registerButton.setAttribute('aria-pressed', String(isRegister));
+      loginButton.setAttribute('aria-pressed', String(!isRegister));
+      registerButton.className = isRegister ? 'btn coral' : 'btn ghost';
+      loginButton.className = isRegister ? 'btn ghost' : 'btn coral';
+      document.getElementById('authEmailLabel').style.display = isRegister ? 'block' : 'none';
+      document.getElementById('authEmail').style.display = isRegister ? 'block' : 'none';
+      document.getElementById('authNicknameLabel').style.display = isRegister ? 'block' : 'none';
+      document.getElementById('authNickname').style.display = isRegister ? 'block' : 'none';
+      document.getElementById('authPassword').setAttribute('autocomplete', isRegister ? 'new-password' : 'current-password');
+      document.getElementById('authSubmit').textContent = isRegister ? '创建账号并合并记录' : '登录并合并记录';
+    }
+    document.getElementById('registerMode').onclick = function () { setAuthMode('register'); };
+    document.getElementById('loginMode').onclick = function () { setAuthMode('login'); };
+    document.getElementById('authSubmit').onclick = async function () {
+      var btn = this, message = document.getElementById('authMessage');
+      var username = document.getElementById('authUsername').value.trim();
+      var password = document.getElementById('authPassword').value;
+      if (!username || !password) { message.textContent = '请填写用户名和密码'; return; }
+      btn.disabled = true;
+      message.textContent = '正在安全处理…';
+      try {
+        var guest = await guestToken();
+        var payload = { username: username, password: password };
+        if (authMode === 'register') {
+          payload.email = document.getElementById('authEmail').value.trim() || null;
+          payload.nickname = document.getElementById('authNickname').value.trim() || null;
+        }
+        var result = await j('/api/auth/' + authMode, { method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Guest-Token': guest },
+          body: JSON.stringify(payload) });
+        userToken = result.token;
+        try {
+          localStorage.setItem('hikes.auth.token', userToken);
+          localStorage.removeItem('hikes.guest.token');
+        } catch (e) { }
+        message.textContent = '已登录，' + result.mergedVisits + ' 条到访与 ' + result.mergedDrafts + ' 条草稿已合并；仍在当前点位。';
+        document.getElementById('accountPrompt').textContent = '账号已连接';
+        document.getElementById('authUsername').disabled = true;
+        document.getElementById('authPassword').disabled = true;
+        document.getElementById('authEmail').disabled = true;
+        document.getElementById('authNickname').disabled = true;
+        btn.style.display = 'none';
+        document.getElementById('registerMode').style.display = 'none';
+        document.getElementById('loginMode').style.display = 'none';
+        await loadAccountDraft();
+        await loadComments();
+      } catch (e) {
+        message.textContent = String(e.message).slice(0, 180);
+      } finally { btn.disabled = false; }
+    };
+    document.getElementById('publishDraft').onclick = async function () {
+      if (!userToken) return;
+      this.disabled = true;
+      try {
+        await j('/api/me/arrival-drafts/' + encodeURIComponent(p.code) + '/publish', {
+          method: 'POST', headers: accountHeaders()
+        });
+        document.getElementById('cmhint').textContent = '留言已署名发布';
+        document.getElementById('publishDraft').style.display = 'none';
+        await loadComments();
+      } catch (e) {
+        document.getElementById('cmhint').textContent = '发布失败：' + String(e.message).slice(0, 120);
+      } finally { this.disabled = false; }
+    };
+    if (userToken) {
+      document.getElementById('accountPrompt').textContent = '账号已连接 · 记录可跨设备保存';
+      accountBox.style.display = 'block';
+      document.getElementById('authSubmit').style.display = 'none';
+      document.getElementById('registerMode').style.display = 'none';
+      document.getElementById('loginMode').style.display = 'none';
+      document.getElementById('authMessage').textContent = '已登录。私人纪念仅自己可见，留言发布前仍可修改。';
+      setAuthMode('login');
+    }
     await loadComments();
     fetch('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'app_open', props: { code: code } }) }).catch(function () { });
