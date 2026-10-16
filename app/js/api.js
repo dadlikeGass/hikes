@@ -70,17 +70,26 @@
   }
   g.API.guestToken = guestToken;
   g.API.resetGuest = function () { guestReady = null; };
-  g.API.guestVisit = function (code) {
+  g.API.guestVisit = function (code, details) {
     return guestToken().then(function (tk) {
       if (!tk) throw new Error('guest token unavailable');
       return timedFetch('/api/guest/visit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Guest-Token': tk },
-        body: JSON.stringify({ code: code })
+        body: JSON.stringify(Object.assign({ code: code }, details || {}))
       }).then(function (r) {
         if (!r.ok) throw new Error('guest visit → HTTP ' + r.status);
         return r.json();
       });
+    });
+  };
+  g.API.nearbyPoints = function (position) {
+    return timedFetch('/api/points/nearby', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(position)
+    }).then(function (r) {
+      if (!r.ok) throw new Error('附近点位查询失败（HTTP ' + r.status + '）');
+      return r.json();
     });
   };
 

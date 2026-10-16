@@ -348,25 +348,72 @@
       '<b aria-hidden="true">›</b></a>';
   }
 
+  var homeData = null;
+  var homeLoading = false;
+  function loadHomeData() {
+    if (homeLoading) return;
+    homeLoading = true;
+    window.API.token().then(function (token) {
+      return token ? Promise.resolve({ token: token, guest: false }) :
+        window.API.guestToken().then(function (guest) { return { token: guest, guest: true }; });
+    }).then(function (identity) {
+      if (!identity.token) return { summary: [], receipts: [] };
+      var base = identity.guest ? '/api/guest/' : '/api/me/';
+      var headers = identity.guest ? { 'X-Guest-Token': identity.token } :
+        { Authorization: 'Bearer ' + identity.token };
+      function load(path) { return fetch(base + path, { headers: headers }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }); }
+      return Promise.allSettled([load('mountain-summary?limit=3'), load('visit-receipts?limit=1')])
+        .then(function (results) { return {
+          summary: results[0].status === 'fulfilled' ? results[0].value : null,
+          receipts: results[1].status === 'fulfilled' ? results[1].value : null
+        }; });
+    }).then(function (data) {
+      // 待同步记录单独算：失败/等待登录的记录要能在首页说清楚，而不是只报个总数
+      return window.HIKES_CHECKIN.summary().catch(function () {
+        return { pending: 0, failed: 0, blocked: 0, total: 0 };
+      }).then(function (queue) { data.queue = queue; return data; });
+    }).then(function (data) { homeData = data; })
+      .catch(function () { homeData = { summary: null, receipts: null, pending: 0 }; })
+      .then(function () { homeLoading = false; if (parse().name === 'home') render(); });
+  }
   function homeView() {
-    var featured = randomTrail(null);
+    if (!homeData) loadHomeData();
+    var summary = homeData && homeData.summary;
+    var receipts = homeData && homeData.receipts;
+    var latest = receipts && receipts[0];
+    var queue = (homeData && homeData.queue) || { pending: 0, failed: 0, blocked: 0, total: 0 };
     return '<div class="home-page"><section class="home-scene" aria-label="动漫山景主视觉">' +
       messageEntry() + '<div class="home-brand"><img src="assets/brand/logo-reference-white-sun.png" alt="到此一游山形标志"><span>DCYY</span></div>' +
       '<img class="home-hiker" src="images/home/hiker.png" alt="徒步者坐在岩石上眺望群山">' +
       '</section><section class="home-content"><div class="home-copy"><h1>到此一游</h1>' +
       '<p>一条线路、一座山头、一句现场留言。<br>把走过的路，留给后来的人。</p>' +
       '<div class="home-actions"><a class="home-primary" href="#/scan">' + U.icon('scan') + '扫码打卡</a>' +
-      featuredBoxHTML('homeFeatured', featured) +
+      '<button class="btn ghost" data-act="nearby">附近定位打卡</button>' +
       '</div></div>' +
-      '<div class="home-core" aria-label="网站核心功能"><h2 class="home-core-title">这里可以玩什么？</h2>' +
-      '<a class="home-core-item" href="#/trails"><span class="home-core-icon">' + U.icon('book') +
-      '</span><span><b>路书</b><small>看线路、爬升与沿途点位</small></span><i>›</i></a>' +
-      '<a class="home-core-item" href="#/places"><span class="home-core-icon">' + U.icon('hill') +
-      '</span><span><b>占山为王</b><small>认领山头，或补一处岔路</small></span><i>›</i></a>' +
-      '<a class="home-core-item" href="#/board"><span class="home-core-icon">' + U.icon('chat') +
-      '</span><span><b>留言版</b><small>读山友现场留言，按山头关注</small></span><i>›</i></a>' +
-      '<a class="home-core-item home-core-scan" href="#/scan"><span class="home-core-icon">' + U.icon('scan') +
-      '</span><span><b>扫一扫</b><small>到现场打卡，留下路况和心情</small></span><i>›</i></a>' +
+      '<div class="pad"><div class="sec-head"><h3>我的山峰</h3></div>' +
+      (!homeData ? '<div class="empty">正在读取到访记录…</div>' : summary === null ?
+        '<div class="empty">暂时无法读取到访人数。<button class="btn ghost" data-act="home-retry">重试</button></div>' :
+        summary.length ? summary.map(function (m) {
+          return '<div class="rowlink"><span class="em">⛰</span><div class="tx"><b>' + esc(m.name || '名称待定') +
+            '</b><span>有记录的到访者 ' + m.visitorCount + ' 人 · 最近到访 ' +
+            esc((m.myLastVisitedAt || '').slice(0, 10)) + '</span></div></div>';
+        }).join('') + rowlink('#/me/visited', '›', '查看全部', '我记录过的山峰与凭证') :
+        '<div class="empty">还没有到访记录，去扫一扫留下第一次。</div>') +
+      '<div class="sec-head"><h3>最近的打卡凭证</h3></div>' +
+      (latest ? '<div class="card"><b>' + esc(latest.name || latest.code) + '</b><div class="hint">' +
+        esc((latest.visitedAt || '').replace('T', ' ').slice(0, 16)) +
+        (latest.durationS ? ' · 本次用时 ' + Math.round(latest.durationS / 60) + ' 分钟' : '') +
+        (latest.seq ? ' · 该点位第 ' + latest.seq + ' 条记录' : '') +
+        '</div></div>' : receipts === null ?
+        '<div class="empty">凭证暂时无法读取。<button class="btn ghost" data-act="home-retry">重试</button></div>' :
+        '<div class="empty">还没有打卡凭证。</div>') +
+      (queue.total ? '<div class="hint">本机有 ' + queue.total + ' 条待同步记录' +
+        (queue.failed ? '（其中 ' + queue.failed + ' 条被服务器拒绝，原因保留在本机）' : '') +
+        (queue.blocked ? '（其中 ' + queue.blocked + ' 条属于另一个身份，需登录原身份）' : '') +
+        ' <button class="btn ghost" data-act="sync-checkins" data-force="1">重试同步</button></div>' : '') +
       '</div></section></div>';
   }
 
@@ -1014,7 +1061,7 @@
         });
       /* 顶部不再放"山野地点 / 占山为王"那组标题（2026-10-15 用户要求删） */
       return '<div class="places-page">' + segmentTabs + newKingEntry('peak') + bar +
-        '<div class="sec-head" id="page-peaks" style="margin-top:4px"><h3>热门山头榜</h3>' +
+        '<div class="sec-head" id="page-peaks" style="margin-top:4px"><h3>山头</h3>' +
         '<span class="more">' + (pq || pf !== 'all' || pd !== 'all'
           ? board.length + ' 个结果' : '按海拔 ›') + '</span></div>' +
         (board.length ? pageSlice(board, 'peaks', PAGE_SIZE).map(function (p, i) {
@@ -1030,22 +1077,14 @@
             heat: p.visits30 || 0,
             footTitle: p.origin === 'user' ? '还没有人留言' : '山顶留言',
             /* 自建点位不套用示例留言——那是编的，用户自己的点位里一眼就能看出来 */
-            foots: p.origin === 'user'
-              ? [{ plain: true, who: p.code || '待激活',
-                   text: '刚建好的点位。把二维码贴到山上，第一个扫码的人会写下第一句。' }]
-              : [
-                  { who: '小鱼', text: '风很大，但看到日出那一刻觉得都值了。' },
-                  { who: '阿川', text: '登顶打卡第 100 位，是我！' },
-                  { who: '阿楠', text: '石阶结露，慢慢走，别赶。' }
-                ]
+            foots: [{ plain: true, who: p.code || '山头',
+              text: '进入山头查看现场留言与登顶路线。' }]
           });
         }).join('') : '<div class="empty">没有匹配的山头</div>') +
         pager('peaks', board.length, PAGE_SIZE) +
         '<div class="hint" style="text-align:center;margin-top:10px">共 ' + H.peaks.length +
         ' 座山头 · 一座山头一个主峰、一个二维码 · 峰名待实地采集</div>' +
-        /* 热门登顶榜：按"本周打卡热度 + 用户关注度"排，跟上面的海拔榜是两个口径。
-           口径写在榜单下面，免得用户以为是同一个榜。 */
-        hotBoard() + '</div>';
+        '</div>';
     }
 
     var all = [];
@@ -1172,19 +1211,22 @@
   function sheetGuestCard(v) {
     var loggedIn = !!localStorage.getItem('hikes.auth.token');
     U.openSheet(
-      '<h3>你到了，山友。</h3>' +
-      '<div class="sh-sub">' + fmtLocal(v.visitedAt) + ' · 到此一游</div>' +
+      '<h3>已到达：' + esc(v.peakName || v.pointCode) + '</h3>' +
+      '<div class="sh-sub">' + fmtLocal(v.visitedAt) + ' · 到此一游凭证</div>' +
       '<div class="card" style="text-align:center;padding:18px 14px">' +
       '<span class="seal">#' + v.seq + '</span>' +
       '<div style="font-size:14px;font-weight:800;margin-top:9px">' +
       esc(v.peakName || ('海拔 ' + (v.altitude || '—') + ' m')) + '</div>' +
       '<div style="font-size:12.5px;color:var(--ink3);margin-top:5px">' +
-      (v.routeName ? esc(v.routeName) + ' 第 ' + v.idxInRoute + '/' + v.totalInRoute + ' 个点位 · ' : '') +
-      '第 ' + v.seq + ' 位在这里留下痕迹的人</div>' +
+      /* 序号是"这个点位入账的记录序号"，不是"第几个人"——同一个人每天最多一条，
+         所以它谈的是记录，不是人数（计划第 2 节）。 */
+      '该点位第 ' + v.seq + ' 条到访记录' +
+      (v.routeName ? ' · ' + esc(v.routeName) + ' 第 ' + v.idxInRoute + '/' + v.totalInRoute + ' 个点位' : '') +
+      '</div>' +
       '<div style="font-size:12px;color:var(--ink3);margin-top:7px">' +
       (v.altitude ? '海拔 ' + v.altitude + ' m · ' : '') + '编号 ' + esc(v.pointCode) + '</div>' +
       '</div>' +
-      '<div class="hint" style="text-align:center">截图就是你的到此一游凭证</div>' +
+      '<div class="hint" style="text-align:center">正式用时与名次在凭证详情里；这里不用手动开计时。</div>' +
       '<button class="btn ghost" data-act="arrival-draft" data-code="' + esc(v.pointCode) + '">留一句给下一位</button>' +
       (loggedIn ? '<div class="hint" style="text-align:center;margin-top:10px">已存到你的账号。</div>' :
         '<button class="btn ghost" style="margin-top:9px" data-act="signup" data-why="nickname">' +
@@ -1193,6 +1235,7 @@
         '纪念和留言草稿可先保存；公开发布和署名需要账号。</div>' +
         '<button class="btn coral" style="margin-top:10px" data-act="signup" data-why="save">' +
         '存到我名下（换手机也不丢）</button>') +
+      '<a class="btn ghost" style="margin-top:9px" href="#/peaks/p-' + encodeURIComponent(v.pointCode) + '">查看这座山</a>' +
       '<button class="btn ghost" style="margin-top:9px" data-act="close">先这样</button>'
     );
   }
@@ -1689,6 +1732,7 @@
         p.recentContribution = d.recentContribution;
         p.pendingCount = d.pendingCount;
         p.pointId = d.id;
+        p.mountainId = d.mountainId;
         p.visitCount = d.visitCount;
         p.boardId = d.boardId;
         p.boardPointCodes = d.boardPointCodes;
@@ -1741,6 +1785,7 @@
         var tc = d.topComment;
         H.peaks.unshift({
           id: 'p-' + d.code, pointId: d.id, code: d.code, origin: 'user',
+          mountainId: d.mountainId,
           type: d.type,                      /* peak / junction —— 决定这页上的说法 */
           name: d.name, alt: d.altitude, trailName: d.route_name,
           routeSlug: d.route_slug, city: null, level: d.level,
@@ -1784,6 +1829,49 @@
       '</section>';
   }
 
+  var peakBoardWindow = 'week';
+  var peakBoards = {};
+  var peakBoardLoading = {};
+  function loadPeakBoard(mountainId) {
+    var key = mountainId + ':' + peakBoardWindow;
+    if (peakBoardLoading[key]) return;
+    peakBoardLoading[key] = true;
+    window.API.ja('/api/mountains/' + mountainId + '/courses').then(function (courses) {
+      return Promise.all(courses.map(function (course) {
+        return window.API.ja('/api/efforts/leaderboard?courseId=' + course.id +
+          '&window=' + peakBoardWindow).then(function (board) {
+          return { course: course, board: board };
+        });
+      }));
+    }).then(function (rows) { peakBoards[key] = rows; })
+      .catch(function () { peakBoards[key] = { error: true }; })
+      .then(function () { peakBoardLoading[key] = false; if (parse().name === 'peak') render(); });
+  }
+  function peakBoardHTML(p) {
+    if (!p.mountainId) return '<div class="sec-head"><h3>登顶用时榜</h3></div>' +
+      '<div class="empty">这座山的路线身份仍待核实。</div>';
+    var key = p.mountainId + ':' + peakBoardWindow;
+    if (!peakBoards[key]) loadPeakBoard(p.mountainId);
+    var data = peakBoards[key];
+    var tabs = [['week','本周'],['month','本月'],['year','本年'],['all','历史']].map(function (w) {
+      return '<button class="btn ghost" data-act="peak-board-window" data-val="' + w[0] + '">' +
+        (peakBoardWindow === w[0] ? '✓ ' : '') + w[1] + '</button>';
+    }).join('');
+    return '<div class="sec-head"><h3>登顶用时榜</h3></div><div class="btn-row">' + tabs + '</div>' +
+      (!data ? '<div class="empty">正在读取路线成绩…</div>' : data.error ?
+        '<div class="empty">用时榜暂时无法读取，打卡不受影响。</div>' : data.length ?
+        data.map(function (item) {
+          var board = item.board;
+          return '<div class="card"><b>' + esc(item.course.name) + '</b>' +
+            (board.myBest ? '<div class="hint">我的用时 ' + Math.round(board.myBest.durationS / 60) +
+              ' 分钟' + (board.myBest.rank ? ' · 第 ' + board.myBest.rank + ' 名' : '') + '</div>' : '') +
+            (board.rankingAvailable ? board.leaders.map(function (r) {
+              return '<div class="rowlink"><span class="em">' + r.rank + '</span><div class="tx"><b>' +
+                esc(r.nickname) + '</b><span>' + Math.round(r.durationS / 60) + ' 分钟 · ' + esc(r.date) +
+                '</span></div></div>';
+            }).join('') : '<div class="hint">有效样本不足 8 人，暂不显示名次。</div>') + '</div>';
+        }).join('') : '<div class="empty">登顶路线尚未核实，暂不开放用时榜。</div>');
+  }
   function peakView(id) {
     var p = peak(id);
     if (!p && id.indexOf('p-') === 0) {
@@ -1793,13 +1881,6 @@
     }
     if (!p) return notFound();
     hydratePeakCommunity(p);
-    var board = p.board.map(function (b) { return { pos: b.pos, av: personByName(b.who), name: b.who, sub: b.when, time: b.time }; });
-    if (S.mySeqs[p.id] && S.pb[p.id]) {
-      board = board.filter(function (b) { return b.name !== '你'; });
-      board.push({ pos: 0, av: H.me, name: '你', sub: '个人最好', time: S.pb[p.id], mine: true });
-      board.sort(function (a, b) { return a.time.localeCompare(b.time); });
-      board.forEach(function (b, i) { b.pos = i + 1; });
-    }
     var cs = commentsFor(p.id);
     var want = isWant(p.id);
     var selfBuilt = p.origin === 'user';        /* 用户自己上传 GPX 建的点位 */
@@ -1835,13 +1916,7 @@
       U.signage(p, { code: p.code || ('PK-' + p.id.toUpperCase()), realQR: !!p.pointId }) +
       mountainMaintenance(p) +
 
-      '<div class="sec-head"><h3>用时榜</h3><span class="more">今日 · 好友 · 我的纪录 ›</span></div>' +
-      '<div class="card tight">' + (board.length ? rankRows(board) +
-      '<div style="font-size:11.5px;color:var(--ink3);padding:10px 0 2px">' +
-      (selfBuilt ? '共 ' + board.length + ' 人登顶 · 请以安全返程为第一目标'
-                 : '共 37 人今日登顶 · 请以安全返程为第一目标') + '</div>'
-        : '<div class="empty">暂无个人用时。<br>' +
-          '<span style="font-size:12.5px">已有 ' + (p.visitCount || 0) + ' 次到访记录；用时按明确路段分别统计。</span></div>') + '</div>' +
+      peakBoardHTML(p) +
 
       '<div class="sec-head"><h3>山顶照片墙</h3><span class="more">' + p.photos + ' 张 ›</span></div>' +
       (selfBuilt
@@ -2479,8 +2554,9 @@
       /* 我的山头 = 拿二维码的地方，不是展示位 */
       rowlink('#/me/peak', '⛰', '我的山头',
         '成为山大王 / NPC指路人拿二维码 · 成为版主管留言板') +
-      rowlink('#/me/letters', '✉', '山间信箱 ' + (H.letters.length + S.letters.length) +
-        '<span class="soon-tag">待开发</span>', '未来信数据表还没建，下面是示例') +
+      rowlink('#/me/letters', '✉', '山间信箱', '写给未来的自己，满足条件后打开') +
+      '<button class="rowlink" style="width:100%;text-align:left" data-act="leaderboard-settings">' +
+      '<span class="em">⏱</span><div class="tx"><b>上榜设置</b><span>选择是否公开我的有效登顶用时</span></div><span class="ar">›</span></button>' +
       rowlink('#/me/activity', '＋', '发起周末活动<span class="soon-tag">待开发</span>',
         '选一条路，约人一起走') +
       '<button class="btn ghost" style="margin-top:14px" data-act="reset">清空我的演示数据</button>';
@@ -2496,8 +2572,9 @@
       '<button class="' + (meViewMode === 'list' ? 'on' : '') + '" data-act="meview" data-val="list">列表</button>' +
       '<button class="' + (meViewMode === 'map' ? 'on' : '') + '" data-act="meview" data-val="map">地图</button>' +
       '<button class="' + (meViewMode === 'puzzle' ? 'on' : '') + '" data-act="meview" data-val="puzzle">拼图</button></div>';
-    if (!S.visited.length) return head + '<div class="empty"><span class="big">⛰</span>还没有到访记录，去扫一扫留下第一次。</div>';
+    if (meViewMode === 'list') return head + receiptsListHTML();
     if (meViewMode === 'map') {
+      if (!S.visited.length) return head + '<div class="empty">地图按本机的演示到访画点；还没有数据。</div>';
       return head + '<div class="mapbox">' + S.visited.map(function (v, i) {
         var x = 12 + (hash(v.id) % 70), y = 12 + (hash(v.id + 'y') % 64);
         return '<span class="pin" style="left:' + x + '%;top:' + y + '%" title="' + esc(v.name) + '"></span>';
@@ -2509,11 +2586,56 @@
       return head + '<div class="card">' +
         puzzleBlock(true) + '</div>';
     }
+    if (!S.visited.length) return head + '<div class="empty">拼图用的是本机演示到访；还没有数据。</div>';
     return head + '<div class="card tight">' + S.visited.map(function (v) {
       return '<a class="rank" href="' + (v.type === 'peak' ? '#/peaks/' + v.id : v.type === 'junction' ? '#/junctions/' + v.id : '#/trails/' + v.id) + '">' +
         '<span class="thumb">' + U.scene(v.id) + '</span>' +
         '<span class="nm"><b>' + esc(v.name) + '</b><em>第 ' + v.seq + ' 位到访 · ' + esc(v.when) + '</em></span>' +
         '<span class="tm" style="font-size:12px;color:var(--ink3)">›</span></a>';
+    }).join('') + '</div>';
+  }
+
+  /* 我的到访记录读真实凭证（账号读账号的，游客读本机的），
+     不再拿本地演示数据冒充"我去过的地方"。 */
+  var myReceipts = null;
+  var myReceiptsError = false;
+  var myReceiptsLoading = false;
+  function loadMyReceipts() {
+    if (myReceiptsLoading) return;
+    myReceiptsLoading = true;
+    window.HIKES_CHECKIN.currentIdentity().then(function (identity) {
+      var url = identity.kind === 'user' ? '/api/me/visit-receipts?limit=50' :
+        (identity.token ? '/api/guest/visit-receipts?limit=50' : null);
+      if (!url) { myReceipts = []; return null; }
+      var headers = identity.kind === 'user'
+        ? { Authorization: 'Bearer ' + identity.token } : { 'X-Guest-Token': identity.token };
+      return window.API.timedFetch(url, { headers: headers }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function (rows) { myReceipts = rows; myReceiptsError = false; })
+        .catch(function () { myReceiptsError = true; });
+    }).catch(function () { myReceiptsError = true; })
+      .then(function () {
+        myReceiptsLoading = false;
+        if (parse().name === 'me-visited') render();
+      });
+  }
+  function receiptsListHTML() {
+    if (myReceipts === null) { loadMyReceipts(); return '<div class="empty">正在读取到访记录…</div>'; }
+    if (myReceiptsError) {
+      return '<div class="empty">到访记录暂时读不到。' +
+        '<button class="btn ghost" data-act="receipts-retry">重试</button></div>';
+    }
+    if (!myReceipts.length) {
+      return '<div class="empty"><span class="big">⛰</span>还没有到访记录，去扫一扫留下第一次。</div>';
+    }
+    return '<div class="card tight">' + myReceipts.map(function (row) {
+      return '<a class="rank" href="#/peaks/p-' + encodeURIComponent(row.code) + '">' +
+        '<span class="nm"><b>' + esc(row.name || row.code) + '</b><em>' +
+        esc((row.visitedAt || '').replace('T', ' ').slice(0, 16)) + ' · 该点位第 ' +
+        row.seq + ' 条记录' + (row.durationS ? ' · 用时 ' + Math.round(row.durationS / 60) + ' 分钟' :
+          (row.effortReason ? ' · 未计入公开榜（' + esc(row.effortReason) + '）' : '')) +
+        '</em></span><span class="tm" style="font-size:12px;color:var(--ink3)">›</span></a>';
     }).join('') + '</div>';
   }
   function visitedRow(v) {
@@ -2591,23 +2713,30 @@
       '<span>跟别人比，也跟自己比</span></div><span class="ar">›</span></a>';
   }
 
+  var privateLetters = null;
+  var privateLettersLoading = false;
+  function loadPrivateLetters() {
+    if (privateLettersLoading) return;
+    privateLettersLoading = true;
+    window.API.ja('/api/me/letters').then(function (rows) { privateLetters = rows; })
+      .catch(function () { privateLetters = { error: true }; })
+      .then(function () {
+        privateLettersLoading = false;
+        if (parse().name === 'me-letters') render();
+      });
+  }
   function meLettersView() {
-    var got = H.letters.map(function (l) {
-      return '<div class="letter"><span class="stampmark"></span><div class="ltag">来自 ' + esc(l.from) + '</div>' +
-        '<div class="line" style="font-size:15.5px">' + esc(l.text) + '</div>' +
-        '<div class="lsub">' + esc(l.when) + '</div></div>';
-    }).join('');
-    var mine = S.letters.length ? S.letters.map(function (l) {
-      return '<div class="letter" style="background:#fff;border-style:solid;border-color:var(--line)">' +
-        '<div class="ltag" style="color:var(--violet)">写给未来的自己</div>' +
-        '<div class="line" style="font-size:15.5px">' + esc(l.text) + '</div>' +
-        '<div class="lsub">' + esc(l.date) + ' 解锁 · 在 ' + esc(l.place) + '</div></div>';
-    }).join('') : '';
-    return '<div class="sec-head" style="margin-top:6px"><h3>收到的信</h3><span class="more">' + H.letters.length + ' 封</span></div>' +
-      got +
-      '<div class="sec-head"><h3>我写出的</h3><span class="more">' + S.letters.length + ' 封</span></div>' +
-      (mine || '<div class="empty">还没有写给未来的自己，去山顶点位写一封。</div>') +
-      '<button class="btn ghost" data-act="letter-open" data-id="dongling">在东灵山写一封未来信</button>';
+    if (!privateLetters) { loadPrivateLetters(); return '<div class="empty">正在读取山间信箱…</div>'; }
+    if (privateLetters.error) return '<div class="empty">信箱暂时无法读取。<button class="btn ghost" data-act="private-letter-retry">重试</button></div>';
+    return '<div class="sec-head"><h3>写给未来的自己</h3><span class="more">' + privateLetters.length + ' 封</span></div>' +
+      (privateLetters.length ? privateLetters.map(function (l) {
+        return '<div class="letter"><div class="ltag">' + (l.status === 'sealed' ? '封存中' : '已解锁') + '</div>' +
+          '<div class="line">' + (l.status === 'sealed' ? '内容将在解锁后显示' : esc(l.text || '')) + '</div>' +
+          '<div class="lsub">' + (l.mode === 'date' ? '到期：' + esc((l.unlockAt || '').slice(0, 10)) :
+            l.mode === 'checkin' ? '等待目标地点的新一次打卡' : '随时可看') + '</div>' +
+          '<button class="btn ghost" data-act="private-letter-delete" data-id="' + l.id + '">删除</button></div>';
+      }).join('') : '<div class="empty">还没有写给自己的信。</div>') +
+      '<button class="btn coral" data-act="private-letter-new">写一封信</button>';
   }
 
   function meActivityView() {
@@ -2998,6 +3127,20 @@
   var lastRoute = '';
 
   /* ==================== 事件 ==================== */
+  var nearbySelection = null;
+  /* 定位与队列都在 checkin.js 里（计划 T4）；这里只做页面层的触发与反馈。 */
+  function currentPosition() { return window.HIKES_CHECKIN.position(); }
+  function syncPendingCheckins(force) {
+    if (!navigator.onLine) return Promise.resolve(null);
+    return window.HIKES_CHECKIN.flush({ force: !!force })
+      .then(function (result) {
+        if (result && (result.sent || result.failed || result.blocked)) { homeData = null; render(); }
+        return result;
+      })
+      .catch(function () { return null; });
+  }
+  window.addEventListener('hikes:checkin-synced', function () { homeData = null; render(); });
+  window.HIKES_CHECKIN.start();
   function on(act, fn) { return { act: act, fn: fn }; }
 
   document.addEventListener('change', function (e) {
@@ -3019,9 +3162,32 @@
     if (!t) return;
     var act = t.getAttribute('data-act');
     if (act === 'retry-boot') { location.reload(); return; }
+    if (act === 'home-retry') { homeData = null; loadHomeData(); return; }
+    if (act === 'receipts-retry') { myReceipts = null; myReceiptsError = false; loadMyReceipts(); return; }
     var id = t.getAttribute('data-id');
     var type = t.getAttribute('data-type');
     var val = t.getAttribute('data-val');
+    if (act === 'peak-board-window') { peakBoardWindow = val; render(); return; }
+
+    if (act === 'nearby') {
+      t.disabled = true;
+      currentPosition().then(function (pos) { return window.API.nearbyPoints(pos); })
+        .then(function (rows) {
+          U.openSheet('<h3>附近的打卡点</h3>' + (rows.length ? rows.map(function (p) {
+            return '<button class="rowlink" style="width:100%;text-align:left" data-act="nearby-point" data-code="' +
+              esc(p.code) + '"><span class="tx"><b>' + esc(p.name) + '</b><small>' +
+              p.distanceM + ' 米 · ' + esc(p.kind) + '</small></span><span class="ar">›</span></button>';
+          }).join('') : '<p>附近暂无已开放定位的点位。</p>'));
+        }).catch(function (error) { U.toast(error.message); })
+        .then(function () { t.disabled = false; });
+      return;
+    }
+    if (act === 'nearby-point') {
+      nearbySelection = t.getAttribute('data-code');
+      U.closeSheet();
+      location.hash = '#/arrive/p-' + encodeURIComponent(nearbySelection);
+      return;
+    }
 
     if (act === 'peak-name') {
       var peakIdx = t.getAttribute('data-idx');
@@ -3100,19 +3266,76 @@
       var gcode = t.getAttribute('data-code');
       if (!gcode) { U.toast('这个示例点位没有编号；扫真实二维码就有'); return; }
       t.disabled = true;
-      window.API.token().then(function (tk) {
-        if (!tk) return window.API.guestVisit(gcode);
-        var known = H.peaks.filter(function (p) { return p.code === gcode && p.pointId; })[0];
-        var point = known ? Promise.resolve(known) : fetch('/api/points/' + encodeURIComponent(gcode))
-          .then(function (r) { if (!r.ok) throw new Error('点位加载失败'); return r.json(); });
-        return point.then(function (p) {
-          return window.API.ja('/api/points/' + (p.pointId || p.id) + '/visit', {
-            method: 'POST', body: JSON.stringify({ source: 'scan' })
+      var isNearby = nearbySelection === gcode;
+      var actionId = t.getAttribute('data-client-uuid');
+      if (!actionId) {
+        actionId = crypto.randomUUID();
+        t.setAttribute('data-client-uuid', actionId);
+        t.setAttribute('data-occurred-at', new Date().toISOString());
+      }
+      var details = { source: isNearby ? 'nearby' : 'scan', clientUuid: actionId,
+                      occurredAt: t.getAttribute('data-occurred-at') };
+      /* 定位只在"附近打卡"这一次动作里取一次；重试时复用同一份 payload，
+         否则每次重试都会换一个现场时间与坐标，破坏幂等（计划 T3/T4）。 */
+      var cached = t.getAttribute('data-payload');
+      var record = null;      /* 在 .then 回调里赋值，所以要在外层声明 */
+      var payloadPromise = cached ? Promise.resolve(JSON.parse(cached)) :
+        (isNearby ? currentPosition().then(function (pos) {
+          return Object.assign(details, { lat: pos.lat, lng: pos.lng, accuracyM: pos.accuracyM });
+        }) : Promise.resolve(details));
+      payloadPromise.then(function (payload) {
+        t.setAttribute('data-payload', JSON.stringify(payload));
+        var knownPoint = H.peaks.filter(function (p) { return p.code === gcode && p.pointId; })[0] || {};
+        record = {
+          clientUuid: actionId, code: gcode, pointId: knownPoint.pointId || null,
+          pointSnapshot: { code: gcode, name: knownPoint.name || gcode,
+                           kind: knownPoint.type || null,
+                           checkinRadiusM: knownPoint.checkinRadiusM || null },
+          payload: payload, status: 'pending', attempts: 0,
+          createdAt: new Date().toISOString()
+        };
+        return window.HIKES_CHECKIN.sendNow(record);
+      }).then(function (outcome) {
+        if (outcome.ok) { homeData = null; sheetGuestCard(outcome.visit); return; }
+        var label = (H.peaks.filter(function (p) { return p.code === gcode; })[0] || {}).name || gcode;
+        if (!outcome.retryable) {
+          /* 服务器明确拒绝（不在半径内、精度不够、点位未开放……）：当场说清原因，
+             不写队列 —— 写进去只会反复失败，还让用户以为"已经在传了"。 */
+          U.openSheet('<h3>这次没能记上</h3><p>' + esc(outcome.message || '服务器拒绝了这次打卡') +
+            '</p><p class="hint">没有产生到访记录。</p>');
+          return;
+        }
+        return window.HIKES_CHECKIN.currentIdentity().then(function (identity) {
+          record.identity = identity.key;
+          record.lastError = outcome.message || '';
+          record.lastErrorCode = outcome.code || '';
+          return window.HIKES_CHECKIN.enqueue(record).then(function () {
+            homeData = null;
+            U.openSheet('<h3>已保存在本机，待同步</h3><p>' + esc(label) + ' · ' +
+              esc(outcome.message || '网络还没确认这次打卡') + '</p>' +
+              '<p class="hint">同步成功之前不显示正式序号；联网、回到前台或点下面的按钮都会重试。</p>' +
+              '<button class="btn ghost" data-act="sync-checkins" data-force="1">立即重试</button>');
+          }).catch(function () {
+            U.toast('本机保存失败，这次打卡还没有记录，请保持页面打开后重试');
           });
         });
-      }).then(function (v) { sheetGuestCard(v); })
-        .catch(function () { U.toast('网络未确认打卡结果，请重试；同日不会重复计数'); })
-        .then(function () { t.disabled = false; });
+      }).catch(function (error) {
+        U.toast(error.message || '打卡未完成，请重试');
+      }).then(function () { t.disabled = false; });
+      return;
+    }
+    if (act === 'sync-checkins') {
+      t.disabled = true;
+      syncPendingCheckins(t.getAttribute('data-force') === '1').then(function (result) {
+        t.disabled = false;
+        if (!result) { U.toast('现在没有网络，稍后会自动重试'); return; }
+        var left = (result.remaining || {});
+        if (result.sent) { U.closeSheet(); U.toast('已同步 ' + result.sent + ' 条记录'); }
+        else if (!left.total) { U.closeSheet(); U.toast('本机没有待同步的记录了'); }
+        else if (left.blocked) { U.toast('这些记录属于另一个身份：登录原来那个账号后才能传'); }
+        else if (left.failed) { U.toast(left.failed + ' 条被服务器拒绝，原因已保留在本机'); }
+        else { U.toast('还在等重试时间，稍后会自动再试'); }
+      });
       return;
     }
     if (act === 'arrival-draft') { sheetArrivalDraft(t.getAttribute('data-code') || arrivalCode()); return; }
@@ -3192,6 +3415,12 @@
         localStorage.setItem('hikes.auth.token', d.token);
         localStorage.setItem('hikes.auth.userId', String(d.userId));
         window.API.setToken(d.token);
+        // 注册时服务端已把这个游客并进新账号：本机队列里属于它的动作也要跟着改归，
+        // 否则那几条永远传不上去（登录别人的账号不在此列，见计划 T4）。
+        var queueRebind = t.getAttribute('data-mode') === 'register'
+          ? window.HIKES_CHECKIN.rebind('g:' + (oldGuestToken || ''), 'u:' + d.userId)
+          : Promise.resolve(0);
+        queueRebind.then(function () { return window.HIKES_CHECKIN.route(); });
         return moveGuestDraftsToAccount(oldGuestToken, d.userId).then(function (results) {
           localStorage.removeItem('hikes.guest.token');
           window.API.resetGuest();
@@ -3404,6 +3633,61 @@
       if (!txt.trim()) { U.toast('先写点什么'); return; }
       S.myComments[id] = (S.myComments[id] || []).concat([{ when: '刚刚', text: txt.trim() }]);
       persist(); U.closeSheet(); render(); U.toast('已发布到留言板');
+      return;
+    }
+    if (act === 'private-letter-retry') { privateLetters = null; loadPrivateLetters(); return; }
+    if (act === 'leaderboard-settings') {
+      window.API.ja('/api/me/leaderboard-settings').then(function (settings) {
+        U.openSheet('<h3>上榜设置</h3><p>开启后，符合条件的成绩会显示昵称、日期与用时。</p>' +
+          '<button class="btn coral" data-act="leaderboard-toggle" data-enabled="' +
+          (settings.enabled ? 'false' : 'true') + '">' +
+          (settings.enabled ? '退出公开用时榜' : '加入公开用时榜') + '</button>');
+      }).catch(function () { U.toast('请先登录账号，再设置上榜'); });
+      return;
+    }
+    if (act === 'leaderboard-toggle') {
+      window.API.ja('/api/me/leaderboard-settings', { method: 'PATCH',
+        body: JSON.stringify({ enabled: t.getAttribute('data-enabled') === 'true' }) })
+        .then(function () { peakBoards = {}; U.closeSheet(); U.toast('上榜设置已保存'); })
+        .catch(function () { U.toast('保存失败，请重试'); });
+      return;
+    }
+    if (act === 'private-letter-new') {
+      var options = H.peaks.filter(function (p) { return p.pointId && p.code; }).map(function (p) {
+        return '<option value="' + p.pointId + '">' + esc(p.name || p.code) + '</option>';
+      }).join('');
+      U.openSheet('<h3>写给未来的自己</h3>' +
+        '<div class="field"><label>想说的话</label><textarea id="privateLetterText" maxlength="2000"></textarea></div>' +
+        '<div class="field"><label>解锁方式</label><select id="privateLetterMode">' +
+        '<option value="date">到期解锁</option><option value="checkin">现场打卡解锁</option>' +
+        '<option value="open">随时可看</option></select></div>' +
+        '<div class="field"><label>到期年限（仅到期解锁）</label><select id="privateLetterYears">' +
+        '<option value="5">5 年</option><option value="3">3 年</option><option value="1">1 年</option></select></div>' +
+        '<div class="field"><label>目标地点（仅打卡解锁）</label><select id="privateLetterPoint">' + options + '</select></div>' +
+        '<button class="btn coral" data-act="private-letter-save">封存这封信</button>');
+      return;
+    }
+    if (act === 'private-letter-save') {
+      var letterText = (document.getElementById('privateLetterText') || {}).value || '';
+      var mode = (document.getElementById('privateLetterMode') || {}).value;
+      var point = (document.getElementById('privateLetterPoint') || {}).value;
+      if (!letterText.trim() || (mode === 'checkin' && !point)) {
+        U.toast('请填写内容；打卡解锁还需选择目标点位'); return;
+      }
+      t.disabled = true;
+      window.API.ja('/api/me/letters', { method: 'POST', body: JSON.stringify({
+        text: letterText.trim(), mode: mode,
+        years: mode === 'date' ? Number(document.getElementById('privateLetterYears').value) : null,
+        pointId: mode === 'checkin' ? Number(point) : null
+      }) }).then(function () { privateLetters = null; U.closeSheet(); loadPrivateLetters(); })
+        .catch(function () { U.toast('保存失败，请登录后重试'); })
+        .then(function () { t.disabled = false; });
+      return;
+    }
+    if (act === 'private-letter-delete') {
+      window.API.ja('/api/me/letters/' + id, { method: 'DELETE' })
+        .then(function () { privateLetters = null; loadPrivateLetters(); })
+        .catch(function () { U.toast('删除失败，请重试'); });
       return;
     }
     if (act === 'letter-open') { sheetReadLetter(id); return; }
