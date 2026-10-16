@@ -26,7 +26,16 @@ LEGACY_DUMP = os.environ.get(
     "V3_LEGACY_DUMP",
     os.path.join(V.REPO_ROOT, ".local-backups", "hikes-before-v3-2026-10-16.dump"))
 LEGACY_DB = "v3legacy"
-HEAD = "0012_private_letters"
+
+
+def _head_revision():
+    """从 migrations/versions 推断当前 head，避免每加一个修订就要来改常量。"""
+    folder = os.path.join(V.REPO_ROOT, "server", "migrations", "versions")
+    names = sorted(name[:-3] for name in os.listdir(folder) if name.endswith(".py"))
+    return names[-1]
+
+
+HEAD = _head_revision()
 PREFIX = "v3t1"
 
 
