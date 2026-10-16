@@ -305,7 +305,12 @@ DELETE FROM visits
  WHERE user_id IN (SELECT id FROM users WHERE username ILIKE {p})
     OR guest_id IN (SELECT id FROM guests WHERE nickname ILIKE {p})
     OR point_id IN (SELECT id FROM points WHERE code ILIKE {p});
-DELETE FROM ascent_courses WHERE name ILIKE {p};
+-- 路线也要按端点归属清：drill 有时会给路线起个不带前缀的名字（比如截图用的演示路线），
+-- 只按名字清会留下引用点位的路线行，接着删点位就被外键挡住。
+DELETE FROM ascent_courses
+ WHERE name ILIKE {p}
+    OR start_point_id IN (SELECT id FROM points WHERE code ILIKE {p})
+    OR end_point_id IN (SELECT id FROM points WHERE code ILIKE {p});
 DELETE FROM points WHERE code ILIKE {p};
 DELETE FROM mountains WHERE name ILIKE {p};
 DELETE FROM guests WHERE nickname ILIKE {p};

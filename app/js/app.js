@@ -350,6 +350,7 @@
 
   var homeData = null;
   var homeLoading = false;
+  var homeStaleTokenCleared = false;
   function loadHomeData() {
     if (homeLoading) return;
     homeLoading = true;
@@ -362,21 +363,51 @@
       var headers = identity.guest ? { 'X-Guest-Token': identity.token } :
         { Authorization: 'Bearer ' + identity.token };
       function load(path) { return fetch(base + path, { headers: headers }).then(function (r) {
+        if (r.status === 401 && !identity.guest) {
+          // 本地存着一个过期的登录令牌：这不是"数据读不到"，而是身份过期。
+          var expired = new Error('登录状态已过期');
+          expired.status = 401;
+          throw expired;
+        }
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
       }); }
       return Promise.allSettled([load('mountain-summary?limit=3'), load('visit-receipts?limit=1')])
-        .then(function (results) { return {
-          summary: results[0].status === 'fulfilled' ? results[0].value : null,
-          receipts: results[1].status === 'fulfilled' ? results[1].value : null
-        }; });
+        .then(function (results) {
+          var expired = results.some(function (r) {
+            return r.status === 'rejected' && r.reason && r.reason.status === 401;
+          });
+          if (expired && !homeStaleTokenCleared) {
+            /* 过期的令牌要清掉、退回游客身份再看一次：否则首页会一直显示
+               "暂时无法读取"，用户以为站点坏了，其实是登录过期。 */
+            homeStaleTokenCleared = true;
+            try {
+              localStorage.removeItem('hikes.auth.token');
+              localStorage.removeItem('hikes.auth.userId');
+            } catch (e) { /* 隐身模式 */ }
+            window.API.setToken(null);
+            homeLoading = false;
+            homeData = null;
+            U.toast('登录状态已过期，先按游客身份显示；重新登录后能看到账号里的记录');
+            loadHomeData();
+            return null;
+          }
+          return {
+            summary: results[0].status === 'fulfilled' ? results[0].value : null,
+            receipts: results[1].status === 'fulfilled' ? results[1].value : null
+          };
+        });
     }).then(function (data) {
+      if (!data) return null;      // 过期令牌那条分支已经自己重排了
       // 待同步记录单独算：失败/等待登录的记录要能在首页说清楚，而不是只报个总数
       return window.HIKES_CHECKIN.summary().catch(function () {
         return { pending: 0, failed: 0, blocked: 0, total: 0 };
       }).then(function (queue) { data.queue = queue; return data; });
-    }).then(function (data) { homeData = data; })
-      .catch(function () { homeData = { summary: null, receipts: null, pending: 0 }; })
+    }).then(function (data) { if (data) homeData = data; })
+      .catch(function () {
+        homeData = { summary: null, receipts: null,
+                     queue: { pending: 0, failed: 0, blocked: 0, total: 0 } };
+      })
       .then(function () { homeLoading = false; if (parse().name === 'home') render(); });
   }
   function homeView() {
@@ -2733,7 +2764,9 @@
         return '<div class="letter"><div class="ltag">' + (l.status === 'sealed' ? '封存中' : '已解锁') + '</div>' +
           '<div class="line">' + (l.status === 'sealed' ? '内容将在解锁后显示' : esc(l.text || '')) + '</div>' +
           '<div class="lsub">' + (l.mode === 'date' ? '到期：' + esc((l.unlockAt || '').slice(0, 10)) :
-            l.mode === 'checkin' ? '等待目标地点的新一次打卡' : '随时可看') + '</div>' +
+            l.mode === 'checkin'
+              ? '等待在' + esc(l.pointName || l.pointCode || '目标地点') + '的一次新打卡'
+              : '随时可看') + '</div>' +
           '<button class="btn ghost" data-act="private-letter-delete" data-id="' + l.id + '">删除</button></div>';
       }).join('') : '<div class="empty">还没有写给自己的信。</div>') +
       '<button class="btn coral" data-act="private-letter-new">写一封信</button>';

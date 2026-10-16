@@ -290,6 +290,31 @@ class BrowserDrill(unittest.TestCase):
         finally:
             browser.close()
 
+    # ---- 过期令牌：退回游客身份，而不是显示"读不到" ----
+
+    def test_09_stale_token_falls_back_to_guest(self):
+        browser = self.browser()
+        try:
+            context, page = self.page(browser)
+            page.goto(V.base_url() + APP + "#/home")
+            page.wait_for_selector("a.home-primary", timeout=20000)
+            # 本地塞一个过期的令牌（真实用户切换环境后就是这个状态）
+            page.evaluate("""() => {
+                localStorage.setItem('hikes.auth.token', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.'
+                  + 'eyJzdWIiOiI5OTk5OTk5IiwiZXhwIjoxfQ.not-a-real-signature');
+                localStorage.setItem('hikes.auth.userId', '9999999');
+            }""")
+            page.reload()
+            page.wait_for_selector("text=登录状态已过期", timeout=20000)
+            body = page.content()
+            self.assertNotIn("暂时无法读取到访人数", body,
+                             "过期令牌要退回游客身份，而不是报读不到")
+            cleared = page.evaluate("() => localStorage.getItem('hikes.auth.token')")
+            self.assertIsNone(cleared, "过期令牌要被清掉")
+            context.close()
+        finally:
+            browser.close()
+
 
 if __name__ == "__main__":
     unittest.main()
