@@ -40,7 +40,8 @@ def candidates(conn):
     return conn.execute(text("""
         SELECT DISTINCT ON (p.mountain_id) p.mountain_id AS mountain_id, p.id AS point_id,
                coalesce(m.name, p.name) AS name,
-               coalesce(p.altitude, m.altitude, 0) AS altitude
+               coalesce(p.altitude, m.altitude, 0) AS altitude,
+               m.heat_tier AS heat_tier, m.annual_visits AS annual_visits
           FROM points p JOIN mountains m ON m.id = p.mountain_id
          WHERE p.type = 'peak' AND p.geom IS NOT NULL AND p.status = 'published'
            AND p.mountain_id IS NOT NULL
@@ -48,9 +49,27 @@ def candidates(conn):
          ORDER BY p.mountain_id, p.id""")).mappings().all()
 
 
-def famous(rows, count):
-    """按海拔挑高的几座（点位海拔优先，其次山头海拔），看起来更像排行榜。"""
-    return sorted(rows, key=lambda row: -(row["altitude"] or 0))[:count]
+HEAT_RANK = {"极热": 4, "热门": 3, "较热": 2, "小众": 1}
+
+
+def annual_weight(text):
+    """把"2024 年接待游客 941.09 万人次"里的 941.09 折成数字。
+    要取"万"前面那个数——取第一个数字会抓到年份，每座山都变成 2024 万。"""
+    import re
+    if not text:
+        return 0
+    found = re.search(r"([0-9]+(?:[.][0-9]+)?)\s*万", text)
+    return float(found.group(1)) * 10000 if found else 0
+
+
+def popular(rows, count):
+    """挑"门票卖得多的"：先看人工标的热度档（极热 > 热门 > 较热 > 小众），
+    再看年接待量，最后才用海拔兜底。这样榜上出现的是泰山、香山、黄山这些，
+    而不是海拔最高但没人买票的雪峰。"""
+    return sorted(rows, key=lambda row: (
+        -HEAT_RANK.get(row.get("heat_tier") or "", 0),
+        -annual_weight(row.get("annual_visits")),
+        -(row["altitude"] or 0)))[:count]
 
 
 def existing_demo(conn):
@@ -78,7 +97,7 @@ def clear(conn):
 
 
 def seed(conn):
-    mountains = famous(candidates(conn), MOUNTAIN_COUNT)
+    mountains = popular(candidates(conn), MOUNTAIN_COUNT)
     if len(mountains) < 3:
         raise SystemExit("库里带坐标的山头太少，先在开发库导入线路数据再来")
     written = {"users": 0, "guests": 0, "visits": 0}

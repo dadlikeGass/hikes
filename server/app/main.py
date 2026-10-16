@@ -1094,12 +1094,45 @@ def _window_since(window: str) -> datetime:
 
 @app.get("/api/boards/mountains", response_model=dict, tags=["榜单"])
 def board_mountains(window: Literal["week", "month", "year", "all"] = "week",
-                    metric: Literal["people", "visits"] = "people",
+                    metric: Literal["people", "visits", "hot"] = "people",
                     limit: int = 5):
-    """山头榜：`metric=people` 按去重人数排（"打卡人数榜"），
-    `metric=visits` 按到访人次排（"登顶榜"，同一人多次也算）。两个口径分开说清楚，
-    免得"人数"被人当成"人次"。"""
+    """山头榜，三个口径分开列、分开说：
+
+    * `metric=people`：窗口内按去重**人数**排 —— 首页"打卡人数榜"
+    * `metric=visits`：窗口内按到访**人次**排 —— 占山为王"登顶榜"（同一人多次也算）
+    * `metric=hot`   ：按数据里的**热度档 + 年接待量**排 —— "门票卖得多的那些山"，
+      不依赖打卡量（有的山确实没什么人在这里打过卡，但它就是热门景区）
+
+    每条都带上 `heatTier` / `annualVisits`，前端能把"为什么它排前面"写出来。
+    """
     since = _window_since(window)
+    # 年接待量是自由文本（"2024 年接待游客 941.09 万人次"）：要取"万"前面那个数，
+    # 不能取第一个数字——那是年份，会把每座山都算成 2024 万。
+    annual_weight = """CASE WHEN m.annual_visits LIKE '%%万%%'
+        THEN coalesce((regexp_match(m.annual_visits, '([0-9]+([.][0-9]+)?)[[:space:]]*万'))[1]
+                      ::numeric, 0) * 10000
+        ELSE 0 END"""
+    heat_rank = """CASE m.heat_tier WHEN '极热' THEN 4 WHEN '热门' THEN 3
+        WHEN '较热' THEN 2 WHEN '小众' THEN 1 ELSE 0 END"""
+    limit = min(max(limit, 1), 50)
+    if metric == "hot":
+        rows = q("""SELECT m.id AS "mountainId", m.name, m.heat_tier AS "heatTier",
+            m.annual_visits AS "annualVisits",
+            /* 热门榜不依赖打卡：随便取这座山的一个点位当入口，没有到访也能点进去 */
+            (SELECT min(p.code) FROM points p WHERE p.mountain_id = m.id AND p.type = 'peak')
+              AS "pointCode",
+            coalesce(count(v.id), 0) AS visits,
+            count(DISTINCT CASE WHEN v.user_id IS NOT NULL THEN 'u:' || v.user_id::text
+                                WHEN v.guest_id IS NOT NULL THEN 'g:' || v.guest_id::text END)
+              AS people
+          FROM mountains m
+          LEFT JOIN points p ON p.mountain_id = m.id
+          LEFT JOIN visits v ON v.point_id = p.id AND v.occurred_at >= :since
+         WHERE m.heat_tier IS NOT NULL
+         GROUP BY m.id, m.name, m.heat_tier, m.annual_visits
+         ORDER BY """ + heat_rank + """ DESC, """ + annual_weight + """ DESC, visits DESC
+         LIMIT :limit""", since=since, limit=limit)
+        return {"window": window, "metric": metric, "items": [dict(r) for r in rows]}
     order = "people DESC, visits DESC" if metric == "people" else "visits DESC, people DESC"
     rows = q("""SELECT p.mountain_id AS "mountainId",
         coalesce(m.name, min(p.name), '编号 ' || min(p.code)) AS name,
@@ -1109,12 +1142,14 @@ def board_mountains(window: Literal["week", "month", "year", "all"] = "week",
         count(*) AS visits,
         count(DISTINCT CASE WHEN v.user_id IS NOT NULL
                             THEN 'u:' || v.user_id::text
-                            ELSE 'g:' || v.guest_id::text END) AS people
+                            ELSE 'g:' || v.guest_id::text END) AS people,
+        max(m.heat_tier) AS "heatTier",
+        max(m.annual_visits) AS "annualVisits"
       FROM visits v JOIN points p ON p.id = v.point_id
       JOIN mountains m ON m.id = p.mountain_id
      WHERE v.occurred_at >= :since AND p.mountain_id IS NOT NULL
      GROUP BY 1, m.name ORDER BY """ + order + " LIMIT :limit",
-        since=since, limit=min(max(limit, 1), 50))
+        since=since, limit=limit)
     return {"window": window, "metric": metric,
             "items": [dict(r) for r in rows]}
 

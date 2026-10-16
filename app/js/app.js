@@ -447,8 +447,7 @@
         ' <button class="btn ghost" data-act="sync-checkins" data-force="1">重试同步</button></div>' : '') +
       /* 两个社区榜：位次榜（山友口径）与打卡人数榜（山头口径）。
          数据各读各的，一个读不到不影响另一个，也不影响上面的个人数据。 */
-      '<div class="sec-head"><h3>位次榜</h3><span class="more">' +
-      (BOARD_WINDOWS.filter(function (w) { return w[0] === boardWindow; })[0] || [])[1] +
+      '<div class="sec-head"><h3>位次榜</h3><span class="more">' + boardWindowLabel() +
       ' ›</span></div>' + boardWindowTabs('board-window') + climbersBoardHTML({ page: 'home', limit: 3 }) +
       '<div class="sec-head"><h3>打卡人数榜</h3><span class="more">按人数 ›</span></div>' +
       mountainsBoardHTML('people', { page: 'home', limit: 3, title: '打卡人数榜' }) +
@@ -1187,6 +1186,9 @@
   var winBoardCache = {};
   var winBoardLoading = {};
   var BOARD_WINDOWS = [['week', '本周'], ['month', '本月'], ['year', '本年'], ['all', '历史']];
+  /* 榜单口径：人次（谁这儿爬得勤）与热门（数据里门票/接待量最大的那些山）。
+     两者不是一回事，摆成两个按钮让用户自己切，标题上写清楚当前是哪个口径。 */
+  var boardMetric = 'visits';
 
   function boardWindowTabs(act) {
     return '<div class="btn-row">' + BOARD_WINDOWS.map(function (w) {
@@ -1194,7 +1196,24 @@
         (boardWindow === w[0] ? '✓ ' : '') + w[1] + '</button>';
     }).join('') + '</div>';
   }
+  function boardMetricTabs(act) {
+    return '<div class="btn-row">' + [['visits', '按人次'], ['hot', '按热门']].map(function (m) {
+      return '<button class="btn ghost" data-act="' + act + '" data-val="' + m[0] + '">' +
+        (boardMetric === m[0] ? '✓ ' : '') + m[1] + '</button>';
+    }).join('') + '</div>';
+  }
+  function boardWindowLabel() {
+    return (BOARD_WINDOWS.filter(function (w) { return w[0] === boardWindow; })[0] || [])[1];
+  }
+  /* 年接待量是长句，列表里只留"数字 + 万/人"这一小段 */
+  function shortVisits(text) {
+    if (!text) return '';
+    var m = /([0-9]+([.][0-9]+)?)\s*万/.exec(text);
+    if (m) return m[1] + ' 万人次/年';
+    return text.length > 18 ? text.slice(0, 18) + '…' : text;
+  }
   function boardKey(kind, metric) { return kind + ':' + metric + ':' + boardWindow; }
+  function activeMountainMetric() { return boardMetric; }
 
   function loadBoard(kind, metric, onReady) {
     var key = boardKey(kind, metric);
@@ -1203,6 +1222,9 @@
     var url = kind === 'climbers'
       ? '/api/boards/climbers?window=' + boardWindow + '&limit=10'
       : '/api/boards/mountains?window=' + boardWindow + '&metric=' + metric + '&limit=10';
+    if (kind === 'mountains' && metric === 'hot') {
+      url = '/api/boards/mountains?metric=hot&limit=10';   /* 热门不随时间窗口变 */
+    }
     window.API.ja(url).then(function (data) { winBoardCache[key] = data; })
       .catch(function () { winBoardCache[key] = { error: true }; })
       .then(function () {
@@ -1229,17 +1251,24 @@
       return '<div class="empty">这个时间段还没有记录。</div>';
     }
     return '<div class="card tight">' + data.items.slice(0, opts.limit || 5).map(function (row, index) {
+      var sub = metric === 'hot'
+        ? esc([row.heatTier, shortVisits(row.annualVisits)].filter(Boolean).join(' · ')) +
+          ' · 本周 ' + row.visits + ' 次记录'
+        : row.people + ' 人到访 · 共 ' + row.visits + ' 次记录' +
+          (row.heatTier ? ' · ' + esc(row.heatTier) : '');
       return '<a class="rank" href="#/peaks/p-' + encodeURIComponent(row.pointCode || row.mountainId) + '">' +
         '<span class="pos" style="flex:0 0 26px;font-weight:800;color:var(--coral)">' +
         (index + 1) + '</span>' +
-        '<span class="nm"><b>' + esc(row.name || '名称待定') + '</b><em>' +
-        row.people + ' 人到访 · 共 ' + row.visits + ' 次记录</em></span>' +
+        '<span class="nm"><b>' + esc(row.name || '名称待定') + '</b><em>' + sub + '</em></span>' +
         '<span class="tm" style="font-size:12px;color:var(--ink3)">›</span></a>';
     }).join('') + '</div>' +
       '<div class="hint" style="padding:8px 2px 0">' +
-      (metric === 'people'
-        ? '按去重的到访身份数排（游客跨设备算不同身份）；同一座山的两个码算一座山。'
-        : '按到访人次排：同一个人多次登顶都算，所以人次 ≥ 人数。') +
+      (metric === 'hot'
+        ? '按资料里的热度档与年接待量排（门票/入园口径），不依赖这里打了多少卡；' +
+          '数字来自公开年报与估算，标了"估算"的只作参考。'
+        : metric === 'people'
+          ? '按去重的到访身份数排（游客跨设备算不同身份）；同一座山的两个码算一座山。'
+          : '按到访人次排：同一个人多次登顶都算，所以人次 ≥ 人数。') +
       '</div>';
   }
 
@@ -1404,9 +1433,11 @@
         /* 登顶榜放在山头列表之前：这是"占山为王"的主榜（人次口径），
            下面的山头卡是完整名单。先选山头也能直接点进榜上的山。 */
         '<div class="sec-head" id="page-board" style="margin-top:6px"><h3>登顶榜</h3>' +
-        '<span class="more">' + (BOARD_WINDOWS.filter(function (w) { return w[0] === boardWindow; })[0] || [])[1] +
-        ' · 人次 ›</span></div>' +
-        boardWindowTabs('board-window') + mountainsBoardHTML('visits', { page: 'places', limit: 6 }) +
+        '<span class="more">' + (activeMountainMetric() === 'hot' ? '热门山头' : boardWindowLabel() + ' · 人次') +
+        ' ›</span></div>' +
+        boardMetricTabs('board-metric') +
+        (activeMountainMetric() === 'hot' ? '' : boardWindowTabs('board-window')) +
+        mountainsBoardHTML(activeMountainMetric(), { page: 'places', limit: 6 }) +
         '<div class="sec-head" id="page-peaks" style="margin-top:4px"><h3>山头</h3>' +
         '<span class="more">' + (pq || pf !== 'all' || pd !== 'all'
           ? board.length + ' 个结果' : '按海拔 ›') + '</span></div>' +
@@ -1428,8 +1459,6 @@
           });
         }).join('') : '<div class="empty">没有匹配的山头</div>') +
         pager('peaks', board.length, PAGE_SIZE) +
-        '<div class="hint" style="text-align:center;margin-top:10px">共 ' + H.peaks.length +
-        ' 座山头 · 一座山头一个主峰、一个二维码 · 峰名待实地采集</div>' +
         '</div>';
     }
 
@@ -3518,6 +3547,7 @@
     if (act === 'home-retry') { homeData = null; loadHomeData(); return; }
     if (act === 'receipts-retry') { myReceipts = null; myReceiptsError = false; loadMyReceipts(); return; }
     if (act === 'board-window') { boardWindow = val; boardReload(); return; }
+    if (act === 'board-metric') { boardMetric = val; boardReload(); return; }
     if (act === 'board-retry') { boardReload(); return; }
     if (act === 'trk-zoom') {
       var trackId = t.getAttribute('data-id');
