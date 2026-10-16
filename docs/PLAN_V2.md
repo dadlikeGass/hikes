@@ -1,5 +1,7 @@
 # 到此一游 · 开发调整计划
 
+> **后续计划**：本轮简化交互、一级页面收敛与后台接入以 [V3 实施计划](superpowers/plans/2026-10-15-hikes-v3-integration.md) 为准。本文保留为历史方案；V3 为待实施计划，不代表功能已完成。
+
 > 2026-10-15 · v2 · **状态：待用户确认后执行**
 > 本文是施工依据。确认后并入 [PLAN.md](PLAN.md) 的阶段表，并同步改 [LAUNCH.md](LAUNCH.md) 与 [WEB_PRIORITIES.md](WEB_PRIORITIES.md) 的范围清单。
 > 关联：[打卡·榜·未来信 设计提案](superpowers/specs/2026-10-15-checkin-leaderboard-letters-design.md) · [PRODUCT.md](PRODUCT.md) · [API.md](API.md) · [PRINCIPLES.md](PRINCIPLES.md) · [archive/README.md](../archive/README.md)

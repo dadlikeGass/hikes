@@ -11,3 +11,4 @@ venv/
 .idea/
 .vscode/
 *.tmp
+.local-backups/

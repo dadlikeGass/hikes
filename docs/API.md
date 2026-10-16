@@ -479,6 +479,89 @@ v1 **只收纯文本，最多 200 字**，图片走 v1.1。
 
 ---
 
+
+## V3 新增接口（2026-10-16，drill 覆盖见 docs/V3_ACCEPTANCE.md）
+
+约定：新字段一律 camelCase；错误结构沿用 `error.code` / `error.message`；旧字段保持兼容。
+
+### 打卡（升级，不是新接口）
+
+- `POST /api/points/{point_id}/visit`、`POST /api/guest/visit`
+  - 新增可选请求字段：`clientUuid`（每次本机动作的 UUID，重试复用）、`occurredAt`（现场时间，必须带时区）、
+    `source: scan | nearby | manual`、`lat` / `lng` / `accuracyM`（`source=nearby` 时必填）。
+  - 旧客户端不传新字段时按服务器当前时间记账，行为不变。
+  - 新增响应字段：`visitId`、`recordedAt`、`isFirstToday`（游客接口沿用 `isFirstToday`）、`effortStatus`；
+    原有 `seq` / `visitedAt` / `peakName` / `message` 等继续返回。
+  - `seq` 是**该点位入账的记录序号**，不是去重人数。
+  - 错误：`CLIENT_UUID_REUSED`(409，同一 UUID 换了内容)、`VISIT_TIME_IN_FUTURE`(422，超前 5 分钟以上)、
+    `VISIT_TOO_OLD`(422，超过 30 天的补传)、`OUTSIDE_CHECKIN_RADIUS`(422)、`LOCATION_INACCURATE`(422，精度 >50 m)、
+    `LOCATION_REQUIRED`(422)、`POINT_LOCATION_MISSING`(422)、`GPS_NOT_ENABLED`(422)。
+  - 定位打卡的坐标只用于当场校验：不进 URL、不进访问日志、不进公开响应，30 天后被作业清空。
+
+### POST /api/points/nearby
+
+```json
+// 请求（POST：坐标不进 URL）
+{ "lat": 39.99, "lng": 116.17, "accuracyM": 12 }
+// 响应 200：最多 20 个、2 公里内、已发布且有点位坐标的点位，按距离升序
+[ { "code": "CNP-003", "name": "香山", "kind": "peak", "distanceM": 84, "checkinRadiusM": 100 } ]
+```
+
+- 公开接口，按 IP 限流；**不记录到访**。响应里没有精确坐标。
+
+### GET /api/mountains/{mountain_id}/courses
+
+返回该山的登顶路线：`[{ id, name, startPointId, endPointId, rankingEnabled }]`。
+`rankingEnabled=false` 表示这条路线还不能区分路径，只留个人参考用时。
+
+### GET /api/efforts/leaderboard?courseId=&window=week|month|year|all
+
+```json
+{ "courseId": 12, "window": "week", "sampleSize": 9, "rankingAvailable": true,
+  "leaders": [ { "nickname": "小鱼", "durationS": 2400, "date": "2026-10-13", "rank": 1 } ],
+  "myBest": { "nickname": "我", "durationS": 2600, "date": "2026-10-14", "rank": 3, "percentile": 66 } }
+```
+
+- 窗口按**终点现场时间**、Asia/Shanghai（周一为一周起点）切分；每人每窗口只算最快一次。
+- `sampleSize < 8` 或路线未开榜时 `rankingAvailable=false`、`leaders` 为空（不给名次与百分位）。
+- 名次＝更快人数 + 1（同秒并列同名次）；百分位＝更慢人数 / 有效人数 × 100（同用时不算更慢）。
+- 公开响应只有昵称、日期、用时；没有精确时刻、没有坐标。带 `Authorization` 时额外返回自己的成绩。
+- 只有"账号 + 开启上榜 + 路线已开榜 + 两端证据合格 + 实时提交"的成绩才进榜；游客与离线补传只做参考。
+
+### GET / PATCH /api/me/leaderboard-settings
+
+`{ "enabled": true }`。关闭后立即退出榜单与分母（不需要等下一次重算）。
+
+### GET /api/me/visit-receipts 、GET /api/guest/visit-receipts
+
+- 参数：`limit`（默认 20，上限 50）、`cursor`（上一页最后一条的 `visitId`；按 `(occurredAt, id)` 取更早的）。
+- 每条：`{ visitId, code, name, kind, seq, visitedAt, recordedAt, durationS, effortReason }`；
+  `effortReason` 为 `null` 或 `too_fast | offline_submission | guest | weak_evidence | course_unverified`。
+- 已合并的游客身份单独用游客令牌读会返回 401。
+
+### GET /api/me/mountain-summary 、GET /api/guest/mountain-summary
+
+`limit` 默认 3（首页用），最多 50。每条：`{ mountainId, name, visitorCount, myLastVisitedAt }`。
+`visitorCount` 按 mountain_id 去重后的身份数（游客跨设备无法识别为同一真人，页面注明是"记录身份去重"）。
+没有 mountain_id 的点位不进这张表。
+
+### GET / POST /api/me/letters 、GET / DELETE /api/me/letters/{id}
+
+- `POST`：`{ text: ≤2000 字, mode: date|checkin|open, years: 1|3|5（date 必填）, pointId（checkin 必填） }`。
+  非法组合返回 422（`LETTER_YEARS_REQUIRED` / `LETTER_POINT_REQUIRED` / `LETTER_MODE_CONFLICT` / `LETTER_EMPTY`）。
+  date 模式按上海时间算到期（闰日落到目标年 2 月末）。
+- 列表/读取：`{ id, mode, pointId, pointCode, pointName, status, unlockAt, createdAt }`，
+  **只有已解锁才带 `text`**；未解锁的正文在任何响应里都不下发。
+- checkin 模式要求写信之后在该点位有新的有效到访（`occurred_at > created_at`）才解锁，离线补传入账后同样生效。
+- 越权一律 404；删除后不可访问；没有"改模式"入口，封存不能绕过。
+
+### 保养作业（不是 HTTP 接口）
+
+`server/jobs/reconcile_efforts.py`、`server/jobs/purge_visit_coordinates.py`：
+重算近期成绩、清空 30 天前的原始坐标；每次运行写一行 `job_runs`（`status`: running/ok/failed）。
+
+---
+
 ## 附：核心枚举
 
 - `Level`：`easy | mid | hard | hidden` —— **hidden 只能人工设定，不自动产生**
@@ -486,7 +569,6 @@ v1 **只收纯文本，最多 200 字**，图片走 v1.1。
 - `Role`：`member | maintainer`
 - `ReportReason`（举报原因）：`spam | abuse | false_info | privacy | illegal | other`
 - `ReportStatus`（举报状态）：`pending | accepted | rejected`
-
 
 ## 2026-10-13 新模型迁移清单（待实现，不是可调用契约）
 

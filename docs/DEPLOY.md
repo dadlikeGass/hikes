@@ -20,6 +20,35 @@ docker compose -f docker-compose.prod.yml exec api alembic upgrade head   # 建�
 
 **建表和升级统一走 alembic**（2026-10-14 起）。Docker 启动不再自动执行 SQL，`docker compose up` 之后必须跑一次 `alembic upgrade head`，否则表不存在；不能把“重启 Compose”当作迁移。生产 API 挂载当前 `/app/` 页面，不使用旧静态原型替代。`021_board_collaboration.sql` 增加按板协作申请及独立审核角色；`022_maintenance_audit.sql` 增加维护操作审计；`023_comment_appeals.sql` 增加留言申诉。运营账号需由数据库管理员明确授予对应审核角色，不能由维护人或注册流程自动授予。
 
+### V3 表结构（0010–0013）与保养作业（2026-10-16 起）
+
+`alembic upgrade head` 会依次带上 V3 的四个修订：
+
+- `0010_visit_evidence`：到访增加现场时间 `occurred_at`、服务器时间 `recorded_at`、证据等级、精度与坐标；
+  旧行按 `created_at` 回填并标 `legacy`（不自动获得排名资格）；新增 `visit_submission_receipts`（打卡幂等回执）。
+- `0011_ascent_courses`：新增 `ascent_courses`（人工核实的上登路线）与 `segment_efforts`（成绩）。
+- `0012_private_letters`：`letters` 支持 `date / checkin / open` 三种解锁模式，旧日期按上海零点转换；新增用户级上榜开关。
+- `0013_v3_job_runs`：`job_runs` 记录保养作业每次运行的 ok/failed 与时间。
+
+**升级顺序**：先扩表迁移（上面的 0010–0013，都是加列/加表，不会删数据），再上兼容代码。
+迁移前照第 6 节做一次备份；回退方式是恢复备份 + 退回上一个 git tag，不要用破坏性 downgrade。
+
+保养作业由 `deploy/docker-compose.prod.yml` 里的 `v3-jobs` 服务承担（每小时一轮）：
+
+```bash
+# 作业是否在跑、最近一次结果
+docker compose -f docker-compose.prod.yml exec db psql -U hikes -d hikes -c \
+  "SELECT name, status, started_at, finished_at, detail FROM job_runs ORDER BY started_at DESC LIMIT 8"
+
+# 手动跑一次（排查用）
+docker compose -f docker-compose.prod.yml exec v3-jobs python /srv/jobs/reconcile_efforts.py
+docker compose -f docker-compose.prod.yml exec v3-jobs python /srv/jobs/purge_visit_coordinates.py
+```
+
+- `reconcile_efforts`：重扫近 31 天的身份×业务日，补齐/重算成绩（"终点先到、起点后到"、合并后重算都靠它）。
+- `purge_visit_coordinates`：清空 30 天前到访的原始坐标与精度，保留"校验通过"这个结论。
+- 榜单或配对失败**不会**让打卡失败；作业失败只写一行 `failed` 台账并打印堆栈，容器不退。
+
 ### 迁移台账与升级（2026-10-14 起）
 
 ```bash
