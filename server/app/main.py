@@ -3753,11 +3753,15 @@ if _webapp.is_dir():
             app.mount(f"/{_prefix}", StaticFiles(directory=str(_dir)), name=f"app-{_prefix}")
 _static = pathlib.Path(os.getenv("STATIC_DIR", "/srv/web"))
 if _static.is_dir():
-    from fastapi.responses import FileResponse
-
     @app.get("/", include_in_schema=False)
     def index_page():
-        """根地址 = 产品首页。点位落地页在 /index.html?code=xxx。"""
-        return FileResponse(str(_static / "home.html"))
+        """根地址跳到主线前端 /app/。
+
+        旧的静态多页前端（home/routes/places/me/admin/index.html）已于 2026-10-15
+        封存到 archive/frontend-b-static/，不再由本服务提供；解除封存需用户明确许可，
+        见 archive/README.md。此处保留 STATIC_DIR 挂载是为了 /privacy.html、
+        /terms.html、/rules.html、/robots.txt 与 /terrain/。
+        """
+        return RedirectResponse(url="/app/", status_code=302)
 
     app.mount("/", StaticFiles(directory=str(_static), html=True), name="web")

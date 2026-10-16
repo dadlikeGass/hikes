@@ -5,22 +5,18 @@ const BASE = 'http://localhost:8000';
 const OUT = '/Users/2026brooke/Documents/ChatGPT/hikes/outputs/frontend-audit';
 
 const PAGES = [
-  ['A1-static-home', '/'],
-  ['A2-static-routes', '/routes.html'],
-  ['A3-static-places', '/places.html'],
-  ['A4-static-me', '/me.html'],
-  ['A5-static-admin', '/admin.html'],
-  ['A6-static-points', '/index.html'],
-  ['B1-spa-home', '/app/'],
-  ['B2-spa-places', '/app/#/places'],
-  ['B3-spa-board', '/app/#/board'],
-  ['B4-spa-me', '/app/#/me'],
-  ['B5-spa-letters', '/app/#/me/letters'],
-  ['B6-spa-sanfeng', '/app/sanfeng.html'],
-  ['C1-proto-arrive', '/pages/arrive.html'],
-  ['C2-proto-peak', '/pages/peak.html'],
-  ['C3-proto-me', '/pages/me.html'],
-  ['C4-proto-routes', '/pages/routes.html'],
+  // 主线 SPA（唯一在服务的前端）
+  ['root-redirect', '/'],
+  ['spa-home', '/app/'],
+  ['spa-places', '/app/#/places'],
+  ['spa-board', '/app/#/board'],
+  ['spa-me', '/app/#/me'],
+  ['spa-letters', '/app/#/me/letters'],
+  ['spa-sanfeng', '/app/sanfeng.html'],
+  // 合规页与共用底图仍在服务，纳入回归
+  ['legal-privacy', '/privacy.html'],
+  // 已封存：/routes.html /places.html /me.html /admin.html /index.html
+  // /pages/*.html /design.css 均应 404，见 archive/README.md
 ];
 
 (async () => {
@@ -47,6 +43,20 @@ const PAGES = [
     await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: true });
     console.log('shot', name, '->', await page.title());
   }
+
+  // 封存回归：这些路径必须 404，否则说明封存被绕过
+  const SEALED = [
+    '/routes.html', '/places.html', '/me.html', '/admin.html', '/index.html',
+    '/pages/arrive.html', '/pages/peak.html', '/design.css', '/nav.js', '/guard.js',
+  ];
+  const failed = [];
+  for (const p of SEALED) {
+    const r = await page.request.get(BASE + p);
+    const ok = r.status() === 404;
+    if (!ok) failed.push(`${p} -> ${r.status()}`);
+    console.log(ok ? 'sealed  ok ' : 'sealed FAIL', p, r.status());
+  }
+  console.log(failed.length ? `\n封存回归失败 ${failed.length} 项: ${failed.join(', ')}` : '\n封存回归全部通过');
 
   await browser.close();
 })();
