@@ -5,6 +5,7 @@
 """
 import io
 import json
+import logging
 import hashlib
 import math
 import os
@@ -13,6 +14,7 @@ import re
 import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Any, Literal
 
 import jwt
@@ -34,6 +36,9 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
+from app.checkins import record_visit
+from app.efforts import reconcile_efforts
+from app.letters import public_letter, letter_is_unlocked
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://hikes:hikes@db:5432/hikes")
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-change-me")
@@ -294,9 +299,15 @@ class PointDetail(BaseModel):
 
 class VisitIn(BaseModel):
     source: Literal["scan", "nearby", "manual"] = "scan"
+    clientUuid: str | None = None
+    occurredAt: datetime | None = None
+    lat: float | None = None
+    lng: float | None = None
+    accuracyM: int | None = None
 
 
 class VisitOut(BaseModel):
+    visitId: int | None = None
     seq: int = Field(description="你是第 N 位")
     isFirstVisit: bool = Field(description="今天是否首次打卡；同日重复请求为 false")
     myVisitCount: int
@@ -556,12 +567,29 @@ def _merge_guest_records(conn, token: str | None, uid: int):
             err(409, "GUEST_ALREADY_MERGED", "这份游客记录已归入另一个账号")
         return {"mergedVisits": 0, "dropped": 0, "mergedDrafts": 0}
     gid = guest["id"]
+    affected_dates = [r[0] for r in conn.execute(text(
+        "SELECT DISTINCT visit_date FROM visits WHERE guest_id=:g"), {"g": gid}).all()]
+    conn.execute(text("DELETE FROM segment_efforts WHERE guest_id=:g"), {"g": gid})
+    # Keep each accepted client action mapped to the surviving account visit.
+    conn.execute(text("""UPDATE visit_submission_receipts r
+        SET canonical_visit_id = u.id
+        FROM visits v JOIN visits u ON u.user_id=:uid
+          AND u.point_id=v.point_id AND u.visit_date=v.visit_date
+        WHERE v.guest_id=:g AND r.canonical_visit_id=v.id"""),
+        {"g": gid, "uid": uid})
     dropped = conn.execute(text("""DELETE FROM visits v USING visits u
         WHERE v.guest_id = :g AND u.user_id = :uid
           AND u.point_id = v.point_id AND u.visit_date = v.visit_date"""),
         {"g": gid, "uid": uid}).rowcount
     moved = conn.execute(text("UPDATE visits SET user_id = :uid, guest_id = NULL WHERE guest_id = :g"),
                          {"uid": uid, "g": gid}).rowcount
+    conn.execute(text("""INSERT INTO visit_submission_receipts
+        (identity_type, identity_id, client_uuid, payload_hash, canonical_visit_id)
+        SELECT 'user', :uid, client_uuid, payload_hash, canonical_visit_id
+        FROM visit_submission_receipts
+        WHERE identity_type='guest' AND identity_id=:g
+        ON CONFLICT (identity_type, identity_id, client_uuid) DO NOTHING"""),
+        {"uid": uid, "g": gid})
     drafts = conn.execute(text("""INSERT INTO account_arrival_drafts
             (user_id, point_id, private_note, public_comment_draft)
         SELECT :uid, point_id, private_note, public_comment_draft
@@ -573,6 +601,12 @@ def _merge_guest_records(conn, token: str | None, uid: int):
         RETURNING id"""), {"uid": uid, "g": gid}).rowcount
     conn.execute(text("UPDATE guests SET merged_user_id = :uid WHERE id = :g"),
                  {"uid": uid, "g": gid})
+    for day in affected_dates:
+        try:
+            with conn.begin_nested():
+                reconcile_efforts(conn, "user", uid, day)
+        except Exception:
+            logging.exception("merged effort reconciliation failed")
     return {"mergedVisits": moved, "dropped": dropped, "mergedDrafts": drafts}
 
 
@@ -1022,6 +1056,230 @@ def _board_point_ids(point_id: int) -> list[int]:
         WHERE src.id = :pid AND src.type = 'peak'
         UNION SELECT :pid""", pid=point_id)
     return [r["id"] for r in rows]
+
+
+class NearbyRequest(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+    accuracyM: int = Field(ge=0, le=1000)
+
+
+@app.post("/api/points/nearby", tags=["点位"])
+def nearby_points(body: NearbyRequest, request: Request):
+    keys = _rate_check(request, "visit", "nearby")
+    rows = q("""SELECT code, name, type AS kind,
+        round(ST_Distance(geom::geography,
+          ST_SetSRID(ST_MakePoint(:lng,:lat),4326)::geography))::int AS "distanceM",
+        CASE WHEN type='peak' THEN 100 ELSE 150 END AS "checkinRadiusM"
+        FROM points WHERE status='published' AND geom IS NOT NULL
+          AND ST_DWithin(geom::geography,
+            ST_SetSRID(ST_MakePoint(:lng,:lat),4326)::geography, 2000)
+        ORDER BY "distanceM", id LIMIT 20""", lat=body.lat, lng=body.lng)
+    _rate_hit(keys)
+    return [dict(row) for row in rows]
+
+
+@app.get("/api/mountains/{mountain_id}/courses", response_model=list[dict], tags=["打卡"])
+def mountain_courses(mountain_id: int = Path(ge=1)):
+    rows = q("""SELECT id, name, start_point_id AS "startPointId",
+        end_point_id AS "endPointId", ranking_enabled AS "rankingEnabled"
+        FROM ascent_courses WHERE mountain_id=:mountain ORDER BY id""", mountain=mountain_id)
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/efforts/leaderboard", response_model=dict, tags=["打卡"])
+def effort_leaderboard(courseId: int, window: Literal["week", "month", "year", "all"] = "week",
+                       authorization: str | None = Header(default=None)):
+    course = q1("SELECT id, ranking_enabled FROM ascent_courses WHERE id=:id", id=courseId)
+    if not course:
+        err(404, "COURSE_NOT_FOUND", "登顶路线不存在")
+    local = datetime.now(ZoneInfo("Asia/Shanghai"))
+    if window == "week":
+        since = (local - timedelta(days=local.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    elif window == "month":
+        since = local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    elif window == "year":
+        since = local.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        since = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    rows = q("""SELECT DISTINCT ON (e.user_id) e.user_id, e.duration_s,
+        e.end_at AT TIME ZONE 'Asia/Shanghai' AS local_end,
+        coalesce(u.nickname, u.username, '山友') AS nickname
+        FROM segment_efforts e JOIN users u ON u.id=e.user_id
+        WHERE e.course_id=:course AND e.eligible AND u.leaderboard_enabled
+          AND e.end_at >= :since
+        ORDER BY e.user_id, e.duration_s, e.end_at""",
+        course=courseId, since=since)
+    scores = sorted(rows, key=lambda r: (r["duration_s"], r["user_id"]))
+    uid = require_user(authorization) if authorization else None
+    mine = next((r for r in scores if r["user_id"] == uid), None)
+    enough = course["ranking_enabled"] and len(scores) >= 8
+    def rank(row):
+        return 1 + sum(other["duration_s"] < row["duration_s"] for other in scores)
+    def public_row(row, ranked):
+        return {"nickname": row["nickname"], "durationS": row["duration_s"],
+                "date": row["local_end"].date().isoformat(),
+                "rank": rank(row) if ranked else None}
+    leaders = [public_row(r, True) for r in scores if rank(r) <= 3] if enough else []
+    my_row = public_row(mine, enough) if mine else None
+    if my_row is not None:
+        my_row["percentile"] = round(100 * sum(r["duration_s"] > mine["duration_s"] for r in scores) / len(scores)) if enough else None
+    return {"courseId": courseId, "window": window, "sampleSize": len(scores),
+            "rankingAvailable": enough, "leaders": leaders, "myBest": my_row}
+
+
+@app.get("/api/me/leaderboard-settings", response_model=dict, tags=["我"])
+def get_leaderboard_settings(uid: int = Depends(require_user)):
+    row = q1("SELECT leaderboard_enabled FROM users WHERE id=:uid", uid=uid)
+    return {"enabled": row["leaderboard_enabled"]}
+
+
+class LeaderboardSettingsIn(BaseModel):
+    enabled: bool
+
+
+@app.patch("/api/me/leaderboard-settings", response_model=dict, tags=["我"])
+def set_leaderboard_settings(body: LeaderboardSettingsIn,
+                             uid: int = Depends(require_user)):
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE users SET leaderboard_enabled=:value WHERE id=:uid"),
+                     {"value": body.enabled, "uid": uid})
+    return {"enabled": body.enabled}
+
+
+def _receipts(identity_type: str, identity_id: int, limit: int, cursor: int | None = None):
+    """凭证列表。游标用"上一页最后一条的 visitId"：按 (occurred_at, id) 取更早的，
+    这样翻页不会因为同一秒多条而漏掉或重复（计划 4 节的 cursor/limit≤50）。"""
+    col = "user_id" if identity_type == "user" else "guest_id"
+    rows = q("""SELECT v.id AS "visitId", p.code, p.name, p.type AS kind,
+        v.seq, v.occurred_at AS "visitedAt", v.recorded_at AS "recordedAt",
+        e.duration_s AS "durationS", e.excluded_reason AS "effortReason"
+        FROM visits v JOIN points p ON p.id=v.point_id
+        LEFT JOIN segment_efforts e ON e.end_visit_id=v.id
+        WHERE v.""" + col + """=:identity
+          AND (CAST(:cursor AS bigint) IS NULL OR (v.occurred_at, v.id) <
+               (SELECT occurred_at, id FROM visits WHERE id=CAST(:cursor AS bigint)))
+        ORDER BY v.occurred_at DESC, v.id DESC LIMIT :limit""",
+        identity=identity_id, limit=limit, cursor=cursor)
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/me/visit-receipts", response_model=list[dict], tags=["我"])
+def my_visit_receipts(limit: int = 20, cursor: int | None = None,
+                      uid: int = Depends(require_user)):
+    return _receipts("user", uid, min(max(limit, 1), 50), cursor)
+
+
+@app.get("/api/guest/visit-receipts", response_model=list[dict], tags=["游客"])
+def guest_visit_receipts(limit: int = 20, cursor: int | None = None,
+                         x_guest_token: str | None = Header(default=None)):
+    guest = _guest_of(x_guest_token)
+    if not guest or guest["merged_user_id"]:
+        err(401, "GUEST_TOKEN_REQUIRED", "游客身份无效")
+    return _receipts("guest", guest["id"], min(max(limit, 1), 50), cursor)
+
+
+def _mountain_summary(identity_type: str, identity_id: int, limit: int):
+    col = "user_id" if identity_type == "user" else "guest_id"
+    rows = q(f"""SELECT p.mountain_id AS "mountainId", m.name,
+        max(v.occurred_at) AS "myLastVisitedAt",
+        (SELECT count(DISTINCT CASE WHEN allv.user_id IS NOT NULL
+            THEN 'u:' || allv.user_id::text ELSE 'g:' || allv.guest_id::text END)
+         FROM visits allv JOIN points allp ON allp.id=allv.point_id
+         WHERE allp.mountain_id=p.mountain_id) AS "visitorCount"
+        FROM visits v JOIN points p ON p.id=v.point_id
+        JOIN mountains m ON m.id=p.mountain_id
+        WHERE v.{col}=:identity GROUP BY p.mountain_id,m.name
+        ORDER BY "myLastVisitedAt" DESC LIMIT :limit""",
+        identity=identity_id, limit=limit)
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/me/mountain-summary", response_model=list[dict], tags=["我"])
+def my_mountain_summary(limit: int = 3, uid: int = Depends(require_user)):
+    return _mountain_summary("user", uid, min(max(limit, 1), 50))
+
+
+@app.get("/api/guest/mountain-summary", response_model=list[dict], tags=["游客"])
+def guest_mountain_summary(limit: int = 3,
+                           x_guest_token: str | None = Header(default=None)):
+    guest = _guest_of(x_guest_token)
+    if not guest or guest["merged_user_id"]:
+        err(401, "GUEST_TOKEN_REQUIRED", "游客身份无效")
+    return _mountain_summary("guest", guest["id"], min(max(limit, 1), 50))
+
+
+class PrivateLetterIn(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+    mode: Literal["date", "checkin", "open"]
+    years: Literal[1, 3, 5] | None = None
+    pointId: int | None = None
+
+
+@app.get("/api/me/letters", response_model=list[dict], tags=["我"])
+def my_private_letters(uid: int = Depends(require_user)):
+    with engine.begin() as conn:
+        rows = conn.execute(text("""SELECT * FROM letters WHERE user_id=:uid
+            AND status<>'deleted' ORDER BY created_at DESC"""), {"uid": uid}).mappings().all()
+        return [public_letter(conn, row, include_text=True) for row in rows]
+
+
+@app.post("/api/me/letters", response_model=dict, tags=["我"])
+def write_private_letter(body: PrivateLetterIn, uid: int = Depends(require_user)):
+    # 先去掉首尾空白再判空：全是空格的信在 pydantic 眼里长度合法，
+    # 但存下来就是一封空信（封存之后用户连"写错了"都看不出来）。
+    if not body.text.strip():
+        err(422, "LETTER_EMPTY", "信里还没有内容")
+    if body.mode == "date" and body.years is None:
+        err(422, "LETTER_YEARS_REQUIRED", "请选择一、三或五年")
+    if body.mode == "checkin" and body.pointId is None:
+        err(422, "LETTER_POINT_REQUIRED", "请选择现场打卡地点")
+    if body.mode != "date" and body.years is not None:
+        err(422, "LETTER_MODE_CONFLICT", "这种解锁方式无需年限")
+    if body.mode != "checkin" and body.pointId is not None:
+        err(422, "LETTER_MODE_CONFLICT", "这种解锁方式无需目标点位")
+    target = None
+    if body.mode == "date":
+        local = datetime.now(ZoneInfo("Asia/Shanghai"))
+        try:
+            target = local.replace(year=local.year + body.years)
+        except ValueError:
+            target = local.replace(year=local.year + body.years, day=28)
+        target = target.replace(hour=0, minute=0, second=0, microsecond=0)
+    with engine.begin() as conn:
+        if body.pointId is not None and not conn.execute(text(
+            "SELECT 1 FROM points WHERE id=:id"), {"id": body.pointId}).scalar_one_or_none():
+            err(404, "POINT_NOT_FOUND", "目标点位不存在")
+        row = conn.execute(text("""INSERT INTO letters
+            (user_id, point_id, text, unlock_at, unlock_mode)
+            VALUES (:uid,:point,:body,:target,:mode) RETURNING *"""),
+            {"uid": uid, "point": body.pointId, "body": body.text.strip(),
+             "target": target, "mode": body.mode}).mappings().one()
+        return public_letter(conn, row, include_text=True)
+
+
+@app.get("/api/me/letters/{letter_id}", response_model=dict, tags=["我"])
+def read_private_letter(letter_id: int, uid: int = Depends(require_user)):
+    with engine.begin() as conn:
+        row = conn.execute(text("""SELECT * FROM letters WHERE id=:id AND user_id=:uid
+            AND status<>'deleted' FOR UPDATE"""), {"id": letter_id, "uid": uid}).mappings().first()
+        if not row:
+            err(404, "LETTER_NOT_FOUND", "信不存在")
+        unlocked = letter_is_unlocked(conn, row)
+        if unlocked:
+            conn.execute(text("UPDATE letters SET read_at=coalesce(read_at,now()) WHERE id=:id"),
+                         {"id": letter_id})
+        return public_letter(conn, row, include_text=True)
+
+
+@app.delete("/api/me/letters/{letter_id}", response_model=dict, tags=["我"])
+def delete_private_letter(letter_id: int, uid: int = Depends(require_user)):
+    with engine.begin() as conn:
+        result = conn.execute(text("DELETE FROM letters WHERE id=:id AND user_id=:uid"),
+                              {"id": letter_id, "uid": uid})
+    if not result.rowcount:
+        err(404, "LETTER_NOT_FOUND", "信不存在")
+    return {"deleted": True}
 
 
 @app.get("/api/points/{code}", response_model=PointDetail, tags=["点位"], responses=ERR_404)
@@ -1969,6 +2227,12 @@ def delete_account(body: DeleteAccountIn, uid: int = Depends(require_user)):
 
         # 删：位置轨迹、到访、想去、私人纪念与草稿、回执、赞踩、申诉、协作申请、认领、系统角色
         removed["tracks"] = run("DELETE FROM user_tracks WHERE user_id = :u", u=uid)
+        # 成绩和打卡回执必须先删：它们分别以 RESTRICT / 身份列引用到访行，
+        # 先删到访会被外键挡住，也会把"谁来打过卡"留在库里。
+        removed["efforts"] = run("DELETE FROM segment_efforts WHERE user_id = :u", u=uid)
+        removed["visitReceipts"] = run(
+            "DELETE FROM visit_submission_receipts "
+            "WHERE identity_type = 'user' AND identity_id = :u", u=uid)
         removed["visits"] = run("DELETE FROM visits WHERE user_id = :u", u=uid)
         removed["wants"] = run("DELETE FROM wants WHERE user_id = :u", u=uid)
         removed["drafts"] = run("DELETE FROM account_arrival_drafts WHERE user_id = :u", u=uid)
@@ -2632,6 +2896,11 @@ class GuestOut(BaseModel):
 class GuestVisitIn(BaseModel):
     code: str = Field(description="点位编号，二维码里印的就是它")
     source: Literal["scan", "nearby", "manual"] = "scan"
+    clientUuid: str | None = None
+    occurredAt: datetime | None = None
+    lat: float | None = None
+    lng: float | None = None
+    accuracyM: int | None = None
 
 
 class GuestArrivalDraftIn(BaseModel):
@@ -2641,6 +2910,7 @@ class GuestArrivalDraftIn(BaseModel):
 
 
 class GuestVisitOut(BaseModel):
+    visitId: int | None = None
     seq: int = Field(description="第 N 位在这里留下痕迹的人")
     visitedAt: str = Field(description="到访时间戳（ISO；客户端按本地时区显示）")
     isFirstToday: bool = Field(description="同一设备 / 同一点位 / 同一天只记一次")
@@ -2813,25 +3083,19 @@ def guest_visit(body: GuestVisitIn, request: Request,
     if not pt:
         err(404, "POINT_NOT_FOUND", "这个点位不存在")
     with engine.begin() as conn:
-        conn.execute(text("SELECT id FROM points WHERE id = :pid FOR UPDATE"), {"pid": pt["id"]})
         conn.execute(text("UPDATE guests SET last_seen_at = now() WHERE id = :g"), {"g": g["id"]})
-        row = conn.execute(text("""INSERT INTO visits (guest_id, point_id, seq, visit_date, source)
-            VALUES (:g, :pid,
-                    (SELECT coalesce(max(seq), 0) + 1 FROM visits WHERE point_id = :pid),
-                    CURRENT_DATE, :src)
-            -- 去重索引是"部分唯一索引"（只有 guest_id 非空时才唯一），
-            -- 所以 ON CONFLICT 必须把同一个 WHERE 条件带上，否则匹配不到索引
-            ON CONFLICT (guest_id, point_id, visit_date) WHERE guest_id IS NOT NULL
-            DO NOTHING
-            RETURNING seq, created_at"""),
-            {"g": g["id"], "pid": pt["id"], "src": body.source}).first()
-        first = row is not None
-        if not first:
-            row = conn.execute(text("""SELECT seq, created_at FROM visits
-                WHERE guest_id = :g AND point_id = :pid AND visit_date = CURRENT_DATE"""),
-                {"g": g["id"], "pid": pt["id"]}).first()
+        row, first = record_visit(conn, identity_type="guest", identity_id=g["id"],
+            point_id=pt["id"], source=body.source, client_uuid=body.clientUuid,
+            occurred_at=body.occurredAt, lat=body.lat, lng=body.lng,
+            accuracy_m=body.accuracyM)
+        try:
+            with conn.begin_nested():
+                reconcile_efforts(conn, "guest", g["id"], row["visit_date"])
+        except Exception:
+            logging.exception("guest effort reconciliation failed")
     _rate_hit(keys)
-    return GuestVisitOut(seq=row[0], visitedAt=row[1].isoformat(), isFirstToday=first,
+    return GuestVisitOut(visitId=row["id"], seq=row["seq"],
+                         visitedAt=row["occurred_at"].isoformat(), isFirstToday=first,
                          pointCode=pt["code"], peakName=pt["name"], altitude=pt["altitude"],
                          routeName=pt["route_name"], idxInRoute=pt["index_in_route"],
                          totalInRoute=pt["total_in_route"])
@@ -2903,24 +3167,21 @@ def do_visit(body: VisitIn, request: Request, point_id: int = Path(ge=1),
     if not point:
         err(404, "POINT_NOT_FOUND", "点位不存在")
     with engine.begin() as conn:
-        conn.execute(text("SELECT id FROM points WHERE id = :pid FOR UPDATE"), {"pid": point_id})
-        row = conn.execute(text("""INSERT INTO visits (user_id, point_id, seq, visit_date, source)
-            VALUES (:uid, :pid,
-                    (SELECT coalesce(max(seq),0)+1 FROM visits WHERE point_id = :pid),
-                    CURRENT_DATE, :src)
-            ON CONFLICT (user_id, point_id, visit_date) DO NOTHING
-            RETURNING seq, created_at"""), {"uid": uid, "pid": point_id, "src": body.source}).first()
-        is_first = row is not None
-        if not is_first:
-            row = conn.execute(text("""SELECT seq, created_at FROM visits
-                WHERE user_id=:uid AND point_id=:pid AND visit_date=CURRENT_DATE"""),
-                {"uid": uid, "pid": point_id}).first()
+        row, is_first = record_visit(conn, identity_type="user", identity_id=uid,
+            point_id=point_id, source=body.source, client_uuid=body.clientUuid,
+            occurred_at=body.occurredAt, lat=body.lat, lng=body.lng,
+            accuracy_m=body.accuracyM)
+        try:
+            with conn.begin_nested():
+                reconcile_efforts(conn, "user", uid, row["visit_date"])
+        except Exception:
+            logging.exception("account effort reconciliation failed")
     mine = q1("SELECT count(*) AS n FROM visits WHERE user_id=:uid AND point_id=:pid",
               uid=uid, pid=point_id)
     _rate_hit(keys)
-    return VisitOut(seq=row[0], isFirstVisit=is_first, myVisitCount=mine["n"],
-                    message=f"你是第 {row[0]} 位在这里留下痕迹的人",
-                    visitedAt=row[1], pointCode=point["code"], peakName=point["name"],
+    return VisitOut(visitId=row["id"], seq=row["seq"], isFirstVisit=is_first, myVisitCount=mine["n"],
+                    message=f"这是该点位第 {row['seq']} 条到访记录",
+                    visitedAt=row["occurred_at"], pointCode=point["code"], peakName=point["name"],
                     altitude=point["altitude"], routeName=point["route_name"],
                     idxInRoute=point["index_in_route"], totalInRoute=point["total_in_route"])
 

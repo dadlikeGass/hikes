@@ -77,5 +77,27 @@ services:
       db:
         condition: service_healthy
 
+  # V3 保养作业：成绩配对补偿 + 30 天坐标清理。
+  # 两个作业每小时各跑一次（配对要跟得上"终点先到、起点后到"的补传，
+  # 清理是幂等的便宜查询），每次运行写一行 job_runs 作为台账：
+  #   SELECT name, status, started_at, finished_at FROM job_runs ORDER BY started_at DESC LIMIT 5;
+  # 失败只影响这一次，容器不退出（作业内的失败会记 failed 并打印堆栈）。
+  v3-jobs:
+    build:
+      context: ../server
+    image: hikes-prod-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    entrypoint: >
+      sh -c 'while true; do
+        python /srv/jobs/reconcile_efforts.py || true;
+        python /srv/jobs/purge_visit_coordinates.py || true;
+        sleep 3600;
+      done'
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   dbdata:

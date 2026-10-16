@@ -1,0 +1,12 @@
+test_01_nearby_lists_only_usable_points_by_distance (v3_gps_drill.GpsDrill) ... ok
+test_02_nearby_rejects_out_of_range_coordinates (v3_gps_drill.GpsDrill) ... ok
+test_03_peak_radius_boundary (v3_gps_drill.GpsDrill) ... ok
+test_04_non_peak_radius_is_wider (v3_gps_drill.GpsDrill) ... ok
+test_05_accuracy_and_missing_evidence_are_rejected (v3_gps_drill.GpsDrill) ... ok
+test_06_rejections_never_leak_coordinates (v3_gps_drill.GpsDrill) ... ok
+test_07_public_payloads_hide_raw_coordinates (v3_gps_drill.GpsDrill) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 52.028s
+
+OK

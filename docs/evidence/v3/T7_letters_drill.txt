@@ -1,0 +1,8 @@
+./Users/2026brooke/Documents/ChatGPT/hikes/server/tests/v3_letters_drill.py:101: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/2026brooke/Documents/ChatGPT/hikes/server/app/main.py' mode='r' encoding='utf-8'>
+  source = open(os.path.join(V.REPO_ROOT, "server", "app", "main.py"),
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.........
+----------------------------------------------------------------------
+Ran 10 tests in 17.572s
+
+OK

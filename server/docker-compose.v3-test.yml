@@ -58,6 +58,7 @@ services:
       - ./migrations:/srv/migrations:ro
       - ./alembic.ini:/srv/alembic.ini:ro
       - ./tests:/srv/tests:ro
+      - ./jobs:/srv/jobs:ro          # 保养作业：drill 会直接跑它们验证补偿
       - ../app/js:/srv/route-data:ro
       - ../app/web:/srv/web:ro
       - ../app/css:/srv/theme:ro

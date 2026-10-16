@@ -37,13 +37,14 @@ def base_url() -> str:
 
 # ==================== 数据库核对（只走隔离项目） ====================
 
-def compose(*args: str, capture_stdin: str | None = None) -> str:
+def compose(*args: str, capture_stdin: str | None = None, combine: bool = False) -> str:
     cmd = ["docker", "compose", "-f", COMPOSE_FILE, *args]
     proc = subprocess.run(cmd, input=capture_stdin, capture_output=True,
                           text=True, cwd=REPO_ROOT)
     if proc.returncode != 0:
         raise RuntimeError("命令失败：" + " ".join(cmd) + "\n" + proc.stderr.strip())
-    return proc.stdout
+    # 作业脚本把结果打在 stderr（logging），要一起看才看得到台账输出。
+    return proc.stdout + proc.stderr if combine else proc.stdout
 
 
 def psql(script: str, database: str = "hikes") -> str:
@@ -113,7 +114,7 @@ def alembic_current(database: str) -> str:
 
 def run_in_api(*args: str) -> str:
     """在隔离环境的 api 容器里跑一段命令（脚本要用容器里的 sqlalchemy）。"""
-    return compose("exec", "-T", "api", *args)
+    return compose("exec", "-T", "api", *args, combine=True)
 
 
 def sql_rows(script: str, database: str = "hikes") -> list:
@@ -191,20 +192,33 @@ def ok(response: httpx.Response, what: str) -> dict:
 
 
 def error_code(response: httpx.Response) -> str:
+    """取错误码：FastAPI 的 HTTPException 会把 detail 再包一层。"""
     try:
-        return response.json()["error"]["code"]
+        body = response.json()
     except Exception:  # noqa: BLE001
         return "<no-error-body>"
+    for candidate in (body, body.get("detail") if isinstance(body, dict) else None):
+        if isinstance(candidate, dict) and isinstance(candidate.get("error"), dict):
+            return candidate["error"].get("code", "<no-code>")
+    return "<no-error-body>"
 
 
 def new_account(http: httpx.Client, prefix: str) -> dict:
-    """注册一个唯一账号，返回 username / uid / token / headers。"""
+    """注册一个唯一账号，返回 username / uid / token / headers。
+
+    注册接口有 10 次/IP/小时的安全阈值，一份 drill 往往要造十几个身份：
+    撞上 429 时清一次隔离环境的计数器再重试一次（清的是计数器，不是业务数据）。
+    """
     username = unique(prefix)
-    data = ok(http.post("/api/auth/register", json={
-        "username": username, "password": PASSWORD,
-        "nickname": "drill-" + username[-10:]}), "注册账号")
+    nickname = "drill-" + username[-10:]
+    body = {"username": username, "password": PASSWORD, "nickname": nickname}
+    response = http.post("/api/auth/register", json=body)
+    if response.status_code == 429:
+        reset_rate_limits()
+        response = http.post("/api/auth/register", json=body)
+    data = ok(response, "注册账号")
     uid = int(sql_int("SELECT id FROM users WHERE username = " + lit(username)))
-    return {"username": username, "uid": uid, "token": data["token"],
+    return {"username": username, "uid": uid, "nickname": nickname, "token": data["token"],
             "headers": {"Authorization": "Bearer " + data["token"]}}
 
 
@@ -249,7 +263,7 @@ def new_point(prefix: str, *, kind: str = "peak", lat=None, lng=None,
              lit(code), lit(kind), lit(status), lit(name or code),
              mountain_id if mountain_id is not None else "NULL", geom))
     pid = int(sql_int("SELECT id FROM points WHERE code = " + lit(code)))
-    return {"id": pid, "code": code}
+    return {"id": pid, "code": code, "lat": lat, "lng": lng, "kind": kind}
 
 
 def new_short_link(code: str, point_id: int) -> None:
@@ -304,6 +318,36 @@ def purge(prefix: str) -> None:
     psql(CLEANUP_SQL.format(p=like(prefix)))
 
 
+# ==================== 故意注错（验证"故障不影响主流程"） ====================
+
+FAILURE_FUNCTION = "v3drill_fail_effort"
+FAILURE_TRIGGER = "v3drill_fail_effort_trg"
+
+
+def create_effort_failure_trigger(course_id: int) -> None:
+    """给某条路线的成绩写入挂一个必然失败的触发器。
+
+    用来验证计划 3.4 那句"排行榜故障或配对失败不使打卡失败"：
+    配对真的炸掉时，到访仍要写实，之后再靠补偿作业补出成绩。
+    """
+    psql("""
+        CREATE OR REPLACE FUNCTION %(fn)s() RETURNS trigger AS $$
+        BEGIN
+          RAISE EXCEPTION 'v3-drill: injected effort failure for course %%', NEW.course_id;
+        END;
+        $$ LANGUAGE plpgsql;
+        DROP TRIGGER IF EXISTS %(trg)s ON segment_efforts;
+        CREATE TRIGGER %(trg)s BEFORE INSERT ON segment_efforts
+          FOR EACH ROW WHEN (NEW.course_id = %(course)d)
+          EXECUTE FUNCTION %(fn)s();
+        """ % {"fn": FAILURE_FUNCTION, "trg": FAILURE_TRIGGER, "course": int(course_id)})
+
+
+def drop_effort_failure_trigger() -> None:
+    psql("DROP TRIGGER IF EXISTS %s ON segment_efforts; DROP FUNCTION IF EXISTS %s();"
+         % (FAILURE_TRIGGER, FAILURE_FUNCTION))
+
+
 # ==================== 环境守卫 ====================
 
 def assert_isolated_env(http: httpx.Client) -> None:
@@ -344,6 +388,7 @@ def reset_rate_limits() -> None:
 
 def prepare_env(http: httpx.Client) -> None:
     """drill 的 setUpClass 统一入口：清空限流计数 + 环境守卫。"""
+    wait_for_api()          # 容器重启后 /health 会短暂不可用，先等它回来
     reset_rate_limits()
     assert_isolated_env(http)
 
