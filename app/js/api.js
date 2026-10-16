@@ -114,7 +114,9 @@
         level: r.hardest_level,          /* 界面用 level，含义是"最难的那一段" */
         km: r.km, up: r.up, down: r.down,
         city: r.city,
-        hours: (r.hours || '—') + ' 小时',
+        /* 赛事（kind=race）不套用休闲徒步估时与热量，接口给的是 null：
+           显示"—"，不要再拼"小时"。 */
+        hours: r.hours == null ? '—' : r.hours + ' 小时',
         hoursVal: r.hours, kcal: r.kcal,
         visits7: r.weekly_visits,
         fastest: { time: r.fastest_time || '—', who: r.fastest_holder || '—' },
@@ -132,23 +134,34 @@
     });
 
     var detailRequests = {};
-    g.API.loadRouteDetail = function (slug) {
+    g.API.loadRouteDetail = function (slug, force) {
       var trail = H.trails.find(function (item) { return item.id === slug; });
-      if (!trail || trail.detailLoaded) return Promise.resolve(trail);
+      if (!trail || (trail.detailLoaded && !force)) return Promise.resolve(trail);
+      if (force) trail.detailLoaded = false;
+      if (force) delete detailRequests[slug];
       if (detailRequests[slug]) return detailRequests[slug];
-      detailRequests[slug] = j('/api/routes/' + encodeURIComponent(slug)).then(function (d) {
+      detailRequests[slug] = ja('/api/routes/' + encodeURIComponent(slug)).then(function (d) {
         trail.path = d.path || [];
+        trail.coordinates = d.coordinates || [];
+        trail.terrainUrl = d.terrain_url || null;
+        trail.terrainBounds = d.terrain_bounds || null;
+        trail.terrainContour = d.terrain_contour || null;
         trail.profile = d.profile || [];
+        trail.elevationM = d.elevation_m || [];
         trail.segments = d.segments || [];
         trail.peakList = d.peaks || [];
+        trail.canMaintainRoute = !!d.can_maintain_route;
         trail.checkpoints = d.checkpoints || [];
         trail.sections = trail.segments.map(function (s) {
           return {
             no: (s.no < 10 ? '0' : '') + s.no,
             name: KIND[s.kind] + ' · ' + s.from_km + '–' + s.to_km + ' km',
             tip: (s.rise > 0 ? '+' : '') + s.rise + ' m · ' +
-                 (s.pct > 0 ? '+' : '') + s.pct + '% · ' + LEV[s.level],
-            level: s.level, kind: 'route', point: ''
+                 (s.pct > 0 ? '+' : '') + s.pct + '% · ' +
+                 (!s.level || s.difficulty_applicable === false ? '不评级' : LEV[s.level]),
+            maxRise: s.max_rise_m, maxDrop: s.max_drop_m,
+            /* 下降段 / 平缓段 level 为 null：给一个 'none' 让色板与形状退回灰标 */
+            level: s.level || 'none', kind: 'route', point: ''
           };
         });
         trail.detailLoaded = true;

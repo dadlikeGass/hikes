@@ -33,6 +33,13 @@ services:
       RATE_LIMIT_VISIT_PER_IP_HOUR: ${RATE_LIMIT_VISIT_PER_IP_HOUR:-}
       RATE_LIMIT_REPORT_PER_IDENTITY_HOUR: ${RATE_LIMIT_REPORT_PER_IDENTITY_HOUR:-}
       RATE_LIMIT_REPORT_PER_IP_HOUR: ${RATE_LIMIT_REPORT_PER_IP_HOUR:-}
+      # 公开读取限流的阈值（默认 120/分钟、2000/小时，被拒 200 次封 60 分钟）。
+      # 只在**本地开发**放宽：截图/探针/压测都会反复整页加载，默认值很容易把
+      # 自己（同一个来源 IP）关在门外。生产用的 deploy/docker-compose.prod.yml 不设这些，
+      # 仍按代码默认值执行 —— 反爬策略不受影响。
+      RATE_LIMIT_READ_PER_MINUTE_IP: ${RATE_LIMIT_READ_PER_MINUTE_IP:-600}
+      RATE_LIMIT_READ_PER_HOUR_IP: ${RATE_LIMIT_READ_PER_HOUR_IP:-20000}
+      RATE_LIMIT_READ_BLOCK_AFTER_TRIPS: ${RATE_LIMIT_READ_BLOCK_AFTER_TRIPS:-2000}
     ports: ["8000:8000"]
     volumes:
       - ./app:/srv/app:ro

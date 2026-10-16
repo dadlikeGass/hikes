@@ -151,8 +151,9 @@ class RouteBrief(BaseModel):
     km: float
     up: int
     down: int
-    hardest_level: Literal["easy", "mid", "hard", "hidden"] = Field(
-        description="最难那一段的等级，不代表整条线路")
+    hardest_level: Literal["easy", "mid", "hard", "hidden"] | None = Field(
+        default=None,
+        description="最难那一段的等级，不代表整条线路；整条没有可定级爬升时为 null")
     hours: float | None = Field(default=None, description="平均完成时间（估算）")
     kcal: int | None = Field(default=None, description="大致消耗（估算）")
     weekly_visits: int = Field(default=0, description="近 7 天打卡人次")
@@ -179,17 +180,31 @@ class SegmentOut(BaseModel):
     km: float
     rise: int
     pct: int
-    level: Literal["easy", "mid", "hard", "hidden"]
+    level: Literal["easy", "mid", "hard", "hidden"] | None = Field(
+        default=None,
+        description="段难度；下降段与平缓段不适用登顶难度，为 null（不评级）")
     kind: Literal["climb", "desc", "flat"]
     source: Literal["auto", "manual"]
     confirmed: bool
+    difficulty_applicable: bool = True
+    not_applicable: Literal["descent", "gentle"] | None = Field(
+        default=None, description="不定级的原因：下坡 / 平缓")
+    up_m: int = Field(default=0, description="段内累计爬升（说明用；定级用 max_rise_m）")
+    down_m: int = Field(default=0, description="段内累计下降")
+    max_rise_m: int = Field(default=0, description="段内最大连续爬升（定级用这个）")
+    max_drop_m: int = Field(default=0, description="段内最大连续下降（米）")
 
 
 class PeakOut(BaseModel):
     idx: int
     km: float
     altitude: int
+    elevation_m: int | None = None
     rise: int
+    name: str | None = None
+    name_status: Literal["unconfirmed", "candidate", "confirmed"] = "unconfirmed"
+    candidate_id: int | None = None
+    candidate_name: str | None = None
     near_cp: str | None = Field(default=None, description="最近的打卡点名字（组委会给的点名）")
     near_cp_m: int | None = Field(default=None, description="离那个打卡点多少米（沿线里程差）")
 
@@ -203,6 +218,11 @@ class CheckpointOut(BaseModel):
     lat: float | None = None
     lng: float | None = None
     off_track_m: int | None = Field(default=None, description="点名离轨迹多少米，>300 基本是录错的")
+    supply_type: str | None = None
+    notes: str | None = None
+    source: Literal["official", "maintainer"] = "official"
+    id: int | None = None
+    id: int | None = None
 
 
 class RouteDetail(BaseModel):
@@ -214,20 +234,29 @@ class RouteDetail(BaseModel):
     km: float
     up: int
     down: int
-    hardest_level: Literal["easy", "mid", "hard", "hidden"]
+    hardest_level: Literal["easy", "mid", "hard", "hidden"] | None = None
+    kind: Literal["hike", "race"] | None = Field(
+        default=None, description="hike = 徒步/越野路线，race = 赛事赛道（不套用休闲估时）")
     hours: float | None = None
     kcal: int | None = None
     est: dict[str, Any] | None = None
     peak_count: int
     path: list[list[float]] = Field(description="归一化 0-1 坐标，前端直接画 SVG")
+    coordinates: list[list[float]] = Field(default_factory=list, description="轨迹经纬度 [纬度, 经度]")
+    terrain_url: str | None = Field(default=None, description="离线生成的真实 DEM 地形底图")
+    terrain_bounds: dict[str, float] | None = Field(default=None, description="地形图地理范围")
+    terrain_contour: dict[str, Any] | None = Field(default=None, description="等高线起点基准与相对高差间距")
     profile: list[float] = Field(description="归一化海拔剖面")
+    elevation_m: list[float] = Field(default_factory=list, description="与轨迹采样一一对应的实际海拔米数")
     segments: list[SegmentOut]
     peaks: list[PeakOut]
     checkpoints: list[CheckpointOut] = Field(
         default_factory=list, description="赛道打卡点；没有组委会轨迹的线路是空的")
+    can_maintain_route: bool = False
 
 
 class CommentOut(BaseModel):
+    reply_count: int = 0
     id: int
     text: str
     nickname: str | None = None
@@ -665,12 +694,20 @@ def list_routes(level: str | None = None, limit: int = 20):
 
 
 @app.get("/api/routes/{slug}", response_model=RouteDetail, tags=["路书"], responses=ERR_404)
-def get_route(slug: str):
-    r = q1("SELECT * FROM routes WHERE slug = :slug", slug=slug)
+def get_route(slug: str, authorization: str | None = Header(default=None)):
+    r = q1("SELECT *, ST_AsGeoJSON(geom) AS route_geojson FROM routes WHERE slug = :slug", slug=slug)
     if not r:
         err(404, "ROUTE_NOT_FOUND", "线路不存在")
+    # 段难度规则只在这里、pipeline/build.py 和 migration 0008 三处出现，必须一致：
+    # 定级看段内最大连续爬升（max_rise_m ≥ 200 m）与净坡度（> 3%）；净下坡（< −3%）不定级。
     segs = q("""SELECT rs.id, rs.no, rs.from_km, rs.to_km, rs.km, rs.rise, rs.pct,
-                       rs.level, rs.kind, rs.source, rs.confirmed,
+                       CASE WHEN rs.pct >= -3 AND (rs.max_rise_m >= 200 OR rs.pct > 3)
+                            THEN rs.level ELSE NULL END AS level,
+                       rs.kind, rs.source, rs.confirmed,
+                       (rs.pct >= -3 AND (rs.max_rise_m >= 200 OR rs.pct > 3)) AS difficulty_applicable,
+                       CASE WHEN rs.pct < -3 THEN 'descent'
+                            WHEN rs.max_rise_m < 200 AND rs.pct <= 3 THEN 'gentle' END AS not_applicable,
+                       rs.up_m, rs.down_m, rs.max_rise_m, rs.max_drop_m,
                        link.trail_segment_id, b.id AS board_id
                 FROM route_segments rs
                 LEFT JOIN route_segment_links link ON link.route_id = rs.route_id
@@ -680,17 +717,191 @@ def get_route(slug: str):
                 LEFT JOIN boards b ON b.trail_segment_id = link.trail_segment_id
                     AND b.board_type = 'segment'
                 WHERE rs.route_id = :id ORDER BY rs.no""", id=r["id"])
-    peaks = q("""SELECT idx, km, altitude, rise, near_cp, near_cp_m
-                 FROM route_peaks WHERE route_id = :id ORDER BY idx""", id=r["id"])
-    cps = q("""SELECT no, name, km, altitude, lat, lng, off_track_m
-               FROM route_checkpoints WHERE route_id = :id ORDER BY no""", id=r["id"])
+    peaks = q("""SELECT rp.idx, rp.km, coalesce(rp.elevation_m, rp.altitude) AS altitude,
+                       coalesce(rp.elevation_m, rp.altitude) AS elevation_m, rp.rise, rp.near_cp, rp.near_cp_m,
+                       coalesce(rp.name, m.name) AS name,
+                       CASE WHEN rp.name IS NOT NULL THEN 'confirmed'
+                            ELSE coalesce(m.name_status, rp.name_status) END AS name_status,
+                       cand.id AS candidate_id,
+                       cand.candidate_name
+                 FROM route_peaks rp LEFT JOIN mountains m ON m.id = rp.mountain_id
+                 LEFT JOIN LATERAL (SELECT id, candidate_name FROM route_peak_candidates
+                     WHERE route_peak_id = rp.id AND status = 'pending'
+                     ORDER BY created_at DESC LIMIT 1) cand ON true
+                 WHERE rp.route_id = :id ORDER BY rp.idx""", id=r["id"])
+    cps = q("""SELECT id, no, name, km, altitude, lat, lng, off_track_m,
+                      supply_type, notes, source
+               FROM route_checkpoints WHERE route_id = :id ORDER BY km, no""", id=r["id"])
     d = dict(r)
-    keys = ("id", "slug", "name", "sub", "city", "km", "up", "down", "hardest_level", "hours",
+    coordinates = []
+    if d.get("route_geojson"):
+        coordinates = [[lat, lon] for lon, lat in json.loads(d["route_geojson"]).get("coordinates", [])]
+    web_dir = pathlib.Path(os.getenv("STATIC_DIR", "/srv/web"))
+    if not web_dir.is_dir():
+        web_dir = pathlib.Path(__file__).resolve().parents[2] / "app" / "web"
+    terrain_dir = web_dir / "terrain"
+    terrain_url = f"/terrain/{slug}.png" if (terrain_dir / f"{slug}.png").is_file() else None
+    terrain_bounds = None
+    terrain_contour = None
+    bounds_file = terrain_dir / f"{slug}.json"
+    if terrain_url and bounds_file.is_file():
+        terrain_meta = json.loads(bounds_file.read_text(encoding="utf-8"))
+        terrain_bounds = {k: terrain_meta[k] for k in ("west", "south", "east", "north")}
+        # 底图 sidecar 里等高距的键历史上有两种写法，两个都认（新产物写 contour_steps_m）。
+        terrain_contour = {}
+        for src, dst in (("contour_origin_m", "contour_origin_m"),
+                         ("contour_steps_m", "contour_steps_m"),
+                         ("contour_interval_m", "contour_steps_m")):
+            if src in terrain_meta and dst not in terrain_contour:
+                terrain_contour[dst] = terrain_meta[src]
+    keys = ("id", "slug", "name", "sub", "city", "km", "up", "down", "hardest_level", "kind", "hours",
             "kcal", "est", "peak_count", "path", "profile")
+    elevation_m = d.get("elevation_m") or []
+    uid = None
+    if authorization and authorization.lower().startswith("bearer "):
+        try:
+            uid = require_user(authorization)
+        except HTTPException:
+            uid = None
     return RouteDetail(**{k: d[k] for k in keys},
+                       elevation_m=elevation_m,
+                       can_maintain_route=_route_board_maintainer(r["id"], uid),
+                       coordinates=coordinates, terrain_url=terrain_url,
+                       terrain_bounds=terrain_bounds, terrain_contour=terrain_contour,
                        segments=[dict(s) for s in segs],
                        peaks=[dict(p) for p in peaks],
                        checkpoints=[dict(c) for c in cps])
+
+
+def _route_board_maintainer(route_id: int, uid: int) -> bool:
+    if uid is None:
+        return False
+    return bool(q1("""SELECT 1 AS ok
+        FROM route_peaks rp
+        JOIN mountains m ON m.id = rp.mountain_id
+        LEFT JOIN boards b ON b.mountain_id = m.id AND b.board_type = 'summit'
+        LEFT JOIN points pt ON pt.mountain_id = m.id AND pt.type = 'peak'
+        LEFT JOIN claims cl ON cl.code = pt.code AND cl.status = 'active'
+        WHERE rp.route_id = :route_id
+          AND (pt.maintainer_id = :uid OR cl.user_id = :uid
+               OR EXISTS (SELECT 1 FROM board_collaboration_applications ca
+                          WHERE ca.board_id = b.id
+                            AND ca.applicant_id = :uid AND ca.status = 'approved'))
+        LIMIT 1""", route_id=route_id, uid=uid))
+
+
+class PeakNameCandidateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class CheckpointCreateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    km: float = Field(ge=0)
+    supply_type: str | None = Field(default=None, max_length=80)
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+@app.post("/api/routes/{slug}/peaks/{idx}/name-candidates", tags=["路书"])
+def suggest_route_peak_name(slug: str, idx: int, body: PeakNameCandidateIn,
+                            uid: int = Depends(require_user)):
+    peak = q1("""SELECT rp.id, rp.route_id FROM route_peaks rp JOIN routes r ON r.id = rp.route_id
+                 WHERE r.slug = :slug AND rp.idx = :idx""", slug=slug, idx=idx)
+    if not peak:
+        err(404, "ROUTE_PEAK_NOT_FOUND", "未找到这座线路山顶")
+    name = body.name.strip()
+    if not name:
+        err(422, "PEAK_NAME_EMPTY", "山峰名称不能为空")
+    if q1("SELECT 1 AS ok FROM route_peak_candidates WHERE route_peak_id = :pid AND status = 'pending' LIMIT 1",
+          pid=peak["id"]):
+        err(409, "PEAK_NAME_SUGGESTION_PENDING", "这座山顶已有待确认的名称建议")
+    try:
+        row = q1("""INSERT INTO route_peak_candidates
+            (route_peak_id, source, candidate_name, status)
+            VALUES (:pid, 'user', :name, 'pending')
+            RETURNING id""", pid=peak["id"], name=name)
+    except Exception:
+        err(409, "PEAK_NAME_SUGGESTION_EXISTS", "这个峰名建议已存在")
+    return {"id": row["id"], "status": "pending"}
+
+
+@app.post("/api/routes/{slug}/peaks/{idx}/name-candidates/review", tags=["路书"])
+def review_route_peak_name(slug: str, idx: int, body: dict[str, Any],
+                           uid: int = Depends(require_user)):
+    candidate_id = int(body.get("candidate_id", 0))
+    decision = body.get("decision")
+    if decision not in ("accepted", "rejected"):
+        err(422, "INVALID_DECISION", "审核操作无效")
+    peak = q1("""SELECT rp.id, rp.route_id, rp.mountain_id FROM route_peaks rp
+                 JOIN routes r ON r.id = rp.route_id WHERE r.slug = :slug AND rp.idx = :idx""",
+              slug=slug, idx=idx)
+    if not peak:
+        err(404, "ROUTE_PEAK_NOT_FOUND", "未找到这座线路山顶")
+    point = q1("""SELECT id FROM points WHERE mountain_id = :mid AND type = 'peak' LIMIT 1""",
+               mid=peak["mountain_id"])
+    if not point or (not _is_maintainer_of(point, uid) and not _is_board_collaborator(point["id"], uid)):
+        err(403, "ROUTE_MAINTAINER_REQUIRED", "只有关联山头的维护人可以审核峰名")
+    candidate = q1("""UPDATE route_peak_candidates c SET status = :decision,
+        reviewed_by = :uid, reviewed_at = now()
+        FROM route_peaks rp, routes r
+        WHERE c.id = :cid AND c.route_peak_id = rp.id AND rp.id = :pid
+          AND r.id = rp.route_id AND r.slug = :slug AND c.status = 'pending'
+        RETURNING c.candidate_name""", decision=decision, uid=uid, cid=candidate_id,
+        pid=peak["id"], slug=slug)
+    if not candidate:
+        err(404, "PEAK_NAME_CANDIDATE_NOT_FOUND", "未找到待审核的峰名建议")
+    if decision == "accepted":
+        with engine.begin() as conn:
+            conn.execute(text("""UPDATE route_peaks SET name = :name, name_status = 'confirmed'
+                WHERE id = :pid"""), {"name": candidate["candidate_name"], "pid": peak["id"]})
+            if peak["mountain_id"]:
+                conn.execute(text("""UPDATE mountains SET name = :name, name_status = 'confirmed',
+                    updated_at = now() WHERE id = :mid"""),
+                    {"name": candidate["candidate_name"], "mid": peak["mountain_id"]})
+                conn.execute(text("""UPDATE route_peaks SET name = :name, name_status = 'confirmed'
+                    WHERE mountain_id = :mid"""),
+                    {"name": candidate["candidate_name"], "mid": peak["mountain_id"]})
+    elif decision == "rejected":
+        q("""UPDATE route_peaks SET name_status = CASE WHEN name IS NULL THEN 'unconfirmed' ELSE 'confirmed' END
+             WHERE id = :pid""", pid=peak["id"])
+    return {"status": decision}
+
+
+@app.post("/api/routes/{slug}/checkpoints", tags=["路书"], status_code=201)
+def create_route_checkpoint(slug: str, body: CheckpointCreateIn,
+                            uid: int = Depends(require_user)):
+    route = q1("SELECT id, km, geom, elevation_m FROM routes WHERE slug = :slug AND status = 'published'", slug=slug)
+    if not route:
+        err(404, "ROUTE_NOT_FOUND", "线路不存在")
+    if route["geom"] is None:
+        err(422, "CHECKPOINT_POSITION_UNAVAILABLE", "这条线路暂时没有可用的地理轨迹")
+    if body.km > float(route["km"]):
+        err(422, "CHECKPOINT_KM_OUT_OF_RANGE", "CP 里程不能超过路线全长")
+    if not _route_board_maintainer(route["id"], uid):
+        err(403, "ROUTE_MAINTAINER_REQUIRED", "只有本线路关联山头的维护人可以新增 CP")
+    fraction = min(1.0, max(0.0, body.km / float(route["km"])))
+    pos = q1("""SELECT ST_Y(p) AS lat, ST_X(p) AS lng
+        FROM routes r, LATERAL ST_LineInterpolatePoint(r.geom, :fraction) p
+        WHERE r.id = :rid""", fraction=fraction, rid=route["id"])
+    samples = route.get("elevation_m") or []
+    if not pos or len(samples) < 2:
+        err(422, "CHECKPOINT_POSITION_UNAVAILABLE", "无法从路线轨迹计算 CP 位置")
+    sample = fraction * (len(samples) - 1)
+    lo = int(sample)
+    hi = min(len(samples) - 1, lo + 1)
+    altitude = round(float(samples[lo]) + (float(samples[hi]) - float(samples[lo])) * (sample - lo))
+    with engine.begin() as conn:
+        conn.execute(text("SELECT pg_advisory_xact_lock(:route_id)"), {"route_id": route["id"]})
+        result = conn.execute(text("""INSERT INTO route_checkpoints
+            (route_id, no, name, km, altitude, lat, lng, geom, supply_type, notes, source)
+            SELECT :rid, coalesce(max(no), 0) + 1, :name, :km, :alt, :lat, :lng,
+                   ST_SetSRID(ST_MakePoint(:lng, :lat), 4326), :supply, :notes, 'maintainer'
+            FROM route_checkpoints WHERE route_id = :rid RETURNING id"""),
+            {"rid": route["id"], "name": body.name.strip(), "km": body.km, "alt": altitude,
+             "lat": pos["lat"], "lng": pos["lng"], "supply": body.supply_type,
+             "notes": body.notes}).mappings().first()
+    return {"id": result["id"], "name": body.name.strip(), "km": body.km,
+            "altitude": altitude, "lat": pos["lat"], "lng": pos["lng"],
+            "supply_type": body.supply_type, "notes": body.notes, "source": "maintainer"}
 
 
 # ==================== 点位 ====================
@@ -2767,7 +2978,7 @@ class VoteIn(BaseModel):
     value: Literal["like", "bad"] | None = Field(default=None, description="null 表示取消投票")
 
 
-_COMMENT_SQL = """SELECT c.id, c.text, c.like_count, c.bad_count, c.status, c.created_at,
+_COMMENT_SQL = """SELECT (SELECT count(*) FROM comment_replies cr WHERE cr.comment_id=c.id) AS reply_count, c.id, c.text, c.like_count, c.bad_count, c.status, c.created_at,
                          u.nickname, EXISTS (
                            SELECT 1 FROM points responsible
                            LEFT JOIN claims cl ON cl.code = responsible.code
@@ -2888,6 +3099,31 @@ def add_comment(body: CommentIn, request: Request, point_id: int = Path(ge=1),
             {"pid": point_id, "uid": uid, "txt": body_text}).scalar()
     _rate_hit(keys)
     return _comment_by_id(cid)
+
+
+@app.get("/api/comments/{comment_id}/replies", tags=["留言"])
+def list_comment_replies(comment_id: int):
+    if not q1("SELECT id FROM comments WHERE id=:id AND status <> 'hidden'", id=comment_id):
+        err(404, "COMMENT_NOT_FOUND", "留言不存在")
+    return [dict(r) for r in q("""SELECT r.id, r.text, r.created_at, u.nickname
+        FROM comment_replies r JOIN users u ON u.id=r.user_id
+        WHERE r.comment_id=:id ORDER BY r.created_at, r.id""", id=comment_id)]
+
+
+@app.post("/api/comments/{comment_id}/replies", status_code=201, tags=["留言"])
+def add_comment_reply(comment_id: int, body: CommentIn, request: Request,
+                      uid: int = Depends(require_user)):
+    if not q1("SELECT id FROM comments WHERE id=:id AND status <> 'hidden'", id=comment_id):
+        err(404, "COMMENT_NOT_FOUND", "留言不存在")
+    body_text = body.text.strip()
+    if not body_text:
+        err(422, "EMPTY_REPLY", "请填写回复内容")
+    keys = _rate_check(request, "comment", f"u:{uid}")
+    with engine.begin() as conn:
+        conn.execute(text("""INSERT INTO comment_replies(comment_id,user_id,text)
+            VALUES (:cid,:uid,:body)"""), {"cid":comment_id,"uid":uid,"body":body_text})
+    _rate_hit(keys)
+    return {"ok": True}
 
 
 @app.post("/api/comments/{comment_id}/vote", response_model=CommentOut, tags=["留言"],
@@ -3507,6 +3743,14 @@ if _theme.is_dir():
 _webapp = pathlib.Path("/srv/webapp")
 if _webapp.is_dir():
     app.mount("/app", StaticFiles(directory=str(_webapp), html=True), name="webapp")
+    # /theme/*.css 里的 url() 是按"站点根 = app/"写的（../images/home/…、
+    # ../fonts/zmx-*.woff2、../assets/decor/…）。样式表挂在 /theme 下，
+    # 浏览器会把它解析成 /images/…、/fonts/…、/assets/…，所以这几条必须挂在根上，
+    # 否则 SPA 和正式页面的英雄图、手写字库、装饰全都 404，页面看着像"另一个版本"。
+    for _prefix in ("images", "fonts", "assets"):
+        _dir = _webapp / _prefix
+        if _dir.is_dir():
+            app.mount(f"/{_prefix}", StaticFiles(directory=str(_dir)), name=f"app-{_prefix}")
 _static = pathlib.Path(os.getenv("STATIC_DIR", "/srv/web"))
 if _static.is_dir():
     from fastapi.responses import FileResponse

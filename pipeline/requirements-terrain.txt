@@ -1,0 +1,5 @@
+# Optional dependencies for pipeline/build_terrain.py (not needed by the API server)
+# DEM 走 terrarium 瓦片，不需要 GDAL / rasterio。
+numpy>=1.24
+Pillow>=10
+scikit-image>=0.22

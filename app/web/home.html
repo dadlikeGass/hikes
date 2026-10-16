@@ -74,16 +74,18 @@ body{background:#E7E1D6}
   </div>
 </div>
 <script>
-var C = { easy: '#2563EB', mid: '#F2B62C', hard: '#E4453A', hidden: '#22242E' };
-var N = { easy: '简单', mid: '中等', hard: '困难', hidden: '隐藏' };
+var C = { easy: '#2563EB', mid: '#F2B62C', hard: '#E4453A', hidden: '#22242E', none: '#778396' };
+var N = { easy: '简单', mid: '中等', hard: '困难', hidden: '隐藏', none: '不评级' };
 var SH = {
   easy: function (c) { return '<circle cx="50" cy="50" r="41" fill="' + c + '"/>'; },
   mid: function (c) { return '<polygon points="50,10 92,87 8,87" fill="' + c + '"/>'; },
   hard: function (c) { return '<polygon points="50,6 94,50 50,94 6,50" fill="' + c + '"/>'; },
-  hidden: function (c) { return '<polygon points="50,5 89,27 89,73 50,95 11,73 11,27" fill="' + c + '"/>'; }
+  hidden: function (c) { return '<polygon points="50,5 89,27 89,73 50,95 11,73 11,27" fill="' + c + '"/>'; },
+  none: function (c) { return '<circle cx="50" cy="50" r="40" fill="none" stroke="' + c + '" stroke-width="9" stroke-dasharray="14 11"/>'; }
 };
 function badge(lv) {
-  var c = C[lv] || '#22242E';
+  if (!lv) lv = 'none';                       /* 未评级 / 不评级 */
+  var c = C[lv] || '#778396';
   return '<span class="badge" style="background:' + c + '22;color:' + c + '">' +
     '<span class="lvmark"><span class="lvshape"><svg viewBox="0 0 100 100">' +
     SH[lv](c) + '</svg></span>' + N[lv] + '</span></span>';
@@ -125,6 +127,42 @@ function thumbSVG(path, segs, km) {
   });
   return o + '</svg>';
 }
+function routeMapSVG(t, W, H, compact) {
+  var coords = t.coordinates || [], bounds = t.terrain_bounds, n = coords.length;
+  if (!bounds && n > 1) {
+    var lats = coords.map(function (p) { return p[0]; }), lons = coords.map(function (p) { return p[1]; });
+    var south = Math.min.apply(null,lats), north = Math.max.apply(null,lats), west = Math.min.apply(null,lons), east = Math.max.apply(null,lons);
+    var latPad = Math.max((north-south)*.12,.0037), coslat = Math.cos((north+south)*Math.PI/360);
+    var lonPad = Math.max((east-west)*.12,.0045/coslat);
+    bounds = {south:south-latPad,north:north+latPad,west:west-lonPad,east:east+lonPad};
+    var ratio = (east-west)*coslat/(north-south), target = W/H;
+    if (ratio < target) { var dx=((north-south)*target-(east-west)*coslat)/(2*coslat); bounds.west-=dx; bounds.east+=dx; }
+    else { var dy=((east-west)*coslat/target-(north-south))/2; bounds.south-=dy; bounds.north+=dy; }
+  }
+  var o = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="真实地形上的路线轨迹">';
+  o += '<rect width="' + W + '" height="' + H + '" rx="12" fill="#edf5f2"/>';
+  if (t.terrain_url && bounds) {
+    o += '<image href="' + esc(t.terrain_url) + '" x="0" y="0" width="' + W + '" height="' + H + '" preserveAspectRatio="none"/>';
+  }
+  if (n > 1 && bounds) {
+    function P(i) { var p = coords[Math.max(0, Math.min(n - 1, i))]; return [
+      (p[1] - bounds.west) / (bounds.east - bounds.west) * W,
+      (bounds.north - p[0]) / (bounds.north - bounds.south) * H]; }
+    (t.segments || []).forEach(function (sg) {
+      var a = Math.max(0, Math.round(sg.from_km / t.km * (n - 1)));
+      var b = Math.min(n - 1, Math.round(sg.to_km / t.km * (n - 1))), d = '';
+      for (var i = a; i <= b; i++) { var q = P(i); d += (i === a ? 'M' : 'L') + q[0].toFixed(1) + ' ' + q[1].toFixed(1); }
+      o += '<path d="' + d + '" fill="none" stroke="#fff" stroke-width="' + (compact ? 5 : 9) + '" stroke-linecap="round" stroke-linejoin="round" opacity=".95"/>';
+      o += '<path d="' + d + '" fill="none" stroke="' + ({easy:'#52B44A',mid:'#2563EB',hard:'#9E1B1B',hidden:'#22242E'}[sg.level] || '#2563EB') + '" stroke-width="' + (compact ? 3 : 5) + '" stroke-linecap="round" stroke-linejoin="round"/>';
+    });
+    var a = P(0), b = P(n - 1), rad = compact ? 3 : 5;
+    o += '<circle cx="' + a[0] + '" cy="' + a[1] + '" r="' + rad + '" fill="#fff"/><circle cx="' + a[0] + '" cy="' + a[1] + '" r="' + (rad - 1) + '" fill="#39A875"/>';
+    o += '<circle cx="' + b[0] + '" cy="' + b[1] + '" r="' + rad + '" fill="#fff"/><circle cx="' + b[0] + '" cy="' + b[1] + '" r="' + (rad - 1) + '" fill="#FF5298"/>';
+  } else {
+    o += '<text x="' + (W / 2) + '" y="' + (H / 2) + '" text-anchor="middle" fill="#718096" font-size="11">等待轨迹坐标</text>';
+  }
+  return o + '</svg>';
+}
 
 (async function () {
   var car = document.getElementById('carousel'), feed = document.getElementById('feed');
@@ -157,7 +195,7 @@ function thumbSVG(path, segs, km) {
     await Promise.all(hot.map(function (r) {
       return j('/api/routes/' + r.slug).then(function (d) {
         var el = document.querySelector('.cstrk[data-slug="' + r.slug + '"]');
-        if (el) el.innerHTML = thumbSVG(d.path, d.segments, d.km);
+        if (el) el.innerHTML = routeMapSVG(d, 120, 66, true);
       }).catch(function () { });
     }));
 

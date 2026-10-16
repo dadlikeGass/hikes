@@ -338,12 +338,22 @@ v1 **只收纯文本，最多 200 字**，图片走 v1.1。
   "segments": [{
     "no": 1, "fromKm": 0.0, "toKm": 4.9, "km": 4.9, "rise": 971, "pct": 20,
     "level": "hard", "kind": "climb",
+    "difficulty_applicable": true, "not_applicable": null,
+    "up_m": 1002, "down_m": 31, "max_rise_m": 971, "max_drop_m": 0,
     "source": "auto", "confirmed": false, "commentCount": 2
   }]
 }
 ```
 `path` / `profile` 是归一化 0–1 的数组，前端直接喂给 `<RouteMap>` 画 SVG，
 服务端不做投影——**换地图方案时前端不用改后端**。
+
+**段难度可以为 null，这不是缺数据**：难度描述的是"爬上去有多难"，
+下坡与平缓段不适用。定级判据是 `max_rise_m ≥ 200 m`（段内最大连续爬升）
+或净坡度 `pct > 3%`；两者都不满足时 `level` 为 `null`、`difficulty_applicable`
+为 `false`，`not_applicable` 说明原因（`descent` 净下坡 / `gentle` 平缓）。
+爬升为什么用"最长连续爬升"而不是累计爬升或净高差，见
+[PIPELINES.md](./PIPELINES.md)。整条线路没有可定级爬升时，
+`hardest_level` 同样是 `null`，前端显示"未评级"。
 
 **`source`（auto/manual）和 `confirmed` 是必须的**：自动算出来的是基础判断，
 维护人确认后才算正式数据。

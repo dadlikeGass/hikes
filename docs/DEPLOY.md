@@ -42,16 +42,25 @@ docker compose -f docker-compose.prod.yml exec db \
 ## 三、导入线路数据
 
 ```bash
-# 本地先跑分级，产物入库前需要存在
+# ① 本地先跑分级与底图（产物入库前必须存在；明细见 docs/PIPELINES.md）
 python3 ../pipeline/build.py
+PYTHONPATH=/private/tmp/hikes-terrain-deps python3 ../pipeline/build_terrain.py --skip-existing
 
+# ② 表结构到最新，再导三类产物（一个脚本，--all 按顺序全导）
 docker compose -f docker-compose.prod.yml exec api \
-  python /srv/seeds/seed_routes.py
+  alembic upgrade head
+docker compose -f docker-compose.prod.yml exec api \
+  python /srv/seeds/seed_routes.py --all
+docker compose -f docker-compose.prod.yml exec api \
+  python /srv/seeds/seed_race_checkpoints.py
 
-# 生成线路山顶二维码点位；首次导入线路后执行
+# ③ 生成线路山顶二维码点位；首次导入线路后执行
 docker compose -f docker-compose.prod.yml exec api \
   python /srv/seeds/backfill_peak_points.py
 ```
+
+> 演示扫码点 `QS-TEST01` 只在需要时创建：`seed_routes.py --file /srv/routes-data/routes.json --demo-point`
+> （首页"扫码打卡"、二维码与短链验收用它，所以保留但默认不建）。
 
 ## 四、验证
 

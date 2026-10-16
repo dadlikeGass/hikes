@@ -1,0 +1,33 @@
+{
+  "algorithmVersion": "3",
+  "generatedAt": "2026-10-15T18:39:56-07:00",
+  "sources": {
+    "beijing": {
+      "file": "routes.json",
+      "label": "北京山野徒步/越野",
+      "routes": 12,
+      "skipped": 0,
+      "checkpoints": null,
+      "segments": 47,
+      "unrated_segments": 25
+    },
+    "cn": {
+      "file": "routes_cn.json",
+      "label": "全国区域热门路线",
+      "routes": 52,
+      "skipped": 0,
+      "checkpoints": null,
+      "segments": 164,
+      "unrated_segments": 82
+    },
+    "races": {
+      "file": "race_routes.json",
+      "label": "越野赛事赛道",
+      "routes": 93,
+      "skipped": 0,
+      "checkpoints": 279,
+      "segments": 760,
+      "unrated_segments": 379
+    }
+  }
+}

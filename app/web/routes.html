@@ -24,6 +24,12 @@ body{background:#E7E1D6}
 .skel{background:linear-gradient(90deg,#EFEAE0,#F7F3EC,#EFEAE0);border-radius:12px;height:104px;margin-bottom:12px}
 .trk2{background:#fff;border-radius:18px;padding:12px;box-shadow:var(--shadow);margin-bottom:12px}
 .trk2 svg{display:block;width:100%;height:210px}
+.trk2.terrain-map{padding:8px;background:#edf5f2;overflow:hidden}
+.trk2.terrain-map>svg{height:220px;border-radius:12px}
+.maplegend{display:flex;align-items:center;gap:13px;flex-wrap:wrap;padding:9px 4px 2px;font-size:10.5px;color:#596c70}
+.maplegend span{display:inline-flex;align-items:center;gap:5px}
+.maplegend i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.maplegend .contour-key{margin-left:auto;color:#778b8b}
 .segline{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--hair);font-size:12px}
 .segline:last-child{border-bottom:none}
 .backb{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--blue);
@@ -91,20 +97,31 @@ body{background:#E7E1D6}
   <div id="view" style="padding:0 16px"></div>
 </div>
 <script>
-var C = { easy: '#2563EB', mid: '#F2B62C', hard: '#E4453A', hidden: '#22242E' };
-var N = { easy: '简单', mid: '中等', hard: '困难', hidden: '隐藏' };
+var C = { easy: '#52B44A', mid: '#2563EB', hard: '#9E1B1B', hidden: '#22242E', none: '#778396' };
+var N = { easy: '简单', mid: '中等', hard: '困难', hidden: '隐藏', none: '不评级' };
 var KIND = { climb: '爬升', desc: '下降', flat: '平缓' };
 var SH = {
   easy: function (c) { return '<circle cx="50" cy="50" r="41" fill="' + c + '"/>'; },
   mid: function (c) { return '<polygon points="50,10 92,87 8,87" fill="' + c + '"/>'; },
   hard: function (c) { return '<polygon points="50,6 94,50 50,94 6,50" fill="' + c + '"/>'; },
-  hidden: function (c) { return '<polygon points="50,5 89,27 89,73 50,95 11,73 11,27" fill="' + c + '"/>'; }
+  hidden: function (c) { return '<polygon points="50,5 89,27 89,73 50,95 11,73 11,27" fill="' + c + '"/>'; },
+  /* 不评级：空心的虚线环，一眼能和"简单"区分开 */
+  none: function (c) { return '<circle cx="50" cy="50" r="40" fill="none" stroke="' + c + '" stroke-width="9" stroke-dasharray="14 11"/>'; }
 };
+/* 下降段与平缓段没有登顶难度（level 为 null）→ 一律显示"不评级"灰标，
+   不能再拿"简单"顶上去（那是占位值）。 */
 function badge(lv, txt) {
+  if (!lv) lv = 'none';
   var c = C[lv] || '#22242E';
   return '<span class="badge" style="background:' + c + '22;color:' + c + '">' +
     '<span class="lvmark"><span class="lvshape"><svg viewBox="0 0 100 100">' +
     SH[lv](c) + '</svg></span>' + (txt || N[lv]) + '</span></span>';
+}
+function segColor(s) { return (s.difficulty_applicable === false || !s.level) ? C.none : (C[s.level] || '#22242E'); }
+/* 定级靠段内累计爬升：净坡度小、但爬升可观的段叫"起伏"，别写成"平缓"。 */
+function segKind(s) {
+  if (s.kind === 'flat' && s.difficulty_applicable) return '起伏';
+  return KIND[s.kind];
 }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
   return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -150,25 +167,61 @@ function trackSVG(path, segs, km, peaks) {
   });
   return o + '</svg>';
 }
+function terrainTrackSVG(r, compact) {
+  var coords = r.coordinates || [], bounds = r.terrain_bounds;
+  var W = compact ? 120 : 380, H = compact ? 66 : 210, n = coords.length;
+  if (!bounds && n > 1) {
+    var lats = coords.map(function (p) { return p[0]; }), lons = coords.map(function (p) { return p[1]; });
+    var south = Math.min.apply(null,lats), north = Math.max.apply(null,lats), west = Math.min.apply(null,lons), east = Math.max.apply(null,lons);
+    var latPad = Math.max((north-south)*.12,.0037), lonPad = Math.max((east-west)*.12,.0045/Math.cos((north+south)*Math.PI/360));
+    bounds = {south:south-latPad,north:north+latPad,west:west-lonPad,east:east+lonPad};
+    var ratio = (east-west)*Math.cos((north+south)*Math.PI/360)/(north-south), target = W/H;
+    if (ratio < target) { var dx=((north-south)*target-(east-west)*Math.cos((north+south)*Math.PI/360))/(2*Math.cos((north+south)*Math.PI/360)); bounds.west-=dx; bounds.east+=dx; }
+    else { var dy=((east-west)*Math.cos((north+south)*Math.PI/360)/target-(north-south))/2; bounds.south-=dy; bounds.north+=dy; }
+  }
+  var o = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" aria-label="基于真实地形的路线轨迹">';
+  o += '<rect width="' + W + '" height="' + H + '" rx="12" fill="#edf5f2"/>';
+  if (r.terrain_url && bounds) o += '<image href="' + esc(r.terrain_url) + '" width="' + W + '" height="' + H + '" preserveAspectRatio="none"/>';
+  if (n < 2 || !bounds) return o + '<text x="' + W/2 + '" y="' + H/2 + '" text-anchor="middle" fill="#718096" font-size="11">暂无真实经纬度</text></svg>';
+  function P(i) { var p = coords[Math.max(0, Math.min(n - 1, i))]; return [
+    (p[1] - bounds.west) / (bounds.east - bounds.west) * W,
+    (bounds.north - p[0]) / (bounds.north - bounds.south) * H]; }
+  (r.segments || []).forEach(function (sg) {
+    var a = Math.max(0, Math.round(sg.from_km / r.km * (n - 1)));
+    var b = Math.min(n - 1, Math.round(sg.to_km / r.km * (n - 1))), d = '';
+    for (var i = a; i <= b; i++) { var q = P(i); d += (i === a ? 'M' : 'L') + q[0].toFixed(1) + ' ' + q[1].toFixed(1); }
+    o += '<path d="' + d + '" fill="none" stroke="#fff" stroke-width="' + (compact ? 5 : 9) + '" stroke-linecap="round" stroke-linejoin="round" opacity=".95"/>';
+    o += '<path d="' + d + '" fill="none" stroke="' + segColor(sg) + '" stroke-width="' + (compact ? 3 : 5) + '" stroke-linecap="round" stroke-linejoin="round"/>';
+  });
+  var a = P(0), b = P(n - 1), rad = compact ? 3 : 5;
+  o += '<circle cx="' + a[0] + '" cy="' + a[1] + '" r="' + rad + '" fill="#39A875" stroke="#fff" stroke-width="2"/>';
+  o += '<circle cx="' + b[0] + '" cy="' + b[1] + '" r="' + rad + '" fill="#FF5298" stroke="#fff" stroke-width="2"/>';
+  (r.peaks || []).forEach(function (pk) {
+    var q = P(Math.round(pk.km / r.km * (n - 1)));
+    o += '<circle cx="' + q[0] + '" cy="' + q[1] + '" r="' + (compact ? 2.4 : 4) + '" fill="#fff" stroke="#25966f" stroke-width="1.5"/>';
+  });
+  return o + '</svg>';
+}
 async function j(u, o) { var r = await fetch(u, o); if (!r.ok) throw new Error(r.status); return r.json(); }
 
 /* 海拔剖面 + 底部难度色带 */
 function profileSVG(prof, segs, km) {
-  var W = 340, H = 96, pad = 8, n = prof.length;
-  var xs = [], ys = [];
-  for (var i = 0; i < n; i++) {
-    xs.push(pad + (i / (n - 1)) * (W - pad * 2));
-    ys.push(H - 16 - prof[i] * (H - 30));
-  }
-  var line = xs.map(function (x, i) { return (i ? 'L' : 'M') + x.toFixed(1) + ' ' + ys[i].toFixed(1); }).join(' ');
-  var area = line + ' L' + xs[n - 1].toFixed(1) + ' ' + (H - 12) + ' L' + xs[0].toFixed(1) + ' ' + (H - 12) + ' Z';
-  var o = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" style="height:74px;width:100%;display:block">';
-  o += '<path d="' + area + '" fill="#EDF1FD"/>';
-  o += '<path d="' + line + '" fill="none" stroke="#3455F5" stroke-width="2" stroke-linejoin="round"/>';
+  var W = 340, H = 112, pad = 10, n = prof.length, baseY = H - 15;
+  if (n < 2) return '';
+  function X(i) { return pad + i / (n - 1) * (W - pad * 2); }
+  function Y(v) { return baseY - v * (H - 32); }
+  var line = prof.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' ');
+  var area = line + ' L' + X(n - 1) + ' ' + baseY + ' L' + X(0) + ' ' + baseY + ' Z';
+  var o = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" style="height:86px;width:100%;display:block">';
+  [0.25,0.5,0.75].forEach(function (v) { var y = Y(v); o += '<path d="M' + pad + ' ' + y + 'H' + (W-pad) + '" stroke="#dce9e4" stroke-width="1" stroke-dasharray="2 4"/>'; });
+  o += '<path d="' + area + '" fill="#d9eee6" opacity=".82"/>';
   segs.forEach(function (s) {
+    var a = Math.max(0, Math.round(s.from_km / km * (n - 1))), b = Math.min(n - 1, Math.round(s.to_km / km * (n - 1))), d = '';
+    for (var i = a; i <= b; i++) d += (i === a ? 'M' : 'L') + X(i).toFixed(1) + ' ' + Y(prof[i]).toFixed(1);
+    o += '<path d="' + d + '" fill="none" stroke="' + segColor(s) + '" stroke-width="' + (s.difficulty_applicable === false || !s.level ? 1.8 : 2.7) + '" stroke-linecap="round" stroke-linejoin="round"' +
+      (s.difficulty_applicable === false || !s.level ? ' stroke-dasharray="3 3"' : '') + '/>';
     var x0 = pad + (s.from_km / km) * (W - pad * 2), x1 = pad + (s.to_km / km) * (W - pad * 2);
-    o += '<rect x="' + x0.toFixed(1) + '" y="' + (H - 10) + '" width="' +
-      Math.max(1, x1 - x0).toFixed(1) + '" height="7" fill="' + (C[s.level] || '#999') + '"/>';
+    o += '<rect x="' + x0.toFixed(1) + '" y="' + (H - 8) + '" width="' + Math.max(1, x1 - x0).toFixed(1) + '" height="6" rx="3" fill="' + segColor(s) + '"/>';
   });
   return o + '</svg>';
 }
@@ -193,8 +246,8 @@ function bigCard(r) {
     '<div><span>平均用时</span><b>' + (r.hours || '—') + ' h</b></div>' +
     '<div><span>消耗</span><b class="cal">' + (r.kcal || '—') + '</b></div>' +
     '</div>' +
-    '<div class="hardline"><span class="sq" style="background:' + C[r.hardest_level] + '"></span>' +
-    '最难段 ' + N[r.hardest_level] + ' · ' + r.peak_count + ' 个山顶 · ' +
+    '<div class="hardline"><span class="sq" style="background:' + (C[r.hardest_level] || C.none) + '"></span>' +
+    '最难段 ' + (r.hardest_level ? N[r.hardest_level] : '未评级') + ' · ' + r.peak_count + ' 个山顶 · ' +
     r.segment_count + ' 个分段</div></a>';
 }
 
@@ -311,7 +364,7 @@ async function list() {
         '<span style="display:block;font-size:11.5px;color:var(--ink3)">' + TIP[k] + '</span></span></div>';
     }).join('') +
     '<div class="note" style="padding-top:10px;margin-top:6px;border-top:1px solid var(--hair)">' +
-    '段难度只看<strong>爬升高度</strong>与<strong>平均坡度</strong>：爬升 ≤200/200–500/&gt;500 m，' +
+    '段难度只看<strong>爬升高度</strong>与<strong>平均坡度</strong>：段内最长连续爬升 ≤200/200–500/&gt;500 m，' +
     '坡度 ≤15/15–25%/&gt;25%。距离不进难度——它体现在用时与消耗里。' +
     '是否要手脚并用、是否需要绳索冰爪，由山友和维护人确认。</div></div>' +
     '<details class="fold"><summary>别的地方怎么分级</summary><div class="bd">' +
@@ -363,7 +416,13 @@ async function detail(slug) {
   var est = r.est || {};
   var h = r.hardest || {};
   var top = r.peaks.length ? Math.max.apply(null, r.peaks.map(function (p) { return p.altitude; })) : 0;
-  var hardestRow = r.segments.filter(function (s) { return s.level === r.hardest_level; })[0] || r.segments[0];
+  /* 最难段按"哪一段被算出来是整条最难的"来取（r.hardest.no），
+     不再用"第一个 level 相同的段"——下降段的 level 是 null，
+     这么筛会挑出一条下坡段来当"最难段"。 */
+  var hardestRow = (r.hardest && r.hardest.no
+      ? r.segments.filter(function (s) { return s.no === r.hardest.no; })[0]
+      : null) ||
+    r.segments.filter(function (s) { return s.difficulty_applicable; })[0] || null;
   view.innerHTML =
     '<a class="backb" href="#">‹ 全部线路</a>' +
     /* ① 大图 */
@@ -383,9 +442,12 @@ async function detail(slug) {
     }).join('') + '</div>' +
     '<div style="display:flex;gap:12px;margin-top:13px;padding-top:13px;border-top:1px solid var(--hair)">' +
     '<div style="flex:1"><span style="display:block;font-size:10.5px;color:var(--ink3)">平均用时</span>' +
-    '<b style="font-size:17px">' + r.hours + ' h</b></div>' +
+    /* 赛事不套用休闲徒步的估时与热量，接口给的是 null —— 显示"—"，不要露出 null。 */
+    '<b style="font-size:17px">' + (r.hours != null ? r.hours + ' h' : '—') + '</b></div>' +
     '<div style="flex:1"><span style="display:block;font-size:10.5px;color:var(--ink3)">大致消耗</span>' +
-    '<b style="font-size:17px;color:var(--coral)">' + r.kcal + '</b></div></div></div>' +
+    '<b style="font-size:17px;color:var(--coral)">' + (r.kcal != null ? r.kcal : '—') + '</b>' +
+    (r.kind === 'race' ? '<span style="display:block;font-size:10px;color:var(--ink3);margin-top:2px">赛事不套用休闲估时</span>' : '') +
+    '</div></div></div>' +
     /* ③ 难度判定卡 */
     '<div class="rankhd"><h3>难度判定</h3><span>爬升 + 坡度</span></div>' +
     '<div class="card" style="background:var(--blue-bg);box-shadow:none">' +
@@ -395,8 +457,10 @@ async function detail(slug) {
       '<span style="color:var(--blue-deep)">最难段</span><b>第 ' + hardestRow.no + ' 段 · ' +
       hardestRow.from_km + '–' + hardestRow.to_km + ' km</b></div>' +
       '<div class="kv" style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0">' +
-      '<span style="color:var(--blue-deep)">爬升 / 坡度</span><b>+' + hardestRow.rise + ' m · ' +
-      '+25%'.replace('25', hardestRow.pct) + '</b></div>' : '') +
+      '<span style="color:var(--blue-deep)">爬升 / 坡度</span><b>' +
+      /* 定级用段内最长连续爬升（不受段长影响）；累计爬升在分段表里另列 */
+      '最长连续爬升 +' + hardestRow.max_rise_m + ' m · ' +
+      (hardestRow.pct > 0 ? '+' : '') + hardestRow.pct + '%</b></div>' : '') +
     '<div class="kv" style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0">' +
     '<span style="color:var(--blue-deep)">判定结果</span>' + badge(r.hardest_level) + '</div>' +
     '<div class="note" style="margin-top:10px;color:var(--blue-deep)">' +
@@ -406,7 +470,7 @@ async function detail(slug) {
     '<div class="rankhd"><h3>实体标牌</h3><span>终点打卡点样式</span></div>' +
     '<div class="card" style="display:flex;gap:15px;align-items:center">' +
     '<span style="width:62px;height:62px;flex:0 0 auto"><svg viewBox="0 0 100 100">' +
-    SH[r.hardest_level](C[r.hardest_level]) + '</svg></span>' +
+    SH[r.hardest_level || 'none'](C[r.hardest_level] || C.none) + '</svg></span>' +
     '<span style="flex:1"><span style="display:block;font-size:10.5px;font-weight:800;' +
     'letter-spacing:1.1px;color:var(--ink2)">DCYY | ' + (top ? top + 'M' : '—') + '</span>' +
     '<span style="display:block;font-size:9.5px;font-weight:700;letter-spacing:1.6px;' +
@@ -416,10 +480,15 @@ async function detail(slug) {
     'line-height:1.3">二维码<br>待标定</span></div>' +
     /* ⑤ 按难度着色的轨迹图（山顶标海拔） */
     '<div class="rankhd"><h3>轨迹与难度</h3><span>按段着色</span></div>' +
-    '<div class="trk2">' + trackSVG(r.path, r.segments, r.km, r.peaks) + '</div>' +
+    '<div class="trk2 terrain-map">' + terrainTrackSVG(r, false) +
+    '<div class="maplegend"><span><i style="background:#52B44A"></i>简单</span><span><i style="background:#2563EB"></i>中等</span>' +
+    '<span><i style="background:#9E1B1B"></i>困难</span><span><i style="background:#778396"></i>不评级（下坡 / 平缓）</span>' +
+    '<span class="contour-key">真实 DEM（z12 ≈ 30 m）· 起点基准 · 等高距连续 200→10 m</span></div></div>' +
     /* ⑥ 海拔剖面 + 色带 */
-    '<div class="rankhd"><h3>海拔剖面</h3><span>底部色带 = 段的难度</span></div>' +
-    '<div class="trk2" style="padding:10px 12px 8px">' + profileSVG(r.profile, r.segments, r.km) + '</div>' +
+    '<div class="rankhd"><h3>按坡度自动分段</h3><span>海拔走势 · 颜色对应段难度</span></div>' +
+    '<div class="trk2" style="padding:10px 12px 8px">' + profileSVG(r.profile, r.segments, r.km) +
+    '<div class="maplegend"><span><i style="background:#52B44A"></i>简单</span><span><i style="background:#2563EB"></i>中等</span>' +
+    '<span><i style="background:#9E1B1B"></i>困难</span><span><i style="background:#778396"></i>不评级（下坡 / 平缓 · 虚线）</span></div></div>' +
     '<div class="sec-head"><h3>山顶</h3><span class="more">' + r.peaks.length + ' 个</span></div>' +
     '<div class="card tight">' + r.peaks.map(function (p, i) {
       return '<div class="segline"><span style="font-weight:800;color:var(--ink3);width:16px">' + (i + 1) + '</span>' +
@@ -428,14 +497,17 @@ async function detail(slug) {
     }).join('') + '</div>' +
     '<div class="sec-head"><h3>分段难度</h3><span class="more">爬升 + 坡度</span></div>' +
     '<div class="card tight">' + r.segments.map(function (s) {
-      return '<div class="segline"><span class="sq" style="background:' + C[s.level] + '"></span>' +
-        '<span style="font-weight:800;flex:0 0 50px">' + s.no + '. ' + KIND[s.kind] + '</span>' +
+      var drop = (s.max_drop_m && s.kind !== 'desc') ? '｜段内最大连续下降 ' + s.max_drop_m + ' m' : '';
+      var cum = (s.up_m != null ? '累计 ↑' + s.up_m + ' ↓' + s.down_m + ' m · ' : '');
+      return '<div class="segline"><span class="sq" style="background:' + segColor(s) + '"></span>' +
+        '<span style="font-weight:800;flex:0 0 50px">' + s.no + '. ' + segKind(s) + '</span>' +
         '<span style="color:var(--ink2);flex:0 0 92px">' + s.from_km + '–' + s.to_km + ' km</span>' +
-        '<span style="flex:1;color:var(--ink2)">' + (s.rise > 0 ? '+' : '') + s.rise + ' m · ' +
-        (s.pct > 0 ? '+' : '') + s.pct + '%</span>' + badge(s.level) + '</div>';
+        '<span style="flex:1;color:var(--ink2)">' + cum +
+        '净' + (s.rise > 0 ? '+' : '') + s.rise + ' m · ' +
+        (s.pct > 0 ? '+' : '') + s.pct + '%' + drop + '</span>' + badge(s.level) + '</div>';
     }).join('') +
     '<div class="note" style="padding:10px 2px 0;font-size:11.5px;color:var(--ink3);line-height:1.6">' +
-    '段难度只看<strong>爬升高度</strong>与<strong>平均坡度</strong>：爬升 ≤200/200–500/&gt;500 m，' +
+    '段难度只看<strong>爬升高度</strong>与<strong>平均坡度</strong>：段内最长连续爬升 ≤200/200–500/&gt;500 m，' +
     '坡度 ≤15/15–25/&gt;25%。距离不进难度——它体现在上面的用时与消耗里。' +
     '是否要手脚并用、是否需要绳索冰爪，由山友和维护人确认。</div></div>';
 }

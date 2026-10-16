@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="780" height="1040" viewBox="0 0 780 1040">
+<defs><linearGradient id="bg" x2="0" y2="1"><stop stop-color="#f1f9fc"/><stop offset="1" stop-color="#eaf5f8"/></linearGradient><linearGradient id="map" x2="0" y2="1"><stop stop-color="#fbfeff"/><stop offset="1" stop-color="#f4fafb"/></linearGradient><filter id="shadow" x="-.1" y="-.1" width="1.2" height="1.25"><feDropShadow dx="0" dy="8" stdDeviation="14" flood-color="#38556b" flood-opacity=".09"/></filter></defs>
+<rect width="780" height="1040" rx="42" fill="url(#bg)"/>
+<text x="54" y="75" font-family="sans-serif" font-size="21" font-weight="700" fill="#309d79">路书 · 热门线路</text><text x="54" y="142" font-family="sans-serif" font-size="42" font-weight="800" fill="#25283b">三峰连穿</text><text x="54" y="184" font-family="sans-serif" font-size="19" fill="#707b8c">大觉寺 · 鹫峰 · 阳台山 · 妙峰山</text>
+<g filter="url(#shadow)"><rect x="38" y="218" width="704" height="520" rx="30" fill="#fff"/></g>
+<text x="72" y="270" font-family="sans-serif" font-size="16" font-weight="700" fill="#758293" letter-spacing="2">路线示意</text><text x="708" y="270" text-anchor="end" font-family="sans-serif" font-size="15" fill="#9aa5b2">GPX 轨迹</text>
+<!-- barely-there terrain contours -->
+<g fill="none" stroke="#e8f0ed" stroke-width="2"><path d="M70 335 Q210 292 365 339T708 328"/><path d="M70 395 Q220 356 370 399T708 388"/><path d="M70 470 Q230 427 380 474T708 460"/><path d="M70 555 Q220 515 380 559T708 545"/><path d="M70 630 Q225 594 385 634T708 620"/></g>
+<!-- route path with restrained difficulty segments -->
+<path d="M112 594 C135 560 162 550 187 520 S228 478 254 476 S289 464 314 436 S347 400 374 397 S408 410 425 438 S461 470 482 462 S516 442 536 448 S568 489 590 500 S631 521 665 516" fill="none" stroke="#d9eee7" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M112 594 C135 560 162 550 187 520 S228 478 254 476" fill="none" stroke="#54b77d" stroke-width="9" stroke-linecap="round"/>
+<path d="M254 476 S289 464 314 436 S347 400 374 397 S408 410 425 438" fill="none" stroke="#e6b94e" stroke-width="9" stroke-linecap="round"/>
+<path d="M425 438 S461 470 482 462 S516 442 536 448" fill="none" stroke="#e6b94e" stroke-width="9" stroke-linecap="round"/>
+<path d="M536 448 S568 489 590 500 S631 521 665 516" fill="none" stroke="#53a9c0" stroke-width="9" stroke-linecap="round"/>
+<!-- start/end -->
+<circle cx="112" cy="594" r="13" fill="#fff" stroke="#42ae8b" stroke-width="6"/><circle cx="665" cy="516" r="13" fill="#ff719f" stroke="#fff" stroke-width="5"/>
+<!-- summit markers, no floating labels -->
+<g><circle cx="254" cy="476" r="16" fill="#fff" stroke="#dce8e8" stroke-width="2"/><path d="m246 480 8-14 8 14z" fill="#36a37e"/><circle cx="374" cy="397" r="16" fill="#fff" stroke="#dce8e8" stroke-width="2"/><path d="m366 401 8-14 8 14z" fill="#36a37e"/><circle cx="482" cy="462" r="16" fill="#fff" stroke="#dce8e8" stroke-width="2"/><path d="m474 466 8-14 8 14z" fill="#36a37e"/><circle cx="590" cy="500" r="16" fill="#fff" stroke="#dce8e8" stroke-width="2"/><path d="m582 504 8-14 8 14z" fill="#36a37e"/></g>
+<g font-family="sans-serif" font-size="14" fill="#687688"><text x="93" y="630">起点</text><text x="649" y="552">终点</text></g>
+<!-- stats -->
+<g><rect x="38" y="762" width="704" height="104" rx="24" fill="#fff"/><text x="72" y="805" font-family="sans-serif" font-size="15" fill="#8591a0">全程距离</text><text x="72" y="841" font-family="sans-serif" font-size="25" font-weight="800" fill="#25283b">21.1 km</text><path d="M262 782v64" stroke="#edf2f4" stroke-width="2"/><text x="294" y="805" font-family="sans-serif" font-size="15" fill="#8591a0">累计爬升</text><text x="294" y="841" font-family="sans-serif" font-size="25" font-weight="800" fill="#25283b">1,949 m</text><path d="M506 782v64" stroke="#edf2f4" stroke-width="2"/><text x="538" y="805" font-family="sans-serif" font-size="15" fill="#8591a0">山顶</text><text x="538" y="841" font-family="sans-serif" font-size="25" font-weight="800" fill="#25283b">5 座</text></g>
+<!-- summit pills -->
+<text x="52" y="917" font-family="sans-serif" font-size="16" font-weight="700" fill="#25283b">沿途山顶</text><g font-family="sans-serif" font-size="14" fill="#516071"><rect x="52" y="937" width="123" height="48" rx="15" fill="#fff"/><text x="68" y="967">▲ 1092 m</text><rect x="187" y="937" width="123" height="48" rx="15" fill="#fff"/><text x="203" y="967">▲ 1244 m</text><rect x="322" y="937" width="123" height="48" rx="15" fill="#fff"/><text x="338" y="967">▲ 1257 m</text><rect x="457" y="937" width="123" height="48" rx="15" fill="#fff"/><text x="473" y="967">▲ 995 m</text><rect x="592" y="937" width="123" height="48" rx="15" fill="#fff"/><text x="608" y="967">▲ 902 m</text></g>
+</svg>

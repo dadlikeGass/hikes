@@ -1,6 +1,7 @@
 """把赛事打卡点导进库，并给沿途山顶标出最近的打卡点。
 
-数据来自 pipeline/build_checkpoints.py 生成的 pipeline/out/race_checkpoints.json。
+数据来自 pipeline/build.py --source races 生成的 pipeline/out/race_checkpoints.json
+（打卡点已经在同一步里投到赛道折线上，里程与分段/山顶用同一把尺子）。
 可重复执行：先清掉该线路的旧打卡点再写入（序号会重排），山顶标注同样重算。
 
 用法：docker compose exec api python /srv/seeds/seed_race_checkpoints.py
@@ -10,12 +11,13 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-for cand in ("/srv/routes-data/race_checkpoints.json", ROOT / "pipeline/out/race_checkpoints.json"):
+for cand in ("/srv/routes-data/race_checkpoints.json",
+             ROOT / "pipeline/out/race_checkpoints.json"):
     if Path(cand).exists():
         SRC = Path(cand)
         break
 else:
-    raise SystemExit("找不到 race_checkpoints.json，先跑 python3 pipeline/build_checkpoints.py")
+    raise SystemExit("找不到 race_checkpoints.json，先跑 python3 pipeline/build.py --source races")
 
 sys.path.insert(0, "/srv")
 for cand in ("/srv", str(ROOT / "server")):
@@ -27,10 +29,10 @@ from sqlalchemy import text  # noqa: E402
 
 INSERT = """
 INSERT INTO route_checkpoints
-  (route_id, no, name, km, altitude, lat, lng, off_track_m, geom)
+  (route_id, no, name, km, altitude, lat, lng, off_track_m, geom, source, notes)
 VALUES (:rid, :no, :name, :km, :alt, :lat, :lng, :off,
         CASE WHEN :lat IS NULL THEN NULL
-             ELSE ST_SetSRID(ST_MakePoint(:lng, :lat), 4326) END)
+             ELSE ST_SetSRID(ST_MakePoint(:lng, :lat), 4326) END, 'official', :notes)
 """
 
 
@@ -44,14 +46,17 @@ def main():
             if not rid:
                 missed.append(slug)
                 continue
-            c.execute(text("DELETE FROM route_checkpoints WHERE route_id = :r"), {"r": rid})
+            c.execute(text("DELETE FROM route_checkpoints WHERE route_id = :r AND source = 'official'"), {"r": rid})
             for r in rows:
                 c.execute(text(INSERT), {"rid": rid, "no": r["no"], "name": r["name"],
                                          "km": r["km"], "alt": r.get("altitude"),
                                          "lat": r.get("lat"), "lng": r.get("lng"),
-                                         "off": r.get("off_track_m")})
+                                         "off": r.get("off_track_m"),
+                                         "notes": "待核验：离赛道较远" if r.get("status") == "verify" else None})
                 n_cp += 1
 
+            if not rows:
+                continue
             # 沿途山顶 → 最近打卡点（两者都是"沿线第几公里"，直接比里程）
             peaks = c.execute(text("SELECT id, km FROM route_peaks WHERE route_id = :r"),
                               {"r": rid}).mappings().all()

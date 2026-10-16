@@ -64,10 +64,11 @@ cd ../tracks && python3 make_gpx.py && python3 build_app_data.py
 | `#/` | 首页（左上角 logo 进入，不是 tab） |
 | `#/trails` | 路书 tab |
 | `#/trails/:id` | 线路详情（分段路书 / 用时榜 / 留言板） |
-| `#/places` · `#/places/junction` | 山头·岔路 tab（顶部切换） |
+| `#/places` · `#/places/junction` | 占山为王（山头 / 岔路两个 tab） |
 | `#/peaks/:id` | 山头页 = 打卡点 |
 | `#/junctions/:id` | 岔路页 = 路书点（往哪走 + 情报卡） |
-| `#/messages` | 消息 tab |
+| `#/board` | 留言版（山头留言瀑布流，可按时间/山头排列，并筛选去过/想去） |
+| `#/messages` | 消息与互动（从顶部消息入口进入） |
 | `#/me` 及 `#/me/visited` `want` `peak` `records` `letters` `activity` | 我 tab 与子页 |
 | `#/scan` | 扫一扫（演示：点按钮模拟扫码，或输入点位编号） |
 | `#/arrive/:peakId` | 扫码到达页（第 N 位 → 打卡 → 拆信 → 留言） |
@@ -88,7 +89,7 @@ cd ../tracks && python3 make_gpx.py && python3 build_app_data.py
 
 - **扫码只在两处**：底部正中凸起 + 首页顶部窄条。不要在页面里再加第三个。
 - **用时只在同一条线路内比较**，跨线路不排名。
-- **岔路是情报，山头是情绪**：两类地点两种页面，不要合并。
+- **岔路是情报，山头是情绪**：同属“占山为王”页面的两个 tab，内容与操作仍各自区分。
 - **每条通知都能回到现场**（地点上下文胶囊），而不是回到某个人的主页。
 - 山景插画是按点位 id 确定性生成的（同一座山永远同一张图），没有外部图片依赖。
 

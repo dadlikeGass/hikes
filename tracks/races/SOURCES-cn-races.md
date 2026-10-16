@@ -85,11 +85,15 @@ curl -sL -o tracks/races/chongli168-2026-yunding30.gpx "https://cdn.rockysports.
 `tracks/races/manifest.json` 已并入本批轨迹（93 条，含原有 33 条），跑完管线后入库：
 
 ```
-python3 pipeline/build_races.py                                     # 93 条赛事路线
-docker compose -f server/docker-compose.yml exec -T api python /srv/seeds/seed_race_routes.py
+python3 pipeline/build.py --source races                            # 93 条赛事路线 + 打卡点
+docker compose -f server/docker-compose.yml exec -T api python /srv/seeds/seed_routes.py --file /srv/routes-data/race_routes.json
+docker compose -f server/docker-compose.yml exec -T api python /srv/seeds/seed_race_checkpoints.py
 docker compose -f server/docker-compose.yml exec -T api python /srv/seeds/backfill_peak_points.py
 docker compose -f server/docker-compose.yml exec -T api python /srv/seeds/backfill_peak_regions.py
 ```
+
+> 2026-10-15 起：`build_races.py` / `seed_race_routes.py` 已并入
+> `pipeline/build.py` 与 `server/seeds/seed_routes.py`（见 docs/PIPELINES.md）。
 
 - **线路库**：`routes` 里 `kind='race'` 从 33 条 → **93 条**（2023:2 / 2024:14 / 2025:20 / 2026:54 / 2027:3），
   1214 个分段、1121 个沿途山顶；本批新增 **61 条**（12 场赛事，含往届）。

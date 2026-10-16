@@ -320,7 +320,13 @@
           (collaborator ? '' : '<div class="card"><div class="field"><label>点位名称</label><input id="livePointName" value="' + esc(p.name || '') + '"></div>' +
           '<div class="field"><label>现场说明</label><textarea id="livePointGuide" maxlength="500">' +
           esc(p.guide && p.guide.desc || '') + '</textarea></div>' +
-          '<button class="btn blue" data-act="real-save-point" data-id="' + p.id + '">保存点位信息</button></div>') +
+          '<div class="field"><label>' + (p.type === 'junction' ? '岔路口介绍' : '山峰介绍（建议约 100 字）') + '</label><textarea id="livePointIntro" maxlength="500" placeholder="介绍位置、地貌与现场特点；请以核实过的信息为准">' +
+          esc(p.guide && p.guide.intro || '') + '</textarea></div>' +
+          (p.type === 'peak' ? '<div class="field"><label>首登者介绍（注明来源，未知可留空）</label><textarea id="liveFirstAscent" maxlength="500" placeholder="首登者 / 队伍、时间与资料来源">' +
+            esc(p.guide && p.guide.first_ascent || '') + '</textarea></div>' +
+            '<div class="field"><label>登顶方式</label><textarea id="liveAscentMethod" maxlength="500" placeholder="路线、关键岔口、难点与返程提示">' +
+            esc(p.guide && p.guide.ascent_method || '') + '</textarea></div>' : '') +
+          '<button class="btn blue" data-act="real-save-point" data-id="' + p.id + '" data-val="' + esc(JSON.stringify(p.guide || {})) + '">保存点位信息</button></div>') +
           '<div class="sec-head"><h3>待核验留言</h3></div>' +
           '<div id="liveFlagged" class="card tight"><div class="empty">正在读取…</div></div>' +
           (collaborator ? '' : '<button class="btn ghost" data-act="ad-panel" data-code="' + esc(p.code) + '">广告素材与审核状态</button>' +
@@ -390,10 +396,19 @@
     'real-save-point': function (t, o) {
       var name = (field('livePointName') || '').trim();
       var desc = (field('livePointGuide') || '').trim();
+      var intro = (field('livePointIntro') || '').trim();
+      var firstAscent = field('liveFirstAscent');
+      var ascentMethod = field('liveAscentMethod');
       if (!name) { U.toast('请填写点位名称'); return; }
+      var guide = {};
+      try { guide = JSON.parse(o.val || '{}'); } catch (e) { guide = {}; }
+      guide.desc = desc;
+      guide.intro = intro;
+      if (firstAscent !== null) guide.first_ascent = firstAscent.trim();
+      if (ascentMethod !== null) guide.ascent_method = ascentMethod.trim();
       t.disabled = true;
       window.API.ja('/api/points/' + o.id, { method: 'PATCH',
-        body: JSON.stringify({ name: name, guide: { desc: desc } })
+        body: JSON.stringify({ name: name, guide: guide })
       }).then(function () { U.toast('已保存'); }).catch(function () { U.toast('保存失败，请检查权限'); })
         .then(function () { t.disabled = false; });
     },
