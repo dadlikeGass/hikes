@@ -1,0 +1,113 @@
+Pager usage is off.
+== 1. 点位数与证据覆盖率 ==
+   type    | total | with_geom | with_mountain | not_published 
+-----------+-------+-----------+---------------+---------------
+ peak      |  1563 |      1562 |          1563 |             0
+ trailhead |   156 |         0 |             0 |             0
+ junction  |     1 |         0 |             0 |             0
+(3 rows)
+
+== 2. 缺坐标点位（GPS 打卡必须关闭；名单前 20 条）==
+   code   |   type    |     name     |  status   
+----------+-----------+--------------+-----------
+ BJ-2681  | junction  | 临时校验岔口 | published
+ BJ-2682  | peak      | 临时校验山头 | published
+ BPS-S    | trailhead |              | published
+ BWL2-S   | trailhead |              | published
+ BWL-S    | trailhead |              | published
+ CDD-S    | trailhead |              | published
+ CG105A-S | trailhead |              | published
+ CG105-S  | trailhead |              | published
+ CG25A-S  | trailhead |              | published
+ CG25-S   | trailhead |              | published
+ CG50A-S  | trailhead |              | published
+ CG50-S   | trailhead |              | published
+ CL100-S  | trailhead |              | published
+ CL168-S  | trailhead |              | published
+ CL30A-S  | trailhead |              | published
+ CL30-S   | trailhead |              | published
+ CLAW10-S | trailhead |              | published
+ CLAY10-S | trailhead |              | published
+ CLD100-S | trailhead |              | published
+ CLE30-S  | trailhead |              | published
+(20 rows)
+
+ missing_geom_total 
+--------------------
+                158
+(1 row)
+
+== 3. 缺山峰关联点位（不得进入山级汇总；名单前 20 条）==
+   code   |   type    |     name     |  status   
+----------+-----------+--------------+-----------
+ BJ-2681  | junction  | 临时校验岔口 | published
+ BPS-S    | trailhead |              | published
+ BWL2-S   | trailhead |              | published
+ BWL-S    | trailhead |              | published
+ CDD-S    | trailhead |              | published
+ CG105A-S | trailhead |              | published
+ CG105-S  | trailhead |              | published
+ CG25A-S  | trailhead |              | published
+ CG25-S   | trailhead |              | published
+ CG50A-S  | trailhead |              | published
+ CG50-S   | trailhead |              | published
+ CL100-S  | trailhead |              | published
+ CL168-S  | trailhead |              | published
+ CL30A-S  | trailhead |              | published
+ CL30-S   | trailhead |              | published
+ CLAW10-S | trailhead |              | published
+ CLAY10-S | trailhead |              | published
+ CLD100-S | trailhead |              | published
+ CLE30-S  | trailhead |              | published
+ CLM70-S  | trailhead |              | published
+(20 rows)
+
+ missing_mountain_total 
+------------------------
+                    157
+(1 row)
+
+== 4. 一座山上的点位数（可能配置上登路线的山）==
+ mountains_with_two_points 
+---------------------------
+                         1
+(1 row)
+
+== 5. 同一座山同时具备"峰顶"和"非峰顶（起点）"的数量 ==
+ mountains_with_peak_and_start 
+-------------------------------
+                             0
+(1 row)
+
+== 6. 同名/同坐标点位（同山多码要能识别，避免人数重复）==
+ mountain_id | same_name_points | name 
+-------------+------------------+------
+(0 rows)
+
+== 7. 已有到访的证据等级分布（历史记录不得自动获得排名资格）==
+ evidence_level | visits | with_occurred | with_recorded 
+----------------+--------+---------------+---------------
+ legacy         |    156 |           156 |           156
+(1 row)
+
+== 8. 迁移台账与约束是否存在 ==
+     version_num      
+----------------------
+ 0012_private_letters
+(1 row)
+
+       conname        
+----------------------
+ letters_mode_check
+ letters_status_check
+ visits_owner_check
+(3 rows)
+
+               indexname                
+----------------------------------------
+ idx_effort_guest_day
+ idx_effort_user_day
+ uq_visits_guest_day
+ visits_user_id_point_id_visit_date_key
+(4 rows)
+

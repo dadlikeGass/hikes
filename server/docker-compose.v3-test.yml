@@ -1,0 +1,73 @@
+# V3 验收用的隔离环境（计划 T1 要求）。
+#
+# * 独立项目名 hikes-v3test、独立数据库卷 v3testdbdata、独立端口 18000 / 15432
+# * 不共用 server/docker-compose.yml 的容器与卷，drill 脚本只连这里，
+#   因此在本地开发库上跑 drill 也不会污染你自己手动造的数据。
+# * api 把 server/tests 挂进容器，方便在容器里也能跑同一份 drill。
+#
+# 起：
+#   docker compose -f server/docker-compose.v3-test.yml up -d --build
+#   docker compose -f server/docker-compose.v3-test.yml exec -T api alembic upgrade head
+# 数据初始化与验收命令见 server/tests/README.md
+# 清：
+#   docker compose -f server/docker-compose.v3-test.yml down -v
+name: hikes-v3test
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: hikes
+      POSTGRES_PASSWORD: hikes
+      POSTGRES_DB: hikes
+    ports: ["15432:5432"]
+    volumes:
+      - v3testdbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hikes -d hikes"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    # 复用本地已构建的后端镜像（代码是通过 ./app 只读挂载进去的，
+    # 所以镜像只提供 Python 环境）；镜像不存在时 compose 会按上面的 build 现建。
+    image: hikes-api:latest
+    environment:
+      DATABASE_URL: postgresql+psycopg://hikes:hikes@db:5432/hikes
+      JWT_SECRET: v3-test-only-secret
+      ALLOW_DEV_LOGIN: "1"
+      # 隔离环境把限流阈值放宽：drill 会在同一分钟内反复提交，
+      # 默认阈值会把自己挡住，测出来的就不是业务行为了。
+      # 生产部署不设这些变量，仍按代码默认值执行。
+      RATE_LIMIT_VISIT_PER_IDENTITY_HOUR: "100000"
+      RATE_LIMIT_VISIT_PER_IP_HOUR: "100000"
+      RATE_LIMIT_COMMENT_PER_IDENTITY_HOUR: "100000"
+      RATE_LIMIT_COMMENT_PER_IP_HOUR: "100000"
+      RATE_LIMIT_REPORT_PER_IDENTITY_HOUR: "100000"
+      RATE_LIMIT_REPORT_PER_IP_HOUR: "100000"
+      RATE_LIMIT_READ_PER_MINUTE_IP: "100000"
+      RATE_LIMIT_READ_PER_HOUR_IP: "1000000"
+      RATE_LIMIT_READ_BLOCK_AFTER_TRIPS: "100000"
+    ports: ["18000:8000"]
+    volumes:
+      - ./app:/srv/app:ro
+      - ./seeds:/srv/seeds:ro
+      - ./db:/srv/db:ro
+      - ./migrations:/srv/migrations:ro
+      - ./alembic.ini:/srv/alembic.ini:ro
+      - ./tests:/srv/tests:ro
+      - ../app/js:/srv/route-data:ro
+      - ../app/web:/srv/web:ro
+      - ../app/css:/srv/theme:ro
+      - ../pipeline/out:/srv/routes-data:ro
+      - ../pipeline:/srv/pipeline:ro
+      - ../app:/srv/webapp:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+volumes:
+  v3testdbdata:

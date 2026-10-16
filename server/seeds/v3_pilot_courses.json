@@ -1,0 +1,45 @@
+{
+  "note": "V3 试点上登路线（T1）。每座山两条：一条主上登路线、一条同山另一入口。坐标必须现场采集后填进 lat/lng；没填之前脚本不会开榜，只会报告缺什么。香山（山 stable_key = cn-peak-100:北京-香山）是第一个试点，峰顶点位 CNP-003 已有坐标。",
+  "courses": [
+    {
+      "name": "香山 · 东门 → 峰顶（试点主上登路线）",
+      "mountain": "cn-peak-100:北京-香山",
+      "start_point": {
+        "code": "XS-E-S",
+        "type": "trailhead",
+        "name": "香山东门起点",
+        "lat": null,
+        "lng": null,
+        "note": "牌位坐标待现场采集；缺坐标时 /api/points/nearby 不会返回它，GPS 打卡保持关闭，只支持扫码"
+      },
+      "end_point": {
+        "code": "CNP-003"
+      },
+      "distance_m": null,
+      "gain_m": null,
+      "min_duration_s": 1800,
+      "ranking_enabled": false,
+      "note": "开榜前需要：两端坐标核实、现场走到一次拿到基准用时、确认这条上登路线与其它入口可区分"
+    },
+    {
+      "name": "香山 · 北门 → 峰顶（试点·同山另一入口）",
+      "mountain": "cn-peak-100:北京-香山",
+      "start_point": {
+        "code": "XS-N-S",
+        "type": "trailhead",
+        "name": "香山北门起点",
+        "lat": null,
+        "lng": null,
+        "note": "同山另一入口：与东门起点不可混排，配置成独立路线后各自比较"
+      },
+      "end_point": {
+        "code": "CNP-003"
+      },
+      "distance_m": null,
+      "gain_m": null,
+      "min_duration_s": 1800,
+      "ranking_enabled": false,
+      "note": "待现场补点后同样单独核实"
+    }
+  ]
+}

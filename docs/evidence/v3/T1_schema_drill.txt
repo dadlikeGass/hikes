@@ -1,0 +1,38 @@
+test_legacy_copy_upgrade_preserves_rows (v3_schema_drill.LegacyUpgradeDrill) ... ok
+test_01_pending_start_is_reported_and_not_written (v3_schema_drill.PilotConfigDrill) ... ok
+test_02_ranking_needs_verified_coordinates (v3_schema_drill.PilotConfigDrill) ... FAIL
+test_03_endpoint_from_another_mountain_is_rejected (v3_schema_drill.PilotConfigDrill) ... FAIL
+test_01_head_and_new_objects_exist (v3_schema_drill.SchemaDrill) ... ok
+test_02_evidence_columns_have_no_null_rows (v3_schema_drill.SchemaDrill) ... ok
+test_03_legacy_rows_are_not_rank_evidence (v3_schema_drill.SchemaDrill) ... ok
+test_04_same_identity_point_day_is_single_row (v3_schema_drill.SchemaDrill)
+同一天同一身份同一点只允许一条；游客与账号各验一遍。 ... ok
+test_05_receipt_key_separates_guest_and_account (v3_schema_drill.SchemaDrill)
+幂等键是 (身份类型, 身份ID, clientUuid)：同数字 ID 的游客和账号互不干扰。 ... ok
+test_06_letter_mode_constraints (v3_schema_drill.SchemaDrill) ... ok
+test_07_course_and_effort_constraints (v3_schema_drill.SchemaDrill) ... ok
+test_08_scan_lookup_still_works (v3_schema_drill.SchemaDrill) ... ok
+
+======================================================================
+FAIL: test_02_ranking_needs_verified_coordinates (v3_schema_drill.PilotConfigDrill)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/2026brooke/Documents/ChatGPT/hikes/server/tests/v3_schema_drill.py", line 272, in test_02_ranking_needs_verified_coordinates
+    self.assertEqual("published", V.sql_value("SELECT status FROM points WHERE code='%s'"
+AssertionError: 'published' != 'draft'
+- published
++ draft
+
+
+======================================================================
+FAIL: test_03_endpoint_from_another_mountain_is_rejected (v3_schema_drill.PilotConfigDrill)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/2026brooke/Documents/ChatGPT/hikes/server/tests/v3_schema_drill.py", line 285, in test_03_endpoint_from_another_mountain_is_rejected
+    self.assertEqual(0, V.sql_int("SELECT count(*) FROM ascent_courses WHERE name='%s'"
+AssertionError: 0 != 1
+
+----------------------------------------------------------------------
+Ran 12 tests in 64.831s
+
+FAILED (failures=2)
