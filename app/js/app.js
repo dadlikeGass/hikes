@@ -4068,6 +4068,14 @@
     var p = (window.API && window.API.ready) ? window.API.ready : Promise.resolve();
     p.then(function () {
       if (window.API && window.API.error) {
+        /* 首页只依赖"我的摘要/凭证/待同步"这三块（各自独立加载），
+           线路/热榜/社区请求挂了不该让首页变成一张错误页——先渲染首页，
+           把重试入口放在顶部提示里（计划 T6：某块失败不让首页白屏）。 */
+        if (parse().name === 'home') {
+          render();
+          U.toast('线路数据暂时没加载出来，首页可以照常用；稍后重试即可');
+          return;
+        }
         document.getElementById('view').innerHTML =
           '<div class="empty"><span class="big">⛰</span>点位暂时没有加载出来<br>' +
           '<button class="btn coral" data-act="retry-boot" style="margin-top:16px">重试</button></div>';

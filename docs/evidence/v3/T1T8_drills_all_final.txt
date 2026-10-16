@@ -1,0 +1,89 @@
+test_01_offline_checkin_queues_then_syncs_once (v3_browser_drill.BrowserDrill) ... ok
+test_02_refused_geolocation_is_explained (v3_browser_drill.BrowserDrill) ... ok
+test_03_storage_failure_never_claims_saved (v3_browser_drill.BrowserDrill) ... ok
+test_04_service_worker_does_not_cache_private_responses (v3_browser_drill.BrowserDrill) ... ok
+test_05_home_layout_at_two_widths (v3_browser_drill.BrowserDrill) ... ok
+test_06_letters_ui_keeps_sealed_body_off_page (v3_browser_drill.BrowserDrill) ... ok
+test_07_checkin_page_offers_no_forced_signup (v3_browser_drill.BrowserDrill) ... ok
+test_08_mountain_page_shows_leaderboard_module (v3_browser_drill.BrowserDrill) ... ok
+test_01_concurrent_same_uuid_lands_one_row (v3_checkin_drill.CheckinDrill)
+同一个动作 UUID 打 20 次（并发）：只能有一条到访、一份凭证。 ... ok
+test_02_concurrent_different_uuid_same_day_lands_one_row (v3_checkin_drill.CheckinDrill)
+同一天同一身份同一点、20 个不同 UUID 并发：只落一条，且序号不撞。 ... ok
+test_03_same_uuid_different_payload_is_409 (v3_checkin_drill.CheckinDrill) ... ok
+test_04_future_and_ancient_times_are_rejected (v3_checkin_drill.CheckinDrill) ... ok
+test_05_business_day_uses_shanghai_and_keeps_field_time (v3_checkin_drill.CheckinDrill)
+周日晚上在山顶打卡、周一才补传：业务日仍归周日，窗口口径才不会被拖走。 ... ok
+test_06_register_merge_keeps_canonical_visit_for_retry (v3_checkin_drill.CheckinDrill)
+游客先打卡（离线重试场景）→ 注册合并 → 用同一 UUID 以账号身份重试： ... ok
+test_07_merge_with_existing_same_day_account_visit (v3_checkin_drill.CheckinDrill)
+账号先在同一天同一点有记录，游客随后也打了一次，再合并： ... ok
+test_08_merged_guest_token_cannot_read_or_write (v3_checkin_drill.CheckinDrill)
+已合并的游客身份单独用：既不能打卡，也不能读账号数据。 ... ok
+test_09_merge_does_not_steal_another_accounts_records (v3_checkin_drill.CheckinDrill)
+游客已归入账号 A，账号 B 再拿同一个 token 合并：必须拒绝，不跨账号接管。 ... ok
+test_10_account_deletion_clears_new_private_rows (v3_checkin_drill.CheckinDrill) ... ok
+test_01_end_before_start_still_pairs_once (v3_efforts_drill.EffortDrill)
+终点先上传、起点后上传：最终只有一条成绩，用时等于两端时间差。 ... ok
+test_02_reconcile_is_idempotent (v3_efforts_drill.EffortDrill) ... ok
+test_03_cross_day_and_too_long_are_not_paired (v3_efforts_drill.EffortDrill)
+跨业务日与超过 12 小时都不算一次登顶。 ... ok
+test_04_eligibility_reasons (v3_efforts_drill.EffortDrill) ... ok
+test_05_offline_submission_does_not_rank (v3_efforts_drill.EffortDrill)
+离线补传可以留纪念，但不直接取得公开排名资格，并说明原因。 ... ok
+test_06_sample_threshold_and_ranking_math (v3_efforts_drill.EffortDrill) ... ok
+test_07_window_dedup_and_percentile (v3_efforts_drill.EffortDrill) ... ok
+test_08_leaderboard_setting_removes_from_denominator (v3_efforts_drill.EffortDrill) ... ok
+test_09_course_listing_exposes_ranking_flag (v3_efforts_drill.EffortDrill) ... ok
+test_10_broken_leaderboard_does_not_break_checkin (v3_efforts_drill.EffortDrill)
+榜单/配对故障时打卡必须照样成功，补偿作业跑完成绩自己出现。 ... ok
+test_01_nearby_lists_only_usable_points_by_distance (v3_gps_drill.GpsDrill) ... ok
+test_02_nearby_rejects_out_of_range_coordinates (v3_gps_drill.GpsDrill) ... ok
+test_03_peak_radius_boundary (v3_gps_drill.GpsDrill) ... ok
+test_04_non_peak_radius_is_wider (v3_gps_drill.GpsDrill) ... ok
+test_05_accuracy_and_missing_evidence_are_rejected (v3_gps_drill.GpsDrill) ... ok
+test_06_rejections_never_leak_coordinates (v3_gps_drill.GpsDrill) ... ok
+test_07_public_payloads_hide_raw_coordinates (v3_gps_drill.GpsDrill) ... ok
+test_01_create_validates_mode_specific_fields (v3_letters_drill.LettersDrill) ... ok
+test_02_date_mode_unlock_targets (v3_letters_drill.LettersDrill) ... /Users/2026brooke/Documents/ChatGPT/hikes/server/tests/v3_letters_drill.py:101: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/2026brooke/Documents/ChatGPT/hikes/server/app/main.py' mode='r' encoding='utf-8'>
+  source = open(os.path.join(V.REPO_ROOT, "server", "app", "main.py"),
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_03_sealed_body_never_leaks (v3_letters_drill.LettersDrill) ... ok
+test_04_open_mode_is_readable_and_records_first_read (v3_letters_drill.LettersDrill) ... ok
+test_05_checkin_unlock_requires_new_visit_after_writing (v3_letters_drill.LettersDrill) ... ok
+test_06_offline_verified_visit_unlocks_after_sync (v3_letters_drill.LettersDrill)
+离线记录：服务器验证入账、且现场时间晚于写信时间，才算解锁。 ... ok
+test_07_cross_account_access_is_404 (v3_letters_drill.LettersDrill) ... ok
+test_08_delete_removes_letter_and_sealed_ones_too (v3_letters_drill.LettersDrill) ... ok
+test_09_mode_cannot_be_changed_to_bypass_sealing (v3_letters_drill.LettersDrill) ... ok
+test_10_legacy_date_letters_are_sealed_until_due (v3_letters_drill.LettersDrill)
+迁移前写下的信（只有 unlock_at 日期）按上海零点转换后仍然生效。 ... ok
+test_legacy_copy_upgrade_preserves_rows (v3_schema_drill.LegacyUpgradeDrill) ... ok
+test_01_pending_start_is_reported_and_not_written (v3_schema_drill.PilotConfigDrill) ... ok
+test_02_ranking_needs_verified_coordinates (v3_schema_drill.PilotConfigDrill) ... ok
+test_03_endpoint_from_another_mountain_is_rejected (v3_schema_drill.PilotConfigDrill) ... ok
+test_01_head_and_new_objects_exist (v3_schema_drill.SchemaDrill) ... ok
+test_02_evidence_columns_have_no_null_rows (v3_schema_drill.SchemaDrill) ... ok
+test_03_legacy_rows_are_not_rank_evidence (v3_schema_drill.SchemaDrill) ... ok
+test_04_same_identity_point_day_is_single_row (v3_schema_drill.SchemaDrill)
+同一天同一身份同一点只允许一条；游客与账号各验一遍。 ... ok
+test_05_receipt_key_separates_guest_and_account (v3_schema_drill.SchemaDrill)
+幂等键是 (身份类型, 身份ID, clientUuid)：同数字 ID 的游客和账号互不干扰。 ... ok
+test_06_letter_mode_constraints (v3_schema_drill.SchemaDrill) ... ok
+test_07_course_and_effort_constraints (v3_schema_drill.SchemaDrill) ... ok
+test_08_scan_lookup_still_works (v3_schema_drill.SchemaDrill) ... ok
+test_01_receipt_shape_and_order (v3_summary_drill.SummaryDrill) ... ok
+test_02_receipt_cursor_pages_without_gaps (v3_summary_drill.SummaryDrill) ... ok
+test_03_guest_receipts_are_own_records_only (v3_summary_drill.SummaryDrill) ... ok
+test_04_same_mountain_two_codes_is_one_row (v3_summary_drill.SummaryDrill) ... ok
+test_05_visitor_count_dedupes_identities (v3_summary_drill.SummaryDrill) ... ok
+test_06_guest_summary_only_lists_visited_mountains (v3_summary_drill.SummaryDrill) ... ok
+test_07_unlinked_points_do_not_enter_mountain_summary (v3_summary_drill.SummaryDrill) ... ok
+test_08_empty_and_unauthorized_paths (v3_summary_drill.SummaryDrill) ... ok
+test_09_limit_is_bounded_and_sorted_by_recency (v3_summary_drill.SummaryDrill) ... ok
+
+----------------------------------------------------------------------
+Ran 66 tests in 333.885s
+
+OK
