@@ -1198,6 +1198,247 @@ def board_climbers(window: Literal["week", "month", "year", "all"] = "week",
             "items": public[:min(max(limit, 1), 50)], "mine": mine}
 
 
+# ==================== 占山为王申请（山大王 / 版主） ====================
+# 口径（2026-10-16 起）：接管一座已有山头不再是"先到先得、点了就给"——
+# 申请人要写清为什么申请、成为版主后的期待、一个月能去几次，然后进 3 天审核期：
+#   * kind=solo（山大王）：审核通过后独占这座山；同一座山只有一个，通过时会把
+#     同一座山其它待审申请自动驳回并写明理由（避免"谁先被点通过"的暗箱感）。
+#   * kind=clan（山寨）：审核通过后成为协作者，同一座山可以多人；第一个人顺带
+#     成为维护人（负责物料与标牌对接），后面的人走协作身份。
+# 自建全新山头（POST /api/claims，新编号新二维码）不走审核：它不跟任何人抢，
+# 而且二维码得当场印出来贴，卡在审核里等于这条链路废掉。
+MASTER_APPLICATION_DAYS = 3
+
+
+class MasterApplicationIn(BaseModel):
+    code: str = Field(description="要申请维护的点位编号")
+    kind: Literal["solo", "clan"] = Field(default="solo", description="solo=山大王（单人）· clan=山寨（多人协作）")
+    reason: str = Field(min_length=20, max_length=1000, description="为什么申请这座山（≥20 字）")
+    expectations: str = Field(min_length=10, max_length=1000, description="成为版主后的期待（≥10 字）")
+    visitsPerMonth: int = Field(ge=1, le=30, description="一个月能去几次")
+    nickname: str | None = None
+    contact: str | None = None
+
+
+def _expire_master_applications(conn) -> int:
+    """3 天审核期到了还没处理的申请置为 expired。
+
+    这里选择"失效"而不是"自动通过"：山大王是独占身份，没人看就自动给出去，
+    抢注的人只要挑没人上班的时间提交就行。失效后申请人可以重新提交，
+    页面上会写清楚"超过 3 天没人处理，可以重新申请"。
+    """
+    return conn.execute(text("""UPDATE master_applications
+        SET status = 'expired', decided_at = now(),
+            review_note = coalesce(review_note, '超过 3 天审核期，未处理自动失效')
+        WHERE status = 'pending' AND due_at < now()""")).rowcount
+
+
+def _master_application_out(row, applicant_name=None) -> dict:
+    return {
+        "id": row["id"], "kind": row["kind"], "status": row["status"],
+        "pointCode": row["point_code"], "pointId": row["point_id"],
+        "mountainName": row["point_name"], "reason": row["reason"],
+        "expectations": row["expectations"], "visitsPerMonth": row["visits_per_month"],
+        "dueAt": row["due_at"], "createdAt": row["created_at"],
+        "reviewNote": row["review_note"], "decidedAt": row["decided_at"],
+        "applicantName": applicant_name,
+    }
+
+
+MASTER_APPLICATION_SELECT = """
+    SELECT ma.*, pt.code AS point_code, pt.name AS point_name, pt.type AS point_type
+      FROM master_applications ma JOIN points pt ON pt.id = ma.point_id"""
+
+
+def _master_application_row(conn, application_id: int):
+    return conn.execute(text(MASTER_APPLICATION_SELECT + " WHERE ma.id = :id"),
+                        {"id": application_id}).mappings().first()
+
+
+@app.post("/api/master-applications", response_model=dict, tags=["占山为王"],
+          responses={**ERR_401, 404: {"description": "点位不存在"},
+                     409: {"description": "已经有人维护 / 你已有一份待审申请"}},
+          summary="申请成为山大王或版主：写理由与频次，进 3 天审核期")
+def create_master_application(body: MasterApplicationIn, uid: int = Depends(require_user)):
+    reason = body.reason.strip()
+    expectations = body.expectations.strip()
+    if len(reason) < 20:
+        err(422, "REASON_TOO_SHORT", "请至少写 20 个字说明为什么申请这座山")
+    if len(expectations) < 10:
+        err(422, "EXPECTATIONS_TOO_SHORT", "请至少写 10 个字说明成为版主后想做什么")
+    point = q1("SELECT id, code, name, type, mountain_id FROM points WHERE code = :c",
+               c=body.code.strip().upper())
+    if not point:
+        err(404, "POINT_NOT_FOUND", "这个点位不存在")
+    with engine.begin() as conn:
+        _expire_master_applications(conn)
+        # 已经被单人独占的山头：不能再申请山大王，但可以申请加入（山寨/协作）
+        owner = conn.execute(text("""SELECT 1 FROM master_applications
+            WHERE point_id = :pid AND status = 'approved' AND kind = 'solo' LIMIT 1"""),
+            {"pid": point["id"]}).first()
+        maintained = conn.execute(text("""SELECT 1 FROM points pt LEFT JOIN claims cl
+              ON cl.code = pt.code AND cl.status = 'active'
+             WHERE pt.id = ANY(:ids) AND (pt.maintainer_id IS NOT NULL OR cl.id IS NOT NULL)
+             LIMIT 1"""),
+            {"ids": _board_point_ids(point["id"])}).first()
+        if body.kind == "solo" and (owner or maintained):
+            err(409, "ALREADY_MASTERED",
+                "这座山已经有人维护了。想一起做的话，把申请类型改成「山寨（多人协作）」")
+        mine = conn.execute(text("""SELECT id FROM master_applications
+            WHERE point_id = :pid AND applicant_id = :uid AND status = 'pending'"""),
+            {"pid": point["id"], "uid": uid}).first()
+        if mine:
+            err(409, "APPLICATION_PENDING", "你已经有一份待审申请了，3 天内会给答复")
+        row = conn.execute(text("""INSERT INTO master_applications
+            (applicant_id, point_id, mountain_id, kind, reason, expectations, visits_per_month)
+            VALUES (:uid, :pid, :mid, :kind, :reason, :expect, :visits) RETURNING *"""),
+            {"uid": uid, "pid": point["id"], "mid": point["mountain_id"], "kind": body.kind,
+             "reason": reason, "expect": expectations, "visits": body.visitsPerMonth}
+            ).mappings().one()
+        _audit(conn, uid, "master_application.submit", "master_application", row["id"],
+               {}, {"kind": body.kind, "pointCode": point["code"],
+                    "visitsPerMonth": body.visitsPerMonth}, point_id=point["id"])
+    return {"id": row["id"], "status": row["status"], "kind": row["kind"],
+            "pointCode": point["code"], "dueAt": row["due_at"],
+            "message": "申请已提交：%d 天内给答复。审核期内可以补充说明，也可以撤回。" % MASTER_APPLICATION_DAYS}
+
+
+@app.get("/api/me/master-applications", response_model=list[dict], tags=["占山为王"],
+         responses=ERR_401, summary="我提交的维护申请与状态")
+def my_master_applications(uid: int = Depends(require_user)):
+    with engine.begin() as conn:
+        _expire_master_applications(conn)
+        rows = conn.execute(text(MASTER_APPLICATION_SELECT +
+                                 " WHERE ma.applicant_id = :uid ORDER BY ma.created_at DESC"),
+                            {"uid": uid}).mappings().all()
+    return [_master_application_out(row) for row in rows]
+
+
+class MasterApplicationWithdraw(BaseModel):
+    note: str | None = None
+
+
+@app.post("/api/master-applications/{application_id}/withdraw", response_model=dict,
+          tags=["占山为王"], responses={**ERR_401, 404: {"description": "申请不存在"}},
+          summary="撤回自己的待审申请")
+def withdraw_master_application(application_id: int, body: MasterApplicationWithdraw,
+                                uid: int = Depends(require_user)):
+    with engine.begin() as conn:
+        updated = conn.execute(text("""UPDATE master_applications
+            SET status = 'withdrawn', review_note = coalesce(:note, '申请人自己撤回'),
+                reviewer_id = :uid, decided_at = now()
+            WHERE id = :id AND applicant_id = :uid AND status = 'pending'
+            RETURNING id"""), {"id": application_id, "uid": uid,
+                               "note": (body.note or '').strip() or None}).first()
+    if not updated:
+        err(404, "APPLICATION_NOT_FOUND", "没有可撤回的待审申请")
+    return {"withdrawn": True}
+
+
+@app.get("/api/admin/master-applications", response_model=list[dict], tags=["占山为王"],
+         summary="维护申请审核队列")
+def list_master_applications(
+        status: Literal["pending", "approved", "rejected", "expired", "withdrawn"] = "pending",
+        limit: int = 50, uid: int = Depends(require_collaboration_reviewer)):
+    with engine.begin() as conn:
+        _expire_master_applications(conn)
+        rows = conn.execute(text("""
+            SELECT ma.*, pt.code AS point_code, pt.name AS point_name,
+                   au.nickname AS applicant_name, au.username AS applicant_username
+              FROM master_applications ma JOIN points pt ON pt.id = ma.point_id
+              LEFT JOIN users au ON au.id = ma.applicant_id
+             WHERE ma.status = :status ORDER BY ma.created_at LIMIT :limit"""),
+            {"status": status, "limit": min(max(limit, 1), 100)}).mappings().all()
+    return [_master_application_out(row, row["applicant_name"] or row["applicant_username"])
+            for row in rows]
+
+
+class MasterApplicationReview(BaseModel):
+    decision: Literal["approved", "rejected"]
+    note: str = Field(min_length=6, max_length=500, description="审核说明，驳回时要写给申请人看")
+
+
+@app.post("/api/admin/master-applications/{application_id}/review", response_model=dict,
+          tags=["占山为王"],
+          responses={**ERR_401, 403: {"description": "不能审核自己的申请"},
+                     404: {"description": "申请不存在"},
+                     409: {"description": "这份申请已经有结论 / 已过期"}},
+          summary="审核维护申请：通过则授予山大王或协作者身份")
+def review_master_application(application_id: int, body: MasterApplicationReview,
+                              uid: int = Depends(require_collaboration_reviewer)):
+    note = body.note.strip()
+    with engine.begin() as conn:
+        _expire_master_applications(conn)
+        row = conn.execute(text(MASTER_APPLICATION_SELECT +
+                                " WHERE ma.id = :id FOR UPDATE"),
+                           {"id": application_id}).mappings().first()
+        if not row:
+            err(404, "APPLICATION_NOT_FOUND", "申请不存在")
+        if row["applicant_id"] == uid:
+            err(403, "SELF_REVIEW_FORBIDDEN", "不能审核自己的申请")
+        if row["status"] != "pending":
+            err(409, "APPLICATION_CLOSED", "这份申请已经是 %s 状态" % row["status"])
+        auto_rejected = 0
+        if body.decision == "approved":
+            point_ids = _board_point_ids(row["point_id"])
+            if row["kind"] == "solo":
+                # 单人山大王：独占。通过时把同一座山其它待审申请一起驳回并写明理由，
+                # 不让"谁先被点"成为没人说得清的规则。
+                other = conn.execute(text("""UPDATE master_applications
+                    SET status = 'rejected', reviewer_id = :uid, decided_at = now(),
+                        review_note = '这座山已由另一位申请人获得（山大王单人独占）'
+                    WHERE point_id = :pid AND status = 'pending' AND id <> :id
+                    RETURNING id"""), {"pid": row["point_id"], "id": application_id,
+                                       "uid": uid}).rowcount
+                auto_rejected = other
+                conn.execute(text("UPDATE points SET maintainer_id = :u WHERE id = ANY(:ids)"),
+                             {"u": row["applicant_id"], "ids": point_ids})
+                conn.execute(text("""INSERT INTO claims
+                    (user_id, target_key, target_name, kind, nickname, contact, code)
+                    VALUES (:uid, :k, :n, :kind, NULL, NULL, NULL)
+                    ON CONFLICT (target_key) DO NOTHING"""),
+                    {"uid": row["applicant_id"], "k": "master:" + row["point_code"],
+                     "n": row["point_name"] or row["point_code"],
+                     "kind": "junction" if row["point_type"] == "junction" else "peak"})
+            else:
+                # 山寨：多人协作。第一个人顺带成为维护人（物料与标牌对接要有个人负责），
+                # 其余人走协作身份；协作入口保持开放。
+                board = conn.execute(text("""SELECT b.id FROM boards b
+                    JOIN points pt ON pt.mountain_id = b.mountain_id AND pt.type = 'peak'
+                    WHERE pt.id = :pid AND b.board_type = 'summit' LIMIT 1"""),
+                    {"pid": row["point_id"]}).mappings().first()
+                if not board:
+                    err(409, "BOARD_NOT_FOUND", "这座山还没有留言板，先请维护人认领")
+                occupied = conn.execute(text("""SELECT 1 FROM points pt
+                    LEFT JOIN claims cl ON cl.code = pt.code AND cl.status = 'active'
+                    WHERE pt.id = ANY(:ids)
+                      AND (pt.maintainer_id IS NOT NULL OR cl.id IS NOT NULL) LIMIT 1"""),
+                    {"ids": point_ids}).first()
+                if not occupied:
+                    conn.execute(text("UPDATE points SET maintainer_id = :u WHERE id = ANY(:ids)"),
+                                 {"u": row["applicant_id"], "ids": point_ids})
+                conn.execute(text("""INSERT INTO board_collaboration_applications
+                    (board_id, applicant_id, message, status, reviewer_id, review_note, reviewed_at)
+                    VALUES (:b, :u, :m, 'approved', :r, :n, now())
+                    ON CONFLICT (board_id, applicant_id) WHERE status IN ('pending','approved')
+                    DO NOTHING"""),
+                    {"b": board["id"], "u": row["applicant_id"],
+                     "m": ("山寨申请：" + row["reason"])[:500], "r": uid, "n": note})
+        conn.execute(text("""UPDATE master_applications SET status = :status,
+            reviewer_id = :uid, review_note = :note, decided_at = now()
+            WHERE id = :id"""),
+            {"status": body.decision, "uid": uid, "note": note, "id": application_id})
+        _audit(conn, uid, "master_application." + body.decision, "master_application",
+               application_id, {"status": "pending"},
+               {"status": body.decision, "kind": row["kind"], "autoRejected": auto_rejected},
+               reason=note, point_id=row["point_id"])
+    return {"id": application_id, "status": body.decision, "kind": row["kind"],
+            "autoRejected": auto_rejected,
+            "message": ("已通过：%s 成为这座山的%s" % (
+                "申请人", "山大王" if row["kind"] == "solo" else "协作者"))
+            if body.decision == "approved" else "已驳回，申请人会看到你写的说明"}
+
+
 @app.get("/api/mountains/{mountain_id}/courses", response_model=list[dict], tags=["打卡"])
 def mountain_courses(mountain_id: int = Path(ge=1)):
     rows = q("""SELECT id, name, start_point_id AS "startPointId",
@@ -3843,43 +4084,18 @@ class MasterOut(BaseModel):
 
 
 @app.post("/api/claims/master", response_model=MasterOut, tags=["占山为王"],
-          responses={**ERR_401, 404: {"description": "点位不存在"},
-                     409: {"description": "已经有人维护了"}},
-          summary="成为版主：不发编号、不发二维码，只开这个山头的线上留言板")
+          responses={**ERR_401, 410: {"description": "入口已下线，改走维护申请"}},
+          summary="（已下线）成为版主：改走 POST /api/master-applications，3 天审核")
 def become_master(body: MasterIn, uid: int = Depends(require_user)):
-    """版主和山大王是两回事。
+    """2026-10-16 起，接管留言板改成"申请 + 3 天审核"。
 
-    山大王自己开一座山：传 GPX → 拿编号 + 二维码 → 贴出去让人扫。
-    版主**不拿二维码**（二维码是标牌的事，得实地印、实地贴），
-    只是把一个已经存在的山头的留言板接管下来：核验内容、置顶有用的。
-    所以这里不校验山大王配额，也不消耗编号。
+    保留这个路径只是为了给老客户端一个能读懂的答复：它不再即时授权，
+    也不再写 maintainer_id。新入口是 POST /api/master-applications
+    （要写理由、期待与每月频次），审核通过后才授予维护权。
     """
-    p = q1("SELECT id, code, name, type, maintainer_id FROM points WHERE code = :c",
-           c=body.target_code.strip().upper())
-    if not p:
-        err(404, "POINT_NOT_FOUND", "这个点位不存在")
-    point_ids = _board_point_ids(p["id"])
-    with engine.begin() as conn:
-        conn.execute(text("SELECT id FROM points WHERE id = ANY(:ids) ORDER BY id FOR UPDATE"),
-                     {"ids": point_ids})
-        occupied = conn.execute(text("""SELECT 1 FROM points pt LEFT JOIN claims cl
-          ON cl.code = pt.code AND cl.status = 'active'
-          WHERE pt.id = ANY(:ids) AND (pt.maintainer_id IS NOT NULL OR cl.id IS NOT NULL)
-          LIMIT 1"""), {"ids": point_ids}).first()
-        if occupied:
-            err(409, "ALREADY_MAINTAINED", "这座山已经有人维护，可以从留言板参与")
-        conn.execute(text("UPDATE points SET maintainer_id = :u WHERE id = ANY(:ids)"),
-                     {"u": uid, "ids": point_ids})
-        conn.execute(text("""INSERT INTO claims
-            (user_id, target_key, target_name, kind, nickname, contact, code)
-            VALUES (:uid, :k, :n, :kind, :nick, :ct, NULL)"""),
-            {"uid": uid, "k": "master:" + p["code"], "n": p["name"] or p["code"],
-             "kind": "junction" if p["type"] == "junction" else "peak",
-             "nick": body.nickname, "ct": body.contact})
-    return MasterOut(pointCode=p["code"], targetName=p["name"] or p["code"],
-                     nickname=body.nickname,
-                     message="你成了这个山头的版主。没有二维码这一说——"
-                             "二维码是标牌上的事。你手上的是它的留言板。")
+    err(410, "MASTER_ENDPOINT_RETIRED",
+        "这个入口已经下线：现在要提交维护申请（写清为什么申请、成为维护人后的期待、"
+        "一个月能去几次），3 天审核期，通过后才生效")
 
 
 def _claim_out(code: str, name: str, nickname: str) -> ClaimOut:

@@ -203,6 +203,21 @@ def error_code(response: httpx.Response) -> str:
     return "<no-error-body>"
 
 
+def error_message(response: httpx.Response) -> str:
+    """取错误文案（pydantic 的 422 把 detail 放成列表，别拿它当字典取）。"""
+    try:
+        body = response.json()
+    except Exception:  # noqa: BLE001
+        return response.text
+    if isinstance(body, dict):
+        for candidate in (body, body.get("detail")):
+            if isinstance(candidate, dict) and isinstance(candidate.get("error"), dict):
+                return candidate["error"].get("message", "")
+        if isinstance(body.get("detail"), list) and body["detail"]:
+            return str(body["detail"][0].get("msg", ""))
+    return str(body)
+
+
 def new_account(http: httpx.Client, prefix: str) -> dict:
     """注册一个唯一账号，返回 username / uid / token / headers。
 
@@ -287,6 +302,10 @@ def new_course(prefix: str, mountain_id: int, start_point_id: int, end_point_id:
 # ==================== 清理 ====================
 
 CLEANUP_SQL = """
+-- 审计行按产品口径要留住（账号注销也不删），但 drill 造的审计行必须清得掉，
+-- 否则删用户会被 maintenance_audit_logs 的外键挡住。只认 drill 前缀的 actor。
+DELETE FROM maintenance_audit_logs
+ WHERE actor_id IN (SELECT id FROM users WHERE username ILIKE {p});
 DELETE FROM segment_efforts
  WHERE course_id IN (SELECT id FROM ascent_courses WHERE name ILIKE {p})
     OR user_id IN (SELECT id FROM users WHERE username ILIKE {p})

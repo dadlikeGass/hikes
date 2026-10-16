@@ -24,6 +24,21 @@ PREFIX = "v3t5"
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 
 
+def same_business_day_base(start_minutes: int):
+    """给"若干分钟前"找个不会跨上海业务日的基准时间。
+
+    drill 在上海零点前后跑时，"60 分钟前打卡起点、20 分钟前打卡终点"会掉进两个业务日，
+    被"跨业务日不配对"这条正确规则挡住，用例就假失败（2026-10-16 16:2x UTC 撞过一次）。
+    零点后不足 start_minutes 时，把基准挪到昨天中午，两端仍然落在同一天。
+    """
+    now = datetime.now(timezone.utc)
+    local = now.astimezone(SHANGHAI)
+    if local.hour == 0 and local.minute < start_minutes + 5:
+        noon = (local - timedelta(days=1)).replace(hour=12, minute=0, second=0, microsecond=0)
+        return noon.astimezone(timezone.utc)
+    return now
+
+
 class EffortDrill(unittest.TestCase):
 
     @classmethod
@@ -88,7 +103,7 @@ class EffortDrill(unittest.TestCase):
     def walk(self, account, start, peak, *, start_minutes, end_minutes,
              start_source="scan", end_source="scan"):
         """同一个账号先扫起点、再扫峰顶；两条到访都按"现场时间 + 当场提交"记账。"""
-        now = datetime.now(timezone.utc)
+        now = same_business_day_base(start_minutes)
         first = self.checkin_at(account, start["id"],
                                 now - timedelta(minutes=start_minutes), source=start_source)
         second = self.checkin_at(account, peak["id"],
@@ -153,7 +168,7 @@ class EffortDrill(unittest.TestCase):
         """终点先上传、起点后上传：最终只有一条成绩，用时等于两端时间差。"""
         start, peak, course = self.pair_course(min_duration_s=1800)
         account = V.new_account(self.http, PREFIX + "u")
-        now = datetime.now(timezone.utc)
+        now = same_business_day_base(62)
         self.checkin_at(account, peak["id"], now - timedelta(minutes=22))   # 先传终点
         self.assertEqual(0, V.sql_int("SELECT count(*) FROM segment_efforts WHERE user_id=%d"
                                       % account["uid"]), "只有一端时不该有成绩")
@@ -200,7 +215,7 @@ class EffortDrill(unittest.TestCase):
     # ---- 资格 ----
 
     def test_04_eligibility_reasons(self):
-        now = datetime.now(timezone.utc)
+        now = same_business_day_base(60)
         start, peak, course = self.pair_course(min_duration_s=1800)
         unverified = V.new_course(PREFIX, self.mountain, start["id"], peak["id"],
                                   ranking_enabled=False, min_duration_s=300,

@@ -555,6 +555,71 @@ v1 **只收纯文本，最多 200 字**，图片走 v1.1。
 - checkin 模式要求写信之后在该点位有新的有效到访（`occurred_at > created_at`）才解锁，离线补传入账后同样生效。
 - 越权一律 404；删除后不可访问；没有"改模式"入口，封存不能绕过。
 
+### 占山为王申请（山大王 / 版主，2026-10-16 起改为"申请 + 3 天审核"）
+
+**口径变化**：接管一座已有山头不再是"先到先得、点了就给"。申请人要写清为什么申请、
+成为维护人后的期待、一个月能去几次，然后进 3 天审核期。两条通道：
+
+| 类型 | 含义 | 通过后 |
+| --- | --- | --- |
+| `solo` 山大王 | 单人独占这座山 | 成为唯一维护人；同一座山其它待审申请自动驳回并写明理由 |
+| `clan` 山寨 | 多人协作 | 成为协作者（同山可多人）；第一个人顺带成为维护人，负责物料对接；协作入口保持开放 |
+
+自建全新山头（`POST /api/claims`，新编号新二维码）不走审核：它不跟任何人抢，
+而且二维码要当场印出来贴到山上，卡在审核里这条链路就废了。
+
+### POST /api/master-applications
+
+```json
+{ "code": "CNP-003", "kind": "solo",
+  "reason": "这条线我走了三年，雨季哪几段会塌、哪里能补水都清楚，想整理出来给后来的人",
+  "expectations": "把岔路口指路牌补齐，封路时第一时间标注",
+  "visitsPerMonth": 4, "contact": "wx: agan" }
+// 200：{ "id": 12, "status": "pending", "kind": "solo", "pointCode": "CNP-003",
+//         "dueAt": "2026-10-19T…", "message": "申请已提交：3 天内给答复……" }
+```
+
+- 校验：`reason` 20–1000 字、`expectations` 10–1000 字、`visitsPerMonth` 1–30；点位必须存在。
+- 错误：`REASON_TOO_SHORT` / `EXPECTATIONS_TOO_SHORT`(422)、`POINT_NOT_FOUND`(404)、
+  `APPLICATION_PENDING`(409，同一个人对同一座山只能有一份待审)、
+  `ALREADY_MASTERED`(409，这座山已被单人独占——提示改投"山寨"）。
+
+### GET /api/me/master-applications
+
+我提交过的申请（含 `status` / `dueAt` / `reviewNote`）。用于"我 → 我的维护申请"。
+
+### POST /api/master-applications/{id}/withdraw
+
+本人撤回待审申请（`{"note": "今年去不了"}` 可选）。
+
+### GET /api/admin/master-applications?status=pending|approved|rejected|expired|withdrawn
+
+审核队列（需要 `collaboration_reviewer` 角色）。每条带申请人昵称、类型、理由、
+期待、每月频次与截止时间，供审核人判断。
+
+### POST /api/admin/master-applications/{id}/review
+
+```json
+{ "decision": "approved", "note": "资料核过，欢迎维护这座山" }
+// 200：{ "status": "approved", "kind": "solo", "autoRejected": 2, "message": "…" }
+```
+
+- `note` 至少 6 字：驳回说明会原样展示给申请人（"为什么被拒"必须有人回答）。
+- 不能审核自己的申请（403 `SELF_REVIEW_FORBIDDEN`）；同一份申请不能二次审核（409 `APPLICATION_CLOSED`）。
+- `solo` 通过时会把同一座山其它待审申请自动驳回（`autoRejected` 告诉你有几条），
+  理由写"这座山已由另一位申请人获得"——不让"谁先被点通过"成为暗箱规则。
+- 每次提交与审核都写 `maintenance_audit_logs`（`master_application.submit` /
+  `.approved` / `.rejected`）。
+
+### 3 天审核期怎么算
+
+`due_at = created_at + 3 天`。到点还没人处理，接口在读取时（`GET /api/me/master-applications`、
+审核队列）把这条置为 `expired` 并写明"超过 3 天审核期，未处理自动失效"，申请人可以重新提交。
+**刻意不做"到期自动通过"**：山大王是独占身份，没人看就自动给出去，等于把抢注变成策略。
+
+现存的 `POST /api/claims`（自建新点位）与 `POST /api/claims/master`（版主）保留；
+`/api/claims/master` 现在也走申请审核，不再即时生效。
+
 ### 保养作业（不是 HTTP 接口）
 
 `server/jobs/reconcile_efforts.py`、`server/jobs/purge_visit_coordinates.py`：

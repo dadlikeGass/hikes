@@ -573,7 +573,12 @@
       '<img class="route-hero-art" src="images/home/hero-routes-male.png" alt="" aria-hidden="true"></section>';
     return '<section class="trailbook-intro" aria-label="今天去走哪条"><div class="trailbook-copy">' +
       '<h1>今天去走哪条？</h1></div>' +
-      '<div class="trailbook-landscape"><img src="images/home/trailbook-reference.png" alt="青绿色群山间蜿蜒的粉色徒步路线"></div>' +
+      /* 山景插画（trailbook-hero.png）：手机是标题下面这张铺满到底的图，桌面换成
+         .trailbook-intro 的 background（这张则 display:none，只当版式占位）。
+         两边都为了让"找路线"那块磨砂玻璃背后垫着真图片，而不是平涂的底色。
+         两点别改回去：① 别用整页设计稿截图（截图里带着标题和卡片，裁切一变就重影）；
+         ② 插画里没有字，按容器 cover 裁就行。 */
+      '<div class="trailbook-landscape"><img src="images/home/trailbook-hero.png" alt="青绿色群山间蜿蜒的粉色徒步路线"></div>' +
       '<div class="trailbook-feature">' +
       '<a class="tbf-link" id="trailbookFeature" href="' + featHref + '"' +
       (feat ? ' data-id="' + esc(feat.id) + '" aria-label="' + esc(featuredLabel(feat)) + '"' : '') + '>' +
@@ -2929,6 +2934,7 @@
       /* 我的山头 = 拿二维码的地方，不是展示位 */
       rowlink('#/me/peak', '⛰', '我的山头',
         '成为山大王 / NPC指路人拿二维码 · 成为版主管留言板') +
+      rowlink('#/me/applications', '★', '我的维护申请', '山大王 / 版主的申请进度与审核说明') +
       rowlink('#/me/letters', '✉', '山间信箱', '写给未来的自己，满足条件后打开') +
       '<button class="rowlink" style="width:100%;text-align:left" data-act="leaderboard-settings">' +
       '<span class="em">⏱</span><div class="tx"><b>上榜设置</b><span>选择是否公开我的有效登顶用时</span></div><span class="ar">›</span></button>' +
@@ -3114,6 +3120,50 @@
           '<button class="btn ghost" data-act="private-letter-delete" data-id="' + l.id + '">删除</button></div>';
       }).join('') : '<div class="empty">还没有写给自己的信。</div>') +
       '<button class="btn coral" data-act="private-letter-new">写一封信</button>';
+  }
+
+  /* 我的维护申请：状态、理由、审核说明都摆出来——被拒的时候用户最想知道为什么 */
+  var myApplications = null;
+  var myApplicationsError = false;
+  var myApplicationsLoading = false;
+  function loadMyApplications() {
+    if (myApplicationsLoading) return;
+    myApplicationsLoading = true;
+    window.API.ja('/api/me/master-applications').then(function (rows) {
+      myApplications = rows; myApplicationsError = false;
+    }).catch(function () { myApplicationsError = true; })
+      .then(function () {
+        myApplicationsLoading = false;
+        if (parse().name === 'me-applications') render();
+      });
+  }
+  function meApplicationsView() {
+    if (myApplications === null) { loadMyApplications(); return '<div class="empty">正在读取申请…</div>'; }
+    if (myApplicationsError) {
+      return '<div class="empty">申请读不到（需要登录）。' +
+        '<button class="btn ghost" data-act="applications-retry">重试</button></div>';
+    }
+    if (!myApplications.length) {
+      return '<div class="empty">还没有提交过维护申请。去山头页点「申请维护这座山」。</div>';
+    }
+    var LABEL = { pending: '审核中', approved: '已通过', rejected: '已驳回',
+                  expired: '已失效', withdrawn: '已撤回' };
+    var DAYS = { pending: '3 天内给答复，超时自动失效', approved: '你现在是这座山的维护人',
+                 rejected: '可以补齐说明后重新申请', expired: '超过 3 天没人处理，可以重新申请',
+                 withdrawn: '你自己撤回的' };
+    return myApplications.map(function (a) {
+      return '<div class="card"><b>' + esc(a.mountainName || a.pointCode) + ' · ' +
+        (a.kind === 'clan' ? '山寨（多人协作）' : '山大王（单人独占）') + '</b>' +
+        '<div class="hint">状态：<b>' + (LABEL[a.status] || a.status) + '</b> · ' + DAYS[a.status] +
+        ' · 一个月能去 ' + a.visitsPerMonth + ' 次</div>' +
+        '<div class="hint">为什么申请：' + esc(a.reason) + '</div>' +
+        '<div class="hint">成为维护人后的期待：' + esc(a.expectations) + '</div>' +
+        (a.reviewNote ? '<div class="hint" style="color:var(--ink2)"><b>审核说明：</b>' +
+          esc(a.reviewNote) + '</div>' : '') +
+        (a.status === 'pending' ? '<button class="btn ghost" style="width:auto;padding:6px 12px" ' +
+          'data-act="application-withdraw" data-id="' + a.id + '">撤回申请</button>' : '') +
+        '</div>';
+    }).join('');
   }
 
   function meActivityView() {
@@ -3406,7 +3456,8 @@
   var TITLES = {
     scan: '扫一扫', arrive: '到达页', trail: '线路详情', peak: '山头', junction: '岔路',
     'me-visited': '我去过的地方', 'me-want': '我想去的地方', 'me-peak': '我的山头',
-    'me-records': '我的纪录', 'me-letters': '山间信箱', 'me-activity': '发起活动', messages: '通知',
+    'me-records': '我的纪录', 'me-applications': '我的维护申请', 'me-letters': '山间信箱',
+    'me-activity': '发起活动', messages: '通知',
     admin: '维护台', 'admin-p': '管理点位'
   };
 
@@ -3459,6 +3510,7 @@
       case 'me-want': html = meWantView(); break;
       case 'me-peak': html = mePeakView(); break;
       case 'me-records': html = meRecordsView(); break;
+      case 'me-applications': html = meApplicationsView(); break;
       case 'me-letters': html = meLettersView(); break;
       case 'me-activity': html = meActivityView(); break;
       case 'scan': html = scanView(); break;
@@ -3496,6 +3548,24 @@
       });
     }
     if (r.name === 'home') startFeaturedRotate();
+    var reasonBox = document.getElementById('msReason');
+    if (reasonBox) {
+      var paint = function () {
+        var el = document.getElementById('msReasonHint');
+        if (el) el.textContent = reasonBox.value.trim().length + ' / 20 字' +
+          (reasonBox.value.trim().length >= 20 ? ' ✓' : '');
+      };
+      reasonBox.addEventListener('input', paint); paint();
+    }
+    var expectBox = document.getElementById('msExpect');
+    if (expectBox) {
+      var paintExpect = function () {
+        var el = document.getElementById('msExpectHint');
+        if (el) el.textContent = expectBox.value.trim().length + ' / 10 字' +
+          (expectBox.value.trim().length >= 10 ? ' ✓' : '');
+      };
+      expectBox.addEventListener('input', paintExpect); paintExpect();
+    }
 
     var isTab = !!r.tab && r.name !== 'peak' && r.name !== 'junction' && r.name !== 'trail';
     if (lastRoute !== r.name + (r.id || '')) view.scrollTop = 0;
@@ -3505,6 +3575,8 @@
 
   /* ==================== 事件 ==================== */
   var nearbySelection = null;
+  var masterKind = 'solo';        /* 申请类型：solo 山大王（单人）· clan 山寨（多人） */
+  var masterVisits = 4;           /* 一个月能去几次 */
   /* 定位与队列都在 checkin.js 里（计划 T4）；这里只做页面层的触发与反馈。 */
   function currentPosition() { return window.HIKES_CHECKIN.position(); }
   function syncPendingCheckins(force) {
@@ -3546,6 +3618,17 @@
     if (act === 'retry-boot') { location.reload(); return; }
     if (act === 'home-retry') { homeData = null; loadHomeData(); return; }
     if (act === 'receipts-retry') { myReceipts = null; myReceiptsError = false; loadMyReceipts(); return; }
+    if (act === 'applications-retry') {
+      myApplications = null; myApplicationsError = false; loadMyApplications(); return;
+    }
+    if (act === 'application-withdraw') {
+      t.disabled = true;
+      window.API.ja('/api/master-applications/' + id + '/withdraw', { method: 'POST', body: '{}' })
+        .then(function () { myApplications = null; loadMyApplications(); U.toast('已撤回'); })
+        .catch(function (e) { U.toast(e.message || '撤回失败'); })
+        .then(function () { t.disabled = false; });
+      return;
+    }
     if (act === 'board-window') { boardWindow = val; boardReload(); return; }
     if (act === 'board-metric') { boardMetric = val; boardReload(); return; }
     if (act === 'board-retry') { boardReload(); return; }
@@ -4126,21 +4209,55 @@
     if (act === 'master-claim') {
       var mcCode = t.getAttribute('data-code'), mcName = t.getAttribute('data-name');
       U.openSheet(
-        '<h3>成为版主</h3>' +
+        '<h3>申请维护这座山</h3>' +
         '<div class="sh-sub">' + esc(mcName) + ' · ' + esc(mcCode) + '</div>' +
         '<div class="card" style="box-shadow:none;background:var(--blue-bg);padding:14px;' +
         'margin-bottom:14px"><div style="font-size:12.5px;color:#2B3568;line-height:1.75">' +
-        '<b>版主不发二维码。</b>二维码是标牌上的事——得实地印、实地贴。' +
-        '你手上的是这个山头的<b>留言板</b>：核验内容、把有用的置顶、把胡说的压下去。' +
-        '想自己开一座山、或者立一个岔路口拿二维码，走「成为山大王 / 我是NPC指路人」。' +
+        '<b>维护人拿的是留言板，不是二维码。</b>二维码是标牌上的事——得实地印、实地贴。' +
+        '这份申请会进审核队列，<b>3 天</b>内给答复；通过后你才能核验留言、置顶有用的内容。' +
+        '想自己开一座新山、或者立一个岔路口拿二维码，走「成为山大王 / 我是NPC指路人」。' +
         '</div></div>' +
-        '<div class="field"><label>你的昵称</label>' +
-        '<input id="msNick" type="text" value="' + esc(H.me.name) + '"></div>' +
-        '<div class="field"><label>微信号 · 选填</label>' +
+        '<div class="field"><label>申请类型</label>' +
+        '<div class="tags-pick" id="msKind">' +
+        '<button type="button" data-act="ms-kind" data-val="solo" class="on">山大王 · 单人独占</button>' +
+        '<button type="button" data-act="ms-kind" data-val="clan">山寨 · 多人协作</button>' +
+        '</div><div class="hint">山大王独占这座山；山寨允许多人一起维护，通过后协作入口保持开放。</div></div>' +
+        '<div class="field"><label>为什么申请这座山 · 至少 20 字</label>' +
+        '<textarea id="msReason" maxlength="1000" placeholder="例如：这条线我走了三年，雨季哪几段会塌、哪里能补水都清楚，想整理出来给后来的人。" style="min-height:92px"></textarea>' +
+        '<div class="hint" id="msReasonHint">0 / 20 字</div></div>' +
+        '<div class="field"><label>一个月大概能去几次</label>' +
+        '<div class="tags-pick" id="msVisits">' +
+        [['1', '1–2 次'], ['4', '3–5 次'], ['8', '6–10 次'], ['12', '10 次以上']].map(function (v, i) {
+          return '<button type="button" data-act="ms-visits" data-val="' + v[0] + '"' +
+            (i === 1 ? ' class="on"' : '') + '>' + v[1] + '</button>';
+        }).join('') + '</div></div>' +
+        '<div class="field"><label>成为维护人之后的期待 · 至少 10 字</label>' +
+        '<textarea id="msExpect" maxlength="1000" placeholder="例如：把岔路口的指路牌补齐，冬天封路时第一时间标注。" style="min-height:72px"></textarea>' +
+        '<div class="hint" id="msExpectHint">0 / 10 字</div></div>' +
+        '<div class="field"><label>联系方式 · 选填（微信号，用于寄物料）</label>' +
         '<input id="msContact" type="text" placeholder="例如 wx: agan"></div>' +
-        '<button class="btn coral" data-act="master-submit" data-code="' + esc(mcCode) + '">' +
-        '接管这个留言板</button>' +
+        '<div class="hint" id="msApplyError" style="color:#c62828"></div>' +
+        '<button class="btn coral" data-act="master-submit" data-code="' + esc(mcCode) +
+        '" data-name="' + esc(mcName) + '">提交申请（3 天审核期）</button>' +
         '<button class="btn ghost" style="margin-top:9px" data-act="close">再想想</button>');
+      masterKind = 'solo';
+      return;
+    }
+    if (act === 'ms-kind') {
+      masterKind = val;
+      Array.prototype.forEach.call(t.parentNode.children, function (b) {
+        b.className = b === t ? 'on' : '';
+      });
+      /* 山顶已经有人独占时，界面先把话说明白：只能申请协作 */
+      var hint = document.getElementById('msApplyNote');
+      if (hint) hint.textContent = val === 'clan' ? '山寨：多人一起维护，通过后协作入口保持开放。' : '';
+      return;
+    }
+    if (act === 'ms-visits') {
+      masterVisits = Number(val);
+      Array.prototype.forEach.call(t.parentNode.children, function (b) {
+        b.className = b === t ? 'on' : '';
+      });
       return;
     }
     if (act === 'collaboration-open') {
@@ -4186,35 +4303,30 @@
       return;
     }
     if (act === 'master-submit') {
-      var msCode = t.getAttribute('data-code');
-      var msNick = ((document.getElementById('msNick') || {}).value || '').trim();
-      var msCt = ((document.getElementById('msContact') || {}).value || '').trim();
-      t.disabled = true; t.textContent = '正在接管…';
-      apiToken().then(function (tk) {
-        if (!tk) { sheetSignup('claim'); return; }
-        return fetch('/api/claims/master', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk },
-          body: JSON.stringify({ target_code: msCode, nickname: msNick, contact: msCt })
-        }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
-          .then(function (x) {
-            t.disabled = false; t.textContent = '接管这个留言板';
-            if (!x.ok) {
-              U.toast((x.d.detail && x.d.detail.error && x.d.detail.error.message) || '接管失败');
-              return;
-            }
-            U.openSheet('<h3>你是版主了</h3>' +
-              '<div class="sh-sub">' + esc(x.d.targetName) + ' · ' + esc(x.d.pointCode) + '</div>' +
-              '<div class="note" style="line-height:1.8">' + esc(x.d.message) + '</div>' +
-              '<a class="btn coral" href="#/peaks/p-' + esc(x.d.pointCode) + '" ' +
-              'data-act="close">去看看它的留言板</a>' +
-              '<button class="btn ghost" style="margin-top:9px" data-act="close">知道了</button>');
-            window.API.ja('/api/me/summits').then(function (items) {
-              H.mySummits = items;
-              render();
-            });
-          });
-      });
+      var apCode = t.getAttribute('data-code'), apName = t.getAttribute('data-name') || apCode;
+      var reason = ((document.getElementById('msReason') || {}).value || '').trim();
+      var expect = ((document.getElementById('msExpect') || {}).value || '').trim();
+      var contact = ((document.getElementById('msContact') || {}).value || '').trim() || null;
+      var errorEl = document.getElementById('msApplyError');
+      if (reason.length < 20) { errorEl.textContent = '申请理由至少 20 个字（现在 ' + reason.length + ' 个）'; return; }
+      if (expect.length < 10) { errorEl.textContent = '成为维护人后的期待至少 10 个字'; return; }
+      t.disabled = true; t.textContent = '提交中…';
+      window.API.ja('/api/master-applications', { method: 'POST', body: JSON.stringify({
+        code: apCode, kind: masterKind, reason: reason, expectations: expect,
+        visitsPerMonth: masterVisits, contact: contact
+      }) }).then(function (d) {
+        U.openSheet('<h3>申请已提交</h3><div class="sh-sub">' + esc(apName) + ' · ' +
+          (masterKind === 'clan' ? '山寨（多人协作）' : '山大王（单人独占）') + '</div>' +
+          '<div class="card" style="box-shadow:none;background:var(--blue-bg);padding:14px">' +
+          '<div style="font-size:12.5px;color:#2B3568;line-height:1.75">' +
+          '审核期 <b>3 天</b>：通过后你才能核验留言、置顶有用内容。' +
+          (masterKind === 'solo' ? '<br>同一个人只能有一份待审申请；同一座山通过一位山大王后，其它申请会自动收到说明。'
+            : '<br>山寨允许多人一起维护，通过后协作入口保持开放。') +
+          '<br>3 天内没人处理会自动失效，届时可以重新申请。</div></div>' +
+          '<button class="btn ghost" data-act="close">好</button>');
+      }).catch(function (e) {
+        if (errorEl && errorEl.isConnected) errorEl.textContent = e.message || '提交失败，请稍后重试';
+      }).then(function () { t.disabled = false; t.textContent = '提交申请（3 天审核期）'; });
       return;
     }
     if (act === 'claim') {

@@ -174,6 +174,30 @@
     }).catch(function () { box.innerHTML = ''; });
   }
 
+  /* 维护申请（山大王 / 山寨）待审队列。理由、频次、期待都摆出来，
+     审核人要写说明（驳回时必须写给申请人看）。 */
+  function fillMasterQueue() {
+    var box = document.getElementById('masterQueue');
+    if (!box) return;
+    window.API.ja('/api/admin/master-applications?status=pending').then(function (items) {
+      box.innerHTML = '<div class="sec-head"><h3>山大王 / 版主申请待审</h3>' +
+        '<span class="more">' + items.length + ' 条 · 3 天审核期</span></div>' +
+        (items.length ? items.map(function (a) {
+          var due = (a.dueAt || '').slice(0, 16).replace('T', ' ');
+          return '<div class="card"><b>' + esc(a.mountainName || a.pointCode) + ' · ' +
+            esc(a.applicantName || ('申请人 #' + a.id)) + '</b>' +
+            '<div class="hint">类型：' + (a.kind === 'clan' ? '山寨（多人协作）' : '山大王（单人独占）') +
+            ' · 一个月能去 ' + a.visitsPerMonth + ' 次 · 截止 ' + esc(due) + '</div>' +
+            '<div class="hint">为什么申请：' + esc(a.reason) + '</div>' +
+            '<div class="hint">成为版主后的期待：' + esc(a.expectations) + '</div>' +
+            '<div class="mini-actions">' +
+            '<button class="pill-btn acc" data-act="master-approve" data-id="' + a.id + '">通过</button>' +
+            '<button class="pill-btn ign" data-act="master-reject" data-id="' + a.id + '">驳回</button>' +
+            '</div></div>';
+        }).join('') : '<div class="empty">没有待审的维护申请。</div>');
+    }).catch(function () { box.innerHTML = ''; });
+  }
+
   function fillCommentAppeals() {
     var box = document.getElementById('commentAppeals');
     if (!box) return;
@@ -291,11 +315,13 @@
       }).catch(function () { box.innerHTML = '<div class="empty">请先登录，再查看维护任务。</div>'; });
       fillAdQueue();
       fillCollaborationQueue();
+    fillMasterQueue();
       fillCommentAppeals();
     }, 0);
     return '<div class="pad"><div class="sec-head"><h3>我维护的山头</h3></div>' +
       '<div id="maintenanceList" class="card tight"><div class="empty">正在读取…</div></div>' +
-      '<div id="adqueue"></div><div id="collaborationQueue"></div><div id="commentAppeals"></div></div>';
+      '<div id="adqueue"></div><div id="masterQueue"></div><div id="collaborationQueue"></div>' +
+      '<div id="commentAppeals"></div></div>';
   }
 
   function livePointView(r) {
@@ -372,6 +398,22 @@
         method: 'POST', body: JSON.stringify({ decision: 'rejected', note: note.trim() })
       }).then(function () { U.toast('申诉已驳回'); fillCommentAppeals(); })
         .catch(function () { U.toast('复核失败'); t.disabled = false; });
+    },
+    'master-approve': function (t, o) {
+      var note = window.prompt('通过说明（申请人会看到）：', '资料核过，欢迎维护这座山');
+      if (note === null) return;
+      window.API.ja('/api/admin/master-applications/' + o.id + '/review', {
+        method: 'POST', body: JSON.stringify({ decision: 'approved', note: note })
+      }).then(function () { U.toast('已通过'); fillMasterQueue(); fillCollaborationQueue(); })
+        .catch(function (e) { U.toast('没通过：' + e.message); });
+    },
+    'master-reject': function (t, o) {
+      var note = window.prompt('驳回理由（申请人会看到，至少 6 个字）：', '');
+      if (note === null) return;
+      window.API.ja('/api/admin/master-applications/' + o.id + '/review', {
+        method: 'POST', body: JSON.stringify({ decision: 'rejected', note: note })
+      }).then(function () { U.toast('已驳回'); fillMasterQueue(); })
+        .catch(function (e) { U.toast('驳回失败：' + e.message); });
     },
     'collaboration-approve': function (t, o) {
       var note = prompt('审核依据（至少 8 字）');

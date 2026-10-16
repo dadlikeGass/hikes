@@ -134,8 +134,9 @@ class BoardsDrill(unittest.TestCase):
         rows = V.ok(self.http.get("/api/boards/mountains?window=week&limit=1"), "limit=1")
         self.assertLessEqual(len(rows["items"]), 1)
         self.assertEqual({"window", "metric", "items"}, set(rows))
-        self.assertEqual({"mountainId", "name", "pointCode", "visits", "people"},
-                         set(rows["items"][0]))
+        # 榜上还带热度档与年接待量（"按热门"口径要用），字段形状一起钉住
+        self.assertEqual({"mountainId", "name", "pointCode", "visits", "people",
+                          "heatTier", "annualVisits"}, set(rows["items"][0]))
         board = V.ok(self.http.get("/api/boards/climbers?window=week"), "位次榜形状")
         self.assertEqual({"window", "sampleSize", "items", "mine"}, set(board))
 
