@@ -445,6 +445,13 @@
         (queue.failed ? '（其中 ' + queue.failed + ' 条被服务器拒绝，原因保留在本机）' : '') +
         (queue.blocked ? '（其中 ' + queue.blocked + ' 条属于另一个身份，需登录原身份）' : '') +
         ' <button class="btn ghost" data-act="sync-checkins" data-force="1">重试同步</button></div>' : '') +
+      /* 两个社区榜：位次榜（山友口径）与打卡人数榜（山头口径）。
+         数据各读各的，一个读不到不影响另一个，也不影响上面的个人数据。 */
+      '<div class="sec-head"><h3>位次榜</h3><span class="more">' +
+      (BOARD_WINDOWS.filter(function (w) { return w[0] === boardWindow; })[0] || [])[1] +
+      ' ›</span></div>' + boardWindowTabs('board-window') + climbersBoardHTML({ page: 'home', limit: 3 }) +
+      '<div class="sec-head"><h3>打卡人数榜</h3><span class="more">按人数 ›</span></div>' +
+      mountainsBoardHTML('people', { page: 'home', limit: 3, title: '打卡人数榜' }) +
       '</div></section></div>';
   }
 
@@ -678,20 +685,31 @@
       ' · 六只脚人气 ' + t.visits7 + '</div>' +
       '<p class="muted" style="font-size:13.5px">' + esc(t.desc) + '</p>' +
       (t.group === 'park' ? runCard(t) : '') +
-      '<div class="tracewrap">' + apiTrackSVG(t) +
+      /* 轨迹图可以缩放：滚轮 / 双指 / 右下角按钮都行，双击复位。
+         轨迹围起来的区域铺了一层透明淡色，放大后能看清这条线覆盖了哪片地形。 */
+      '<div class="tracewrap" data-track="' + esc(t.id) + '">' + apiTrackSVG(t) +
+      '<div class="trkctl">' +
+      '<button type="button" class="btn ghost" data-act="trk-zoom" data-id="' + esc(t.id) + '" data-val="out" aria-label="缩小">－</button>' +
+      '<span class="trk-k">100%</span>' +
+      '<button type="button" class="btn ghost" data-act="trk-zoom" data-id="' + esc(t.id) + '" data-val="in" aria-label="放大">＋</button>' +
+      '<button type="button" class="btn ghost" data-act="trk-zoom" data-id="' + esc(t.id) + '" data-val="reset">复位</button>' +
+      '<span class="trk-tip">滚轮 / 双指缩放 · 放大后拖动平移</span>' +
+      '</div>' +
       '<div style="display:flex;gap:12px;flex-wrap:wrap;padding:5px 2px 2px;font-size:10.5px;color:var(--ink3)">' +
-      '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#52B44A;margin-right:4px"></i>简单</span>' +
-      '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2563EB;margin-right:4px"></i>中等</span>' +
-      '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#9E1B1B;margin-right:4px"></i>困难</span>' +
+      '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#52B44A;margin-right:4px"></i>缓</span>' +
+      '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2563EB;margin-right:4px"></i>中</span>' +
+      '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#9E1B1B;margin-right:4px"></i>陡</span>' +
       '<span style="margin-left:auto">真实 DEM · 等高距 200→10 m</span></div>' +
       '<div class="tcap"><span>真实地形 · 线路海拔</span>' +
       '<span>' + t.km + ' km · ↗ ' + t.up + ' m</span></div></div>' +
 
-      '<div class="sec-head"><h3>按坡度自动分段</h3>' +
+      '<div class="sec-head"><h3>坡度图</h3>' +
       '<span class="more">海拔 · 里程 · 山顶 / CP</span></div>' +
       '<div class="profilebox">' + apiProfileSVG(t) +
       '<div style="display:flex;gap:12px;padding:4px 0 2px;font-size:10.5px;color:var(--ink3)">' +
-      '<span style="color:#52B44A">● 简单</span><span style="color:#2563EB">● 中等</span><span style="color:#9E1B1B">● 困难</span><span style="color:#778396">● 下坡/平路不评级</span></div></div>' +
+      '<span style="color:#52B44A">● ≤15% 缓</span><span style="color:#2563EB">● 15–25% 中</span>' +
+      '<span style="color:#9E1B1B">● &gt;25% 陡</span><span style="color:#778396">● 底色透明，地形透过来</span></div>' +
+      apiSlopeTable(t) + '</div>' +
       ((t.peakList || []).length ? '<div class="card tight" style="margin-top:8px"><b style="font-size:12px">沿途山顶名称</b>' +
         t.peakList.map(function (pk) {
           return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--hair)">' +
@@ -808,6 +826,13 @@
       var svg = '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet" style="display:block;width:100%;height:'+(compact?'124px':'230px')+'" aria-label="真实地形路线图">';
       svg += '<rect width="'+W+'" height="'+H+'" rx="12" fill="#edf5f2"/>';
       if (t.terrainUrl) svg += '<image href="'+esc(t.terrainUrl)+'" x="0" y="0" width="'+W+'" height="'+H+'" preserveAspectRatio="none" opacity=".8"/>';
+      /* 轨迹覆盖的区域：整条线连成一个面，填一层透明色——一眼看出这条线路占了哪片地形，
+         底色透过来，地形还看得清。缩放时跟着一起放大（在同一个 <g> 里）。 */
+      var outline = '';
+      for (var oi = 0; oi < n; oi++) { var oq = geoP(oi); outline += (oi ? 'L' : 'M') + oq[0].toFixed(1) + ' ' + oq[1].toFixed(1); }
+      var zoomAttr = compact ? '' : ' data-zoom="1"';
+      svg += '<g' + zoomAttr + '>';
+      svg += '<path d="' + outline + ' Z" fill="#2563EB" fill-opacity=".12" stroke="none"/>';
       (t.segments || []).forEach(function (sg) {
         var a=Math.max(0,Math.round(sg.from_km/t.km*(n-1))), b=Math.min(n-1,Math.round(sg.to_km/t.km*(n-1))), d='';
         for(var i=a;i<=b;i++){var q=geoP(i);d+=(i===a?'M':'L')+q[0].toFixed(1)+' '+q[1].toFixed(1);}
@@ -817,6 +842,7 @@
       var start=geoP(0), end=geoP(n-1), rad=compact?4:6;
       svg+='<circle cx="'+start[0]+'" cy="'+start[1]+'" r="'+rad+'" fill="#39A875" stroke="#fff" stroke-width="2"/>';
       svg+='<circle cx="'+end[0]+'" cy="'+end[1]+'" r="'+rad+'" fill="#FF5298" stroke="#fff" stroke-width="2"/>';
+      svg += compact ? '' : '</g>';
       return (compact ? '<span class="trk trk-tc">' : '') + svg+'</svg>' + (compact ? '</span>' : '');
     }
     var path = t.path || [];
@@ -865,10 +891,179 @@
     return (compact ? '<span class="trk trk-tc">' : '') + o + '</svg>' + (compact ? '</span>' : '');
   }
 
-  /* ② 海拔剖面 + 底部难度色带 */
+  /* ==================== 轨迹图缩放 / 平移 ====================
+     状态按线路 id 存；按钮、滚轮、双指、拖动共用同一份状态。
+     SVG 里整条轨迹画在 <g data-zoom> 里，这里只改它的 transform。 */
+  var trkZoomState = {};
+  function trkState(id) {
+    return trkZoomState[id] || (trkZoomState[id] = { k: 1, x: 0, y: 0 });
+  }
+  function trkNode(id) {
+    var host = document.querySelector('[data-track="' + id + '"]');
+    return host && host.querySelector('svg');
+  }
+  function trkApply(id) {
+    var node = trkNode(id);
+    if (!node) return;
+    var group = node.querySelector('g[data-zoom]');
+    if (!group) return;
+    var st = trkState(id);
+    group.setAttribute('transform', 'translate(' + st.x.toFixed(1) + ' ' + st.y.toFixed(1) +
+      ') scale(' + st.k.toFixed(3) + ')');
+    var label = document.querySelector('[data-track="' + id + '"] .trk-k');
+    if (label) label.textContent = Math.round(st.k * 100) + '%';
+  }
+  /* 以画布上的某一点为锚点缩放：手指/鼠标指哪儿就放大哪儿 */
+  function trkZoomAt(id, factor, clientX, clientY) {
+    var node = trkNode(id);
+    if (!node) return;
+    var st = trkState(id);
+    var next = Math.max(1, Math.min(8, st.k * factor));
+    if (next === st.k) return;
+    var point = node.createSVGPoint();
+    point.x = clientX; point.y = clientY;
+    var matrix = node.getScreenCTM();
+    var svgPoint = matrix ? point.matrixTransform(matrix.inverse()) : { x: 190, y: 105 };
+    var ratio = next / st.k;
+    st.x = svgPoint.x - (svgPoint.x - st.x) * ratio;
+    st.y = svgPoint.y - (svgPoint.y - st.y) * ratio;
+    st.k = next;
+    trkApply(id);
+  }
+  function trkPan(id, dx, dy) {
+    var st = trkState(id);
+    st.x += dx; st.y += dy;
+    trkApply(id);
+  }
+  function trkReset(id) {
+    trkZoomState[id] = { k: 1, x: 0, y: 0 };
+    trkApply(id);
+  }
+  /* 把画布上的像素位移换成 SVG 用户单位（缩放后 1px 不等于 1 单位） */
+  function trkUnitsPerPixel(node) {
+    var matrix = node && node.getScreenCTM();
+    if (!matrix) return 1;
+    return 1 / (matrix.a || 1);
+  }
+  function trkWireTrack() {
+    var host = null, dragging = null, pinch = null, pointers = {};
+    function trackHost(target) {
+      return target && target.closest ? target.closest('[data-track]') : null;
+    }
+    document.addEventListener('wheel', function (e) {
+      var wrap = trackHost(e.target);
+      if (!wrap || !wrap.querySelector('g[data-zoom]')) return;
+      e.preventDefault();                       /* 在图上滚轮是缩放，不是翻页 */
+      trkZoomAt(wrap.getAttribute('data-track'), e.deltaY < 0 ? 1.15 : 1 / 1.15,
+                e.clientX, e.clientY);
+    }, { passive: false });
+    document.addEventListener('pointerdown', function (e) {
+      var wrap = trackHost(e.target);
+      if (!wrap || !wrap.querySelector('g[data-zoom]')) return;
+      var id = wrap.getAttribute('data-track');
+      pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      var ids = Object.keys(pointers);
+      if (ids.length === 2) {
+        var a = pointers[ids[0]], b = pointers[ids[1]];
+        pinch = { id: id, dist: Math.hypot(a.x - b.x, a.y - b.y), k: trkState(id).k };
+        dragging = null;
+        return;
+      }
+      var st = trkState(id);
+      if (st.k <= 1) return;                     /* 没放大时拖动交给页面滚动 */
+      dragging = { id: id, x: e.clientX, y: e.clientY, node: wrap.querySelector('svg') };
+      /* 不用 setPointerCapture：捕获会把后续 click 事件重定向到容器上，
+         这样"放大"按钮第二次点就没反应了（closest('[data-act]') 找不到按钮）。
+         拖动靠 document 上的 pointermove 就够。 */
+    });
+    document.addEventListener('pointermove', function (e) {
+      if (pointers[e.pointerId]) { pointers[e.pointerId] = { x: e.clientX, y: e.clientY }; }
+      if (pinch && Object.keys(pointers).length >= 2) {
+        var ids = Object.keys(pointers);
+        var a = pointers[ids[0]], b = pointers[ids[1]];
+        var dist = Math.hypot(a.x - b.x, a.y - b.y);
+        var mid = [(a.x + b.x) / 2, (a.y + b.y) / 2];
+        var target = Math.max(1, Math.min(8, pinch.k * (dist / (pinch.dist || dist))));
+        trkZoomAt(pinch.id, target / trkState(pinch.id).k, mid[0], mid[1]);
+        return;
+      }
+      if (!dragging) return;
+      var node = trkNode(dragging.id);
+      var unit = trkUnitsPerPixel(node) / trkState(dragging.id).k;
+      trkPan(dragging.id, (e.clientX - dragging.x) / unit, (e.clientY - dragging.y) / unit);
+      dragging.x = e.clientX; dragging.y = e.clientY;
+    });
+    function release(e) {
+      delete pointers[e.pointerId];
+      if (Object.keys(pointers).length < 2) pinch = null;
+      dragging = null;
+    }
+    document.addEventListener('pointerup', release);
+    document.addEventListener('pointercancel', release);
+    document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+  }
+
+  /* ② 坡度图：按坡度自动分段（≤15% 绿 · 15–25% 蓝 · >25% 深红）
+     同名点：剖面是等距重采样的，所以相邻两点的高差 / 水平距离就是这一小段的坡度。 */
+  var SLOPE_BANDS = [
+    { max: 15, level: 'easy', color: '#52B44A' },
+    { max: 25, level: 'mid', color: '#2563EB' },
+    { max: 1e9, level: 'hard', color: '#9E1B1B' }
+  ];
+  function slopeColor(pct) {
+    for (var i = 0; i < SLOPE_BANDS.length; i++) {
+      if (pct <= SLOPE_BANDS[i].max) return SLOPE_BANDS[i];
+    }
+  }
+  function slopeBands(t) {
+    var prof = (t.elevationM || []).length >= 2 ? t.elevationM : (t.profile || []);
+    var n = prof.length;
+    if (n < 2) return { prof: prof, bands: [], stepKm: 0, n: n };
+    var stepKm = t.km && n > 1 ? t.km / (n - 1) : 0;
+    if (!stepKm) return { prof: prof, bands: [], stepKm: 0, n: n };
+    /* 用 ±0.4 km 的滑动窗口估坡度：单点相邻高差会抖成噪点，
+       而"这段陡不陡"看的是持续几百米的趋势（跟服务端"持续坡度只认 ≥400 m"同一个口径）。
+       窗口内取绝对高差之和，方向不抵消——下坡的陡也是陡。 */
+    var win = Math.max(1, Math.round(0.4 / stepKm));
+    function windowSlope(i) {
+      var a = Math.max(0, i - win), b = Math.min(n - 1, i + win), rise = 0, dist = 0;
+      for (var k = a; k < b; k++) { rise += Math.abs(prof[k + 1] - prof[k]); dist += stepKm; }
+      return dist > 0 ? rise / (dist * 1000) * 100 : 0;
+    }
+    var bands = [];
+    for (var i = 1; i < n; i++) {
+      var band = slopeColor(windowSlope(i));
+      var last = bands[bands.length - 1];
+      if (last && last.level === band.level) last.to = i;
+      else bands.push({ level: band.level, color: band.color, from: i - 1, to: i });
+    }
+    /* 碎段合并：不到全程 1.5% 又不到 0.5 km 的段并进前一段，
+       否则颜色条会碎成噪点。合并后用绝对高差重算这一段到底多陡。 */
+    var minKm = Math.max(0.5, (t.km || 0) * 0.015);
+    var merged = [];
+    bands.forEach(function (b) {
+      var last = merged[merged.length - 1];
+      if (last && ((b.to - b.from) * stepKm < minKm || last.level === b.level)) last.to = b.to;
+      else merged.push({ level: b.level, color: b.color, from: b.from, to: b.to });
+    });
+    if (merged.length > 1 && (merged[0].to - merged[0].from) * stepKm < minKm) {
+      merged[1].from = merged[0].from;
+      merged.shift();
+    }
+    merged.forEach(function (b) {
+      var rise = 0;
+      for (var k = b.from; k < b.to; k++) rise += Math.abs(prof[k + 1] - prof[k]);
+      var km = (b.to - b.from) * stepKm;
+      b.pct = km > 0 ? rise / (km * 1000) * 100 : 0;
+      var band = slopeColor(b.pct);
+      b.level = band.level; b.color = band.color;
+      b.km = km; b.fromKm = b.from * stepKm; b.toKm = b.to * stepKm;
+    });
+    return { prof: prof, bands: merged, stepKm: stepKm, n: n };
+  }
   function apiProfileSVG(t) {
     var hasElevation = (t.elevationM || []).length >= 2;
-    var prof = hasElevation ? t.elevationM : (t.profile || []);
+    var sg = slopeBands(t), prof = sg.prof;
     if (prof.length < 2) return '';
     var W = 380, H = 178, L = 40, R = 8, T = 24, B = 30, n = prof.length;
     var min = hasElevation ? Math.floor(Math.min.apply(null, prof) / 100) * 100 : 0;
@@ -880,37 +1075,61 @@
     var o = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" ' +
       'style="display:block;width:100%;height:166px">';
     for (var alt = min; alt <= max; alt += (max - min > 1000 ? 300 : 100)) {
-      var gy = Y(alt); o += '<path d="M'+L+' '+gy.toFixed(1)+'H'+(W-R)+'" stroke="#dce5e3" stroke-width="1"/>' +
-        (hasElevation ? '<text x="2" y="'+(gy+3).toFixed(1)+'" font-size="8" fill="#718096">'+alt+'m</text>' : '');
+      var gy = Y(alt);
+      o += '<path d="M' + L + ' ' + gy.toFixed(1) + 'H' + (W - R) + '" stroke="#dce5e3" stroke-width="1"/>' +
+        (hasElevation ? '<text x="2" y="' + (gy + 3).toFixed(1) + '" font-size="8" fill="#718096">' + alt + 'm</text>' : '');
     }
-    o += '<path d="' + line + ' L' + X(n - 1).toFixed(1) + ' ' + (H-B) + ' L' + X(0).toFixed(1) + ' ' + (H-B) + ' Z" fill="#d9eee6" opacity=".82"/>';
-    o += '<text x="'+L+'" y="13" font-size="9" fill="#718096">'+(hasElevation ? '海拔剖面' : '海拔数据待更新')+'</text>';
-    (t.segments || []).forEach(function (sg) {
-      var a = Math.max(0, Math.round(sg.from_km / t.km * (n - 1)));
-      var b = Math.min(n - 1, Math.round(sg.to_km / t.km * (n - 1))), d = '';
-      for (var i = a; i <= b; i++) d += (i === a ? 'M' : 'L') + X(i).toFixed(1) + ' ' + Y(prof[i]).toFixed(1);
-      var segColor = sg.difficulty_applicable === false ? '#778396' : (LV_C[sg.level] || '#22242E');
-      o += '<path d="' + d + '" fill="none" stroke="' + segColor + '" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>';
-      var x0 = L + (sg.from_km / t.km) * (W - L - R), x1 = L + (sg.to_km / t.km) * (W - L - R);
-      o += '<rect x="' + x0.toFixed(1) + '" y="' + (H - 8) + '" width="' + Math.max(1, x1 - x0).toFixed(1) + '" height="6" rx="3" fill="' + segColor + '"/>';
+    /* 轨迹覆盖的区域：只铺一层透明的淡色（不遮地形），形状一眼可见 */
+    o += '<path d="' + line + ' L' + X(n - 1).toFixed(1) + ' ' + (H - B) + ' L' + X(0).toFixed(1) +
+      ' ' + (H - B) + ' Z" fill="#2563EB" fill-opacity=".08" stroke="none"/>';
+    o += '<text x="' + L + '" y="13" font-size="9" fill="#718096">坡度图 · 颜色 = 该段坡度（纵轴：海拔 m）</text>';
+    sg.bands.forEach(function (b) {
+      var d = '';
+      for (var i = b.from; i <= b.to; i++) d += (i === b.from ? 'M' : 'L') + X(i).toFixed(1) + ' ' + Y(prof[i]).toFixed(1);
+      o += '<path d="' + d + '" fill="none" stroke="' + b.color + '" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>';
+      var x0 = X(b.from), x1 = X(b.to);
+      o += '<rect x="' + x0.toFixed(1) + '" y="' + (H - 8) + '" width="' + Math.max(1, x1 - x0).toFixed(1) +
+        '" height="6" rx="3" fill="' + b.color + '"/>';
     });
     (t.peakList || []).forEach(function (pk) {
       var x = L + pk.km / t.km * (W - L - R), i = Math.max(0, Math.min(n - 1, Math.round(pk.km / t.km * (n - 1)))), y = Y(prof[i]);
-      o += '<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="3.5" fill="#ff5298" stroke="#fff" stroke-width="1.5"/>' +
-        '<text x="'+x.toFixed(1)+'" y="'+Math.max(21,y-7).toFixed(1)+'" text-anchor="middle" font-size="7.5" font-weight="700" fill="#26324d">'+
-        esc(pk.name || (pk.candidate_name ? '待确认：'+pk.candidate_name : '山顶待命名'))+
-        (pk.elevation_m || pk.altitude ? ' · '+(pk.elevation_m || pk.altitude)+'m' : '')+'</text>';
+      o += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="3.5" fill="#ff5298" stroke="#fff" stroke-width="1.5"/>' +
+        '<text x="' + x.toFixed(1) + '" y="' + Math.max(21, y - 7).toFixed(1) + '" text-anchor="middle" font-size="7.5" font-weight="700" fill="#26324d">' +
+        esc(pk.name || (pk.candidate_name ? '待确认：' + pk.candidate_name : '山顶待命名')) +
+        (pk.elevation_m || pk.altitude ? ' · ' + (pk.elevation_m || pk.altitude) + 'm' : '') + '</text>';
     });
-    /* 打卡点在剖面上的位置：一条虚线，一眼看出补给点落在上坡还是下坡 */
+    /* 打卡点在坡度图上的位置：一条虚线，一眼看出补给点落在上坡还是下坡 */
     (t.checkpoints || []).forEach(function (cp) {
       var x = L + (cp.km / t.km) * (W - L - R);
-      o += '<line x1="' + x.toFixed(1) + '" y1="'+T+'" x2="' + x.toFixed(1) + '" y2="' + (H - B) +
+      o += '<line x1="' + x.toFixed(1) + '" y1="' + T + '" x2="' + x.toFixed(1) + '" y2="' + (H - B) +
         '" stroke="#3455F5" stroke-width="1" stroke-dasharray="2 3" opacity=".6"/>';
-      o += '<circle cx="'+x.toFixed(1)+'" cy="'+(H-B-3)+'" r="2.7" fill="#3455F5"/>';
-      if (cp.name) o += '<text x="'+x.toFixed(1)+'" y="'+(H-B-7)+'" text-anchor="middle" font-size="6.7" fill="#3455F5">'+esc(cp.name)+'</text>';
+      o += '<circle cx="' + x.toFixed(1) + '" cy="' + (H - B - 3) + '" r="2.7" fill="#3455F5"/>';
+      if (cp.name) o += '<text x="' + x.toFixed(1) + '" y="' + (H - B - 7) + '" text-anchor="middle" font-size="6.7" fill="#3455F5">' + esc(cp.name) + '</text>';
     });
     return o + '</svg>';
   }
+
+  /* 坡度图下面的分段清单：每段多少公里、平均坡度、属于哪一档 */
+  function apiSlopeTable(t) {
+    var sg = slopeBands(t);
+    if (!sg.bands.length) return '';
+    var shown = sg.bands.filter(function (b) { return b.km >= 0.15; });
+    if (!shown.length) shown = sg.bands;
+    shown = shown.slice(0, 12);
+    return shown.map(function (b, index) {
+      return '<div style="display:flex;align-items:center;gap:9px;padding:10px 0;' +
+        'border-bottom:1px solid var(--hair);font-size:12.5px">' +
+        '<span style="width:10px;height:10px;border-radius:3px;flex:0 0 auto;background:' + b.color + '"></span>' +
+        '<span style="font-weight:800;flex:0 0 56px">第 ' + (index + 1) + ' 段</span>' +
+        '<span style="color:var(--ink2);flex:0 0 96px">' + b.fromKm.toFixed(1) + '–' + b.toKm.toFixed(1) + ' km</span>' +
+        '<span style="flex:1;color:var(--ink2)">平均坡度 ' + Math.round(b.pct) + '%</span>' +
+        '<span style="color:' + b.color + ';font-weight:700">' +
+        (b.level === 'easy' ? '缓' : b.level === 'mid' ? '中' : '陡') + '</span></div>';
+    }).join('') +
+      '<div class="hint" style="padding:8px 2px 0">按坡度自动分段：≤15% 缓 · 15–25% 中 · &gt;25% 陡；' +
+      '下坡与上坡按同一个绝对坡度看待。' + (hasElevation(t) ? '' : '（这段还没有海拔数据，坡度为估算）') + '</div>';
+  }
+  function hasElevation(t) { return (t.elevationM || []).length >= 2; }
 
   /* ③ 分段表：每段一行 */
   function apiSegTable(t) {
@@ -957,6 +1176,96 @@
   var pq = '', pd = 'all', pf = 'all', plv = 'all';
   var boardSort = 'time', boardFollow = 'all';
   /* 山头、登顶和岔路榜单各自分页，但共用筛选状态。 */
+
+  /* ==================== 榜单（登顶榜 / 打卡人数榜 / 位次榜） ====================
+     三个榜都读服务端真实计数：
+       · 登顶榜 = 山头按到访人次排（同一人多次也算）      /api/boards/mountains?metric=visits
+       · 打卡人数榜 = 山头按去重人数排                    /api/boards/mountains?metric=people
+       · 位次榜 = 山友按"打过卡的不同山头数"排            /api/boards/climbers
+     人数与人次是两个口径，标题上就写清楚，不让它们混着说。 */
+  var boardWindow = 'week';
+  var winBoardCache = {};
+  var winBoardLoading = {};
+  var BOARD_WINDOWS = [['week', '本周'], ['month', '本月'], ['year', '本年'], ['all', '历史']];
+
+  function boardWindowTabs(act) {
+    return '<div class="btn-row">' + BOARD_WINDOWS.map(function (w) {
+      return '<button class="btn ghost" data-act="' + act + '" data-val="' + w[0] + '">' +
+        (boardWindow === w[0] ? '✓ ' : '') + w[1] + '</button>';
+    }).join('') + '</div>';
+  }
+  function boardKey(kind, metric) { return kind + ':' + metric + ':' + boardWindow; }
+
+  function loadBoard(kind, metric, onReady) {
+    var key = boardKey(kind, metric);
+    if (winBoardCache[key] || winBoardLoading[key]) return;
+    winBoardLoading[key] = true;
+    var url = kind === 'climbers'
+      ? '/api/boards/climbers?window=' + boardWindow + '&limit=10'
+      : '/api/boards/mountains?window=' + boardWindow + '&metric=' + metric + '&limit=10';
+    window.API.ja(url).then(function (data) { winBoardCache[key] = data; })
+      .catch(function () { winBoardCache[key] = { error: true }; })
+      .then(function () {
+        winBoardLoading[key] = false;
+        if (onReady) onReady();
+      });
+  }
+
+  function boardReload() {
+    winBoardCache = {};
+    render();
+  }
+
+  function mountainsBoardHTML(metric, opts) {
+    opts = opts || {};
+    loadBoard('mountains', metric, function () { if (parse().name === opts.page) render(); });
+    var data = winBoardCache[boardKey('mountains', metric)];
+    if (!data) return '<div class="empty">正在读取' + esc(opts.title || '榜单') + '…</div>';
+    if (data.error) {
+      return '<div class="empty">' + esc(opts.title || '榜单') +
+        '暂时读不到，打卡与留言不受影响。<button class="btn ghost" data-act="board-retry">重试</button></div>';
+    }
+    if (!data.items || !data.items.length) {
+      return '<div class="empty">这个时间段还没有记录。</div>';
+    }
+    return '<div class="card tight">' + data.items.slice(0, opts.limit || 5).map(function (row, index) {
+      return '<a class="rank" href="#/peaks/p-' + encodeURIComponent(row.pointCode || row.mountainId) + '">' +
+        '<span class="pos" style="flex:0 0 26px;font-weight:800;color:var(--coral)">' +
+        (index + 1) + '</span>' +
+        '<span class="nm"><b>' + esc(row.name || '名称待定') + '</b><em>' +
+        row.people + ' 人到访 · 共 ' + row.visits + ' 次记录</em></span>' +
+        '<span class="tm" style="font-size:12px;color:var(--ink3)">›</span></a>';
+    }).join('') + '</div>' +
+      '<div class="hint" style="padding:8px 2px 0">' +
+      (metric === 'people'
+        ? '按去重的到访身份数排（游客跨设备算不同身份）；同一座山的两个码算一座山。'
+        : '按到访人次排：同一个人多次登顶都算，所以人次 ≥ 人数。') +
+      '</div>';
+  }
+
+  function climbersBoardHTML(opts) {
+    opts = opts || {};
+    loadBoard('climbers', null, function () { if (parse().name === opts.page) render(); });
+    var data = winBoardCache[boardKey('climbers', null)];
+    if (!data) return '<div class="empty">正在读取位次榜…</div>';
+    if (data.error) {
+      return '<div class="empty">位次榜暂时读不到。<button class="btn ghost" data-act="board-retry">重试</button></div>';
+    }
+    if (!data.items || !data.items.length) {
+      return '<div class="empty">这个时间段还没有人打卡。</div>';
+    }
+    var rows = data.items.slice(0, opts.limit || 5).map(function (row) {
+      return '<div class="rank"><span class="pos" style="flex:0 0 26px;font-weight:800;color:var(--coral)">' +
+        row.rank + '</span><span class="nm"><b>' + esc(row.nickname || '山友') +
+        '</b><em>登过 ' + row.summits + ' 座山 · 共 ' + row.visits + ' 次记录</em></span></div>';
+    }).join('');
+    var mine = data.mine
+      ? '<div class="hint" style="padding:8px 2px 0">我的位次：第 ' + data.mine.rank + ' 位 · 登过 ' +
+        data.mine.summits + ' 座山 · 共 ' + data.mine.visits + ' 次记录</div>'
+      : '<div class="hint" style="padding:8px 2px 0">登录后可以看到自己的位次。</div>';
+    return '<div class="card tight">' + rows + '</div>' + mine +
+      '<div class="hint" style="padding:4px 2px 0">只公开昵称与计数，不带账号、不带坐标。</div>';
+  }
 
   /* 「城市」筛选：跟路书页的「区域」一个做法——按数据里真实存在的地区出卡。
      不再用"本市 / 本省 / 本国 / 海外"那种相对口径：没有账号级位置，
@@ -1092,6 +1401,12 @@
         });
       /* 顶部不再放"山野地点 / 占山为王"那组标题（2026-10-15 用户要求删） */
       return '<div class="places-page">' + segmentTabs + newKingEntry('peak') + bar +
+        /* 登顶榜放在山头列表之前：这是"占山为王"的主榜（人次口径），
+           下面的山头卡是完整名单。先选山头也能直接点进榜上的山。 */
+        '<div class="sec-head" id="page-board" style="margin-top:6px"><h3>登顶榜</h3>' +
+        '<span class="more">' + (BOARD_WINDOWS.filter(function (w) { return w[0] === boardWindow; })[0] || [])[1] +
+        ' · 人次 ›</span></div>' +
+        boardWindowTabs('board-window') + mountainsBoardHTML('visits', { page: 'places', limit: 6 }) +
         '<div class="sec-head" id="page-peaks" style="margin-top:4px"><h3>山头</h3>' +
         '<span class="more">' + (pq || pf !== 'all' || pd !== 'all'
           ? board.length + ' 个结果' : '按海拔 ›') + '</span></div>' +
@@ -3174,6 +3489,7 @@
   }
   window.addEventListener('hikes:checkin-synced', function () { homeData = null; render(); });
   window.HIKES_CHECKIN.start();
+  trkWireTrack();
   function on(act, fn) { return { act: act, fn: fn }; }
 
   document.addEventListener('change', function (e) {
@@ -3194,12 +3510,25 @@
     var t = e.target.closest('[data-act]');
     if (!t) return;
     var act = t.getAttribute('data-act');
-    if (act === 'retry-boot') { location.reload(); return; }
-    if (act === 'home-retry') { homeData = null; loadHomeData(); return; }
-    if (act === 'receipts-retry') { myReceipts = null; myReceiptsError = false; loadMyReceipts(); return; }
+    /* 这三个属性放在最前面读：下面的分支（比如轨迹图缩放）要用它们 */
     var id = t.getAttribute('data-id');
     var type = t.getAttribute('data-type');
     var val = t.getAttribute('data-val');
+    if (act === 'retry-boot') { location.reload(); return; }
+    if (act === 'home-retry') { homeData = null; loadHomeData(); return; }
+    if (act === 'receipts-retry') { myReceipts = null; myReceiptsError = false; loadMyReceipts(); return; }
+    if (act === 'board-window') { boardWindow = val; boardReload(); return; }
+    if (act === 'board-retry') { boardReload(); return; }
+    if (act === 'trk-zoom') {
+      var trackId = t.getAttribute('data-id');
+      if (val === 'reset') trkReset(trackId);
+      else {
+        var box = trkNode(trackId) && trkNode(trackId).getBoundingClientRect();
+        trkZoomAt(trackId, val === 'in' ? 1.4 : 1 / 1.4,
+                  box ? box.left + box.width / 2 : 0, box ? box.top + box.height / 2 : 0);
+      }
+      return;
+    }
     if (act === 'peak-board-window') { peakBoardWindow = val; render(); return; }
 
     if (act === 'nearby') {

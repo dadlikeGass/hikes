@@ -1079,6 +1079,90 @@ def nearby_points(body: NearbyRequest, request: Request):
     return [dict(row) for row in rows]
 
 
+def _window_since(window: str) -> datetime:
+    """窗口起点（Asia/Shanghai，周一为一周起点）。周/月/年/历史四个口径共用。"""
+    local = datetime.now(ZoneInfo("Asia/Shanghai"))
+    if window == "week":
+        return (local - timedelta(days=local.weekday())).replace(
+            hour=0, minute=0, second=0, microsecond=0)
+    if window == "month":
+        return local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if window == "year":
+        return local.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    return datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
+@app.get("/api/boards/mountains", response_model=dict, tags=["榜单"])
+def board_mountains(window: Literal["week", "month", "year", "all"] = "week",
+                    metric: Literal["people", "visits"] = "people",
+                    limit: int = 5):
+    """山头榜：`metric=people` 按去重人数排（"打卡人数榜"），
+    `metric=visits` 按到访人次排（"登顶榜"，同一人多次也算）。两个口径分开说清楚，
+    免得"人数"被人当成"人次"。"""
+    since = _window_since(window)
+    order = "people DESC, visits DESC" if metric == "people" else "visits DESC, people DESC"
+    rows = q("""SELECT p.mountain_id AS "mountainId",
+        coalesce(m.name, min(p.name), '编号 ' || min(p.code)) AS name,
+        /* 榜上点进去要能落到具体点位：给一个代表编号（该山到访过的最小 code，
+           基本就是主峰那个码）。前端用它拼 /app/#/peaks/p-<code>。 */
+        min(p.code) AS "pointCode",
+        count(*) AS visits,
+        count(DISTINCT CASE WHEN v.user_id IS NOT NULL
+                            THEN 'u:' || v.user_id::text
+                            ELSE 'g:' || v.guest_id::text END) AS people
+      FROM visits v JOIN points p ON p.id = v.point_id
+      JOIN mountains m ON m.id = p.mountain_id
+     WHERE v.occurred_at >= :since AND p.mountain_id IS NOT NULL
+     GROUP BY 1, m.name ORDER BY """ + order + " LIMIT :limit",
+        since=since, limit=min(max(limit, 1), 50))
+    return {"window": window, "metric": metric,
+            "items": [dict(r) for r in rows]}
+
+
+@app.get("/api/boards/climbers", response_model=dict, tags=["榜单"])
+def board_climbers(window: Literal["week", "month", "year", "all"] = "week",
+                   limit: int = 10,
+                   authorization: str | None = Header(default=None)):
+    """位次榜：按"窗口内打过卡的不同山头数"排，其次看总打卡次数。
+
+    只公开昵称与计数，不带账号 ID、不带坐标。登录时额外返回自己的位次——
+    即使不在榜单前几名，也能看到"我第几"。
+    """
+    since = _window_since(window)
+    rows = q("""SELECT coalesce(u.nickname, g.nickname, '山友') AS nickname,
+        v.user_id AS uid, v.guest_id AS gid, p.mountain_id AS "mountainId"
+      FROM visits v JOIN points p ON p.id = v.point_id
+      LEFT JOIN users u ON u.id = v.user_id
+      LEFT JOIN guests g ON g.id = v.guest_id
+     WHERE v.occurred_at >= :since AND p.mountain_id IS NOT NULL""", since=since)
+    tally: dict[str, dict] = {}
+    for row in rows:
+        who = ("u:%d" % row["uid"]) if row["uid"] is not None else ("g:%d" % row["gid"])
+        item = tally.setdefault(who, {"who": who, "nickname": row["nickname"],
+                                      "visits": 0, "mountains": set()})
+        item["visits"] += 1
+        item["mountains"].add(row["mountainId"])
+    ranked = sorted(tally.values(),
+                    key=lambda item: (-len(item["mountains"]), -item["visits"], item["who"]))
+    public = [{"rank": index + 1, "nickname": item["nickname"],
+               "summits": len(item["mountains"]), "visits": item["visits"]}
+              for index, item in enumerate(ranked)]
+    mine = None
+    if authorization:
+        # 令牌过期不该让榜单整页报错：读不出身份就只当没有"我的位次"。
+        try:
+            uid = require_user(authorization)
+        except HTTPException:
+            uid = None
+        if uid is not None:
+            for index, item in enumerate(ranked):
+                if item["who"] == "u:%d" % uid:
+                    mine = public[index]
+                    break
+    return {"window": window, "sampleSize": len(public),
+            "items": public[:min(max(limit, 1), 50)], "mine": mine}
+
+
 @app.get("/api/mountains/{mountain_id}/courses", response_model=list[dict], tags=["打卡"])
 def mountain_courses(mountain_id: int = Path(ge=1)):
     rows = q("""SELECT id, name, start_point_id AS "startPointId",
@@ -1093,15 +1177,7 @@ def effort_leaderboard(courseId: int, window: Literal["week", "month", "year", "
     course = q1("SELECT id, ranking_enabled FROM ascent_courses WHERE id=:id", id=courseId)
     if not course:
         err(404, "COURSE_NOT_FOUND", "登顶路线不存在")
-    local = datetime.now(ZoneInfo("Asia/Shanghai"))
-    if window == "week":
-        since = (local - timedelta(days=local.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-    elif window == "month":
-        since = local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    elif window == "year":
-        since = local.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-    else:
-        since = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    since = _window_since(window)
     rows = q("""SELECT DISTINCT ON (e.user_id) e.user_id, e.duration_s,
         e.end_at AT TIME ZONE 'Asia/Shanghai' AS local_end,
         coalesce(u.nickname, u.username, '山友') AS nickname

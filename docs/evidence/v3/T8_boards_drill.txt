@@ -1,0 +1,22 @@
+test_01_people_and_visits_are_different_metrics (v3_boards_drill.BoardsDrill)
+同一个人多次到访：人次涨、人数不涨。两个榜的口径必须分开。 ... ok
+test_02_window_and_week_start (v3_boards_drill.BoardsDrill) ... ok
+test_03_points_without_mountain_are_excluded (v3_boards_drill.BoardsDrill) ... ok
+test_04_climbers_rank_and_my_position (v3_boards_drill.BoardsDrill)
+位次榜按"登过几座山"排；登录时能看到自己的位次。 ... FAIL
+test_05_stale_token_only_loses_my_rank (v3_boards_drill.BoardsDrill) ... ok
+test_06_limits_and_shapes (v3_boards_drill.BoardsDrill) ... ok
+
+======================================================================
+FAIL: test_04_climbers_rank_and_my_position (v3_boards_drill.BoardsDrill)
+位次榜按"登过几座山"排；登录时能看到自己的位次。
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/2026brooke/Documents/ChatGPT/hikes/server/tests/v3_boards_drill.py", line 114, in test_04_climbers_rank_and_my_position
+    self.assertIn("榜单演练峰", names, "昵称要出现在榜上")
+AssertionError: '榜单演练峰' not found in ['drill-303ef128af', 'drill-692a1cdd6f', 'v3t8g8d03f0f4d9', 'drill-10493ad3d2'] : 昵称要出现在榜上
+
+----------------------------------------------------------------------
+Ran 6 tests in 13.129s
+
+FAILED (failures=1)
