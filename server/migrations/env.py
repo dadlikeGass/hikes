@@ -59,7 +59,8 @@ def run_migrations_online() -> None:
         # Session pooler is recommended for migrations; still avoid prepared
         # statements so the same command works if a transaction pooler is used.
         engine_options["connect_args"] = {
-            "prepare_threshold": None, "sslmode": "require"}
+            "prepare_threshold": None, "sslmode": "require",
+            "connect_timeout": 10}
     engine = create_engine(DATABASE_URL, **engine_options)
     with engine.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata,

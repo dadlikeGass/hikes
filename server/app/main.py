@@ -54,7 +54,8 @@ if "supabase.co" in DATABASE_URL or "pooler.supabase.com" in DATABASE_URL:
         pool_size=1,
         max_overflow=0,
         pool_recycle=300,
-        connect_args={"prepare_threshold": None, "sslmode": "require"},
+        connect_args={"prepare_threshold": None, "sslmode": "require",
+                      "connect_timeout": 10},
     )
 engine = create_engine(DATABASE_URL, **_engine_options)
 
@@ -721,12 +722,18 @@ def login(body: LoginIn, request: Request,
 
 @app.get("/health", response_model=HealthOut, tags=["系统"])
 def health():
-    row = q1("SELECT postgis_version() AS pgis, current_database() AS db")
-    counts = q1("""SELECT
-        (SELECT count(*) FROM routes)          AS routes,
-        (SELECT count(*) FROM route_segments)  AS segments,
-        (SELECT count(*) FROM route_peaks)     AS peaks,
-        (SELECT count(*) FROM points)          AS points""")
+    try:
+        row = q1("SELECT postgis_version() AS pgis, current_database() AS db")
+        counts = q1("""SELECT
+            (SELECT count(*) FROM routes)          AS routes,
+            (SELECT count(*) FROM route_segments)  AS segments,
+            (SELECT count(*) FROM route_peaks)     AS peaks,
+            (SELECT count(*) FROM points)          AS points""")
+    except Exception as exc:
+        # 不在响应里暴露连接串；只告诉部署者问题发生在 DB 连接/迁移层。
+        err(503, "DB_UNAVAILABLE",
+            "数据库暂时不可用，请检查 DATABASE_URL、Supabase 迁移和网络区域（%s）"
+            % exc.__class__.__name__)
     return HealthOut(ok=True, postgis=row["pgis"], db=row["db"], **dict(counts))
 
 
