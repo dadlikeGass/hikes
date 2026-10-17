@@ -289,7 +289,8 @@
   function searchHTML(items) {
     if (!items.length) return '<div class="ka-search-hint">没有找到。可以换一个关键词，或直接申请新山头。</div>';
     return items.map(function (t) {
-      return '<button class="ka-result" data-act="ka-pick" data-mid="' + t.mountainId + '">' +
+      return '<button class="ka-result" data-act="ka-pick" data-mid="' +
+        (t.mountainId == null ? '' : t.mountainId) + '" data-code="' + esc(t.pointCode || '') + '">' +
         '<span class="ka-result-icon">' + (t.pointType === 'junction' ? '↗' : '⛰') + '</span>' +
         '<span><b>' + esc(t.name || '名称待定') + '</b><small>' + esc(t.region || '地区待补') +
         (t.altitude ? ' · ' + t.altitude + ' m' : '') + (t.pointCode ? ' · ' + esc(t.pointCode) : '') +
@@ -297,6 +298,43 @@
         (t.clanName ? ' · ' + esc(t.clanName) : '') + '</em></span>' +
         '<span class="ka-result-go">›</span></button>';
     }).join('');
+  }
+
+  function localSearch(q) {
+    var kw = (q || '').trim().toLowerCase();
+    if (!kw) return [];
+    var rows = [];
+    (g.HIKES.points || []).forEach(function (p) {
+      var hit = ((p.name || '') + ' ' + (p.code || '') + ' ' + (p.route_name || ''))
+        .toLowerCase().indexOf(kw) >= 0;
+      if (hit && p.status !== 'draft') {
+        rows.push({
+          mountainId: null, name: p.name || p.code, pointCode: p.code,
+          pointId: p.id, pointType: p.type || 'peak', altitude: p.altitude,
+          region: p.city || '', ownerName: null, clanName: null, clanStatus: null,
+          intent: 'owner', localFallback: true
+        });
+      }
+    });
+    (g.HIKES.peaks || []).forEach(function (p) {
+      var hit = ((p.name || '') + ' ' + (p.code || '') + ' ' + (p.trailName || '') + ' ' +
+        (p.city || '')).toLowerCase().indexOf(kw) >= 0;
+      if (hit && p.code) {
+        rows.push({
+          mountainId: null, name: p.name || p.code, pointCode: p.code,
+          pointId: p.pointId, pointType: 'peak', altitude: p.alt,
+          region: p.city || '', ownerName: null, clanName: null, clanStatus: null,
+          intent: 'owner', localFallback: true
+        });
+      }
+    });
+    var seen = {};
+    return rows.filter(function (r) {
+      var key = r.pointCode || (r.name + ':' + r.pointId);
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    }).slice(0, 20);
   }
 
   function doSearch(q) {
@@ -308,14 +346,30 @@
       return;
     }
     box.innerHTML = '<div class="ka-search-hint">正在搜索…</div>';
-    request('/api/mountains/search?q=' + encodeURIComponent(q.trim()) + '&limit=20')
+    A.lastQuery = q.trim();
+    function serverSearch() {
+      return request('/api/mountains/search?q=' + encodeURIComponent(q.trim()) + '&limit=20');
+    }
+    serverSearch()
+      .catch(function () {
+        /* 服务重启/弱网时给一次短暂重试，之后退回本地已加载的点位。 */
+        return new Promise(function (resolve) { setTimeout(resolve, 420); })
+          .then(serverSearch);
+      })
       .then(function (data) {
         A.results = (data && data.items) || [];
         if (document.getElementById('kaResults')) box.innerHTML = searchHTML(A.results);
       })
       .catch(function (error) {
-        if (document.getElementById('kaResults')) {
-          box.innerHTML = '<div class="ka-search-hint error">搜索失败：' + esc(errText(error)) + '</div>';
+        if (!document.getElementById('kaResults')) return;
+        var local = localSearch(q);
+        if (local.length) {
+          A.results = local;
+          box.innerHTML = '<div class="ka-search-hint">网络暂不可用，先用本地已加载结果；提交时会再由服务端核对。</div>' +
+            searchHTML(local);
+        } else {
+          box.innerHTML = '<div class="ka-search-hint error">搜索失败：' + esc(errText(error)) +
+            '</div><button class="btn ghost mini" data-act="ka-search-retry">重新搜索</button>';
         }
       });
   }
@@ -908,7 +962,11 @@
     }
     if (act === 'ka-pick') {
       var mid = Number(el.getAttribute('data-mid'));
-      A.target = A.results.filter(function (t) { return Number(t.mountainId) === mid; })[0] || null;
+      var code = el.getAttribute('data-code') || '';
+      A.target = A.results.filter(function (t) {
+        return (mid && Number(t.mountainId) === mid) ||
+          (!mid && code && t.pointCode === code);
+      })[0] || null;
       A.selectedPointCode = A.target && A.target.pointCode;
       A.mode = 'existing';
       A.results = [];
@@ -917,6 +975,10 @@
       if (resultBox) resultBox.innerHTML = '<div class="ka-search-hint">已选中；要换一座时重新输入关键词。</div>';
       if (searchBox) searchBox.value = '';
       paintApply(); saveLocal(); return true;
+    }
+    if (act === 'ka-search-retry') {
+      doSearch(A.lastQuery || '');
+      return true;
     }
     if (act === 'ka-clear-target') {
       A.target = null; A.selectedPointCode = null; paintApply(); saveLocal(); return true;
