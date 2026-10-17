@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 
 APP_DAYS = 3
@@ -387,17 +388,18 @@ def submit_application(conn, uid: int, data: dict) -> dict:
     application_id = data.get("id") or data.get("applicationId")
     payload = _payload(conn, uid, data, submit=True)
     status = payload.pop("status_hint", "pending")
-    if application_id:
-        row = application_row(conn, int(application_id), lock=True)
-        if row["applicant_id"] != uid:
-            raise ServiceError(403, "APPLICATION_FORBIDDEN", "不能提交别人的申请")
-        if row["status"] not in RESUBMIT_FROM:
-            raise ServiceError(409, "APPLICATION_CLOSED", "这份申请已经不能再提交")
-        version = data.get("version")
-        version = row["version"] if version is None else int(version)
-        if version != row["version"]:
-            raise ServiceError(409, "VERSION_CONFLICT", "申请已在别处更新，请刷新后再提交")
-        updated = conn.execute(text("""UPDATE master_applications SET
+    try:
+        if application_id:
+            row = application_row(conn, int(application_id), lock=True)
+            if row["applicant_id"] != uid:
+                raise ServiceError(403, "APPLICATION_FORBIDDEN", "不能提交别人的申请")
+            if row["status"] not in RESUBMIT_FROM:
+                raise ServiceError(409, "APPLICATION_CLOSED", "这份申请已经不能再提交")
+            version = data.get("version")
+            version = row["version"] if version is None else int(version)
+            if version != row["version"]:
+                raise ServiceError(409, "VERSION_CONFLICT", "申请已在别处更新，请刷新后再提交")
+            updated = conn.execute(text("""UPDATE master_applications SET
               target_kind=:target_kind, target_mountain_id=:mountain_id, point_id=:point_id,
               mountain_id=coalesce(:mountain_id, mountain_id), new_point_type=:new_point_type,
               new_name=:new_name, new_region=:new_region,
@@ -410,10 +412,10 @@ def submit_application(conn, uid: int, data: dict) -> dict:
               reviewer_id=NULL, decided_at=NULL, review_note=NULL, needs_info_note=NULL,
               result_role=NULL, confirmed_at=NULL
             WHERE id=:id RETURNING id"""),
-            {"id": row["id"], "status": status, **payload}).mappings().one()
-        app_id = updated["id"]
-    else:
-        updated = conn.execute(text("""INSERT INTO master_applications
+                {"id": row["id"], "status": status, **payload}).mappings().one()
+            app_id = updated["id"]
+        else:
+            updated = conn.execute(text("""INSERT INTO master_applications
             (applicant_id, target_kind, target_mountain_id, point_id, mountain_id,
              new_point_type, new_name, new_region, new_location_text, new_lat, new_lng,
              new_altitude, new_intro, new_gpx_ref, reason, expectations, visits_per_month,
@@ -424,7 +426,10 @@ def submit_application(conn, uid: int, data: dict) -> dict:
              :reason, :expectations, :visits, :nickname, :contact, :intent, :kind,
              :clan_id, :status, now(), now() + interval '3 days')
             RETURNING id"""), {"uid": uid, "status": status, **payload}).mappings().one()
-        app_id = updated["id"]
+            app_id = updated["id"]
+    except IntegrityError:
+        raise ServiceError(409, "APPLICATION_EXISTS",
+                           "你已有一份针对这个目标的待审申请，不能重复提交")
     snapshot_version(conn, app_id, uid)
     audit(conn, uid, "king_application.submit", "king_application", app_id,
           {}, {"status": status, "targetKind": payload["target_kind"],
@@ -888,6 +893,25 @@ def accept_transfer(conn, transfer_id: int, uid: int) -> dict:
     audit(conn, uid, "member.transfer_accept", "transfer", transfer_id,
           {"status": "pending_accept"}, {"status": "ready_review"})
     return {"id": transfer_id, "status": "ready_review"}
+
+
+def decline_transfer(conn, transfer_id: int, uid: int) -> dict:
+    row = conn.execute(text("SELECT * FROM transfer_applications WHERE id=:id FOR UPDATE"),
+                       {"id": transfer_id}).mappings().first()
+    if not row:
+        raise ServiceError(404, "TRANSFER_NOT_FOUND", "移交申请不存在")
+    if row["to_user_id"] != uid:
+        raise ServiceError(403, "NOT_SUCCESSOR", "只有接任人可以拒绝这份移交")
+    if row["status"] != "pending_accept":
+        raise ServiceError(409, "TRANSFER_CLOSED", "这份移交已经不能拒绝")
+    conn.execute(text("""UPDATE transfer_applications SET status='cancelled',
+        review_note='接任人拒绝', reviewed_at=now() WHERE id=:id"""), {"id": transfer_id})
+    audit(conn, uid, "member.transfer_accept", "transfer", transfer_id,
+          {"status": "pending_accept"}, {"status": "cancelled"}, "接任人拒绝")
+    notify(conn, row["from_user_id"], "transfer_declined", "接任人拒绝移交",
+           "现任负责人没有变化；可以另选接任人或联系平台。", "#/me/managed",
+           {"transferId": transfer_id})
+    return {"id": transfer_id, "status": "cancelled"}
 
 
 def review_transfer(conn, transfer_id: int, reviewer: int, decision: str,

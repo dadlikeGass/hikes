@@ -639,6 +639,7 @@ v1 **只收纯文本，最多 200 字**，图片走 v1.1。
 | `POST` | `/api/clans/{id}/leave` | 成员退出；负责人须先移交 |
 | `POST` | `/api/mountains/{id}/transfer-applications` | 负责人发起移交 |
 | `POST` | `/api/transfers/{id}/accept` | 接任人本人确认 |
+| `POST` | `/api/transfers/{id}/decline` | 接任人本人拒绝；现任负责人不变 |
 | `POST` | `/api/transfers/{id}/review` | 平台最终审核 |
 | `POST` | `/api/mountains/{id}/member-removal-applications` | 负责人申请移除成员 |
 | `POST` | `/api/admin/mountains/{id}/takeover` | 负责人失联时平台接管 |

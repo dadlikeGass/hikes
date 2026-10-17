@@ -264,6 +264,33 @@ class KingUnificationDrill(unittest.TestCase):
         self.assertEqual("hidden", row[0])
         self.assertIn("未经核实", row[1])
 
+    def test_05b_duplicate_join_recruiting_and_self_review(self):
+        data = self.__class__.winner
+        if not data:
+            self.skipTest("依赖竞争与山寨用例")
+        clan_id = data["clan"]["id"]
+        extra = V.new_account(self.http, PREFIX + "join")
+        payload = {"message": "我愿意每月巡一次本线路，核验岔路与雨季风险，并参与留言处理。",
+                   "visitsPerMonth": 2}
+        first = V.ok(self.http.post("/api/clans/%d/join-applications" % clan_id,
+                                    json=payload, headers=extra["headers"]), "首次加入")
+        again = self.http.post("/api/clans/%d/join-applications" % clan_id,
+                               json=payload, headers=extra["headers"])
+        self.assertEqual(409, again.status_code, "重复加入不能产生第二份待审申请")
+        V.ok(self.http.post("/api/clans/%d/recruiting" % clan_id,
+                            json={"recruiting": False},
+                            headers=data["owner"]["headers"]), "关闭招募")
+        closed = self.http.post("/api/clans/%d/join-applications" % clan_id,
+                                json=payload,
+                                headers=V.new_account(self.http, PREFIX + "late")["headers"])
+        self.assertEqual(409, closed.status_code)
+        self.assertEqual("CLAN_NOT_RECRUITING", V.error_code(closed))
+        # 审核员也不能审自己的申请
+        own = V.ok(self.submit(self.reviewer, newName=V.unique(PREFIX + "自审")), "审核员自建申请")
+        denied = self.review(own["id"], reviewer=self.reviewer)
+        self.assertEqual(403, denied.status_code)
+        self.assertEqual("SELF_REVIEW_FORBIDDEN", V.error_code(denied))
+
     def test_06_transfer_then_leave_revokes_immediately(self):
         data = self.__class__.winner
         if not data:
@@ -295,6 +322,31 @@ class KingUnificationDrill(unittest.TestCase):
         boards = V.ok(self.http.get("/api/me/managed-boards",
                                     headers=old_owner["headers"]), "退出后的管理列表")
         self.assertFalse(any(b["mountainId"] == mid for b in boards), "退出后管理权限即时失效")
+        V.ok(self.http.post("/api/admin/mountains/%d/takeover" % mid, json={
+            "note": "负责人失联，平台接管并保留全部历史内容"
+        }, headers=self.reviewer["headers"]), "平台接管")
+        self.assertEqual("0", V.sql_value(
+            "SELECT count(*) FROM mountain_members WHERE mountain_id=%d "
+            "AND role='owner' AND status='active'" % mid))
+
+    def test_06b_successor_can_decline_transfer(self):
+        mid, point, _ = self.existing_target("拒接")
+        current = V.new_account(self.http, PREFIX + "cur")
+        successor = V.new_account(self.http, PREFIX + "succ")
+        submitted = V.ok(self.http.post("/api/king-applications", json=self.body(
+            targetKind="existing", mountainId=mid),
+            headers=current["headers"]), "负责人申请")
+        V.ok(self.review(submitted["id"]), "通过负责人申请")
+        req = V.ok(self.http.post("/api/mountains/%d/transfer-applications" % mid, json={
+            "toUsername": successor["username"],
+            "note": "我近期无法继续巡山，希望把负责人身份交给熟悉线路的接任人。"
+        }, headers=current["headers"]), "发起移交")
+        declined = V.ok(self.http.post("/api/transfers/%d/decline" % req["id"], json={},
+                                       headers=successor["headers"]), "接任人拒绝")
+        self.assertEqual("cancelled", declined["status"])
+        self.assertEqual(str(current["uid"]), V.sql_value(
+            "SELECT user_id FROM mountain_members WHERE mountain_id=%d "
+            "AND role='owner' AND status='active'" % mid))
 
     def test_07_search_and_old_review_retired(self):
         name = V.unique(PREFIX + "检索峰")
@@ -313,9 +365,12 @@ class KingUnificationDrill(unittest.TestCase):
         self.assertEqual(410, old.status_code)
 
     def test_08_route_cover_upload_review_and_recommendation(self):
-        data = self.__class__.winner
-        if not data:
-            self.skipTest("依赖竞争与山寨用例")
+        rec_mid = V.new_mountain(PREFIX, V.unique(PREFIX + "封面山"))
+        V.new_point(PREFIX, kind="peak", mountain_id=rec_mid, lat=31.2, lng=121.3)
+        V.sql("""INSERT INTO mountain_members
+            (mountain_id,user_id,role,status,granted_by)
+            VALUES (%d,%d,'owner','active',%d)"""
+            % (rec_mid, self.member["uid"], self.reviewer["uid"]))
         slug = V.unique(PREFIX + "route")
         V.sql("""INSERT INTO routes
             (slug,name,km,up,down,hardest_level,path,profile,status)
@@ -323,7 +378,7 @@ class KingUnificationDrill(unittest.TestCase):
             % (V.lit(slug), V.lit("封面验收线路")))
         route_id = int(V.sql_value("SELECT id FROM routes WHERE slug=" + V.lit(slug)))
         V.sql("""INSERT INTO route_peaks (route_id,idx,km,altitude,rise,mountain_id)
-            VALUES (%d,0,0.6,1200,120,%d)""" % (route_id, data["mid"]))
+            VALUES (%d,0,0.6,1200,120,%d)""" % (route_id, rec_mid))
         png = base64.b64decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFElEQVR4nGP8z8DA"
             "wMDAxAADCBYAG10BAgX0L9sAAAAASUVORK5CYII=")
@@ -340,7 +395,7 @@ class KingUnificationDrill(unittest.TestCase):
         rec = self.http.post("/api/routes/%s/cover-recommendations?submission_id=%d"
                              % (slug, cover["id"]),
                              json={"note": "这张照片确实来自本线路"},
-                             headers=data["member"]["headers"])
+                             headers=self.member["headers"])
         self.assertEqual(200, rec.status_code, "关联山头成员只能推荐，不能改官方封面")
         V.ok(self.http.post("/api/admin/cover-submissions/%d/review" % cover["id"],
                             json={"decision": "approved", "note": "真实性与授权已核对"},

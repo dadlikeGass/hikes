@@ -512,6 +512,11 @@ def build_king_router(engine, err, require_user, require_reviewer):
         with engine.begin() as conn:
             return S.accept_transfer(conn, transfer_id, uid)
 
+    @router.post("/api/transfers/{transfer_id}/decline", response_model=dict, tags=["移交"])
+    def decline_transfer(transfer_id: int, uid: int = Depends(require_user)):
+        with engine.begin() as conn:
+            return S.decline_transfer(conn, transfer_id, uid)
+
     @router.post("/api/transfers/{transfer_id}/review", response_model=dict, tags=["移交"])
     def review_transfer(transfer_id: int, body: TransferReviewIn,
                         uid: int = Depends(require_reviewer)):

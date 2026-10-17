@@ -686,7 +686,8 @@
       /* 路书首屏先给可信信息：线路名、区域、距离、爬升。通用山景不再占一整屏，
          真实轨迹图提前出现；没有已审核封面时自然收起，不做丑陋占位。 */
       (t.coverUrl ? '<figure class="route-cover"><img src="' + esc(t.coverUrl) +
-        '" alt="" loading="eager"><figcaption>' + esc(t.coverByline || '') + '</figcaption></figure>' : '') +
+        '" alt="" loading="eager" onerror="this.closest(\'.route-cover\').style.display=\'none\'">' +
+        '<figcaption>' + esc(t.coverByline || '') + '</figcaption></figure>' : '') +
       '<header class="route-compact-head"><span class="eyebrow">TRAILBOOK</span>' +
       '<h1>' + esc(t.name) + '</h1><p>' + esc(t.city || t.sub || '山野线路') +
       ' · ' + t.km + ' km · ↗ ' + t.up + ' m' + (t.hours ? ' · 约 ' + esc(t.hours) : '') + '</p></header>' +
