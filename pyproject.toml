@@ -1,3 +1,23 @@
+[project]
+name = "hikes"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi==0.115.6",
+  "uvicorn[standard]==0.34.0",
+  "sqlalchemy==2.0.36",
+  "alembic==1.14.0",
+  "psycopg[binary]==3.2.3",
+  "geoalchemy2==0.16.0",
+  "pydantic-settings==2.7.0",
+  "pyjwt==2.10.1",
+  "httpx==0.28.1",
+  "qrcode==8.0",
+  "argon2-cffi>=23.1,<26",
+  "Pillow==11.0.0",
+  "python-multipart==0.0.20",
+]
+
 [tool.vercel]
 entrypoint = "main:app"
 
