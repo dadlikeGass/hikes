@@ -125,6 +125,11 @@ npx vercel --prod
 `vercel.json` 已把 FastAPI Function 设为最长 60 秒、1GB 内存。首次构建会安装
 Python 依赖；如果失败，先看 Vercel 的 Build Logs，不要在本地反复重试掩盖依赖错误。
 
+`tracks/` 是本地轨迹数据，不应进入 Function bundle；静态前端由 Vercel CDN
+提供，`pyproject.toml` 中的 `exclude = true` 会把 `app/` 静态目录从 Function
+包中移出。若仍出现 `LAMBDA_SIZE_EXCEEDED`，先排查新增大目录是否被
+`.vercelignore` 排除。
+
 ## 5. 绑定域名
 
 在 Vercel 项目 **Settings → Domains** 添加：
