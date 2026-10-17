@@ -359,6 +359,11 @@ class KingUnificationDrill(unittest.TestCase):
                      "通过后检索")
         self.assertEqual(1, len(found["items"]))
         self.assertEqual(self.member["uid"], found["items"][0]["ownerId"])
+        by_code = V.ok(self.http.get("/api/mountains/search?q=" +
+                                     found["items"][0]["pointCode"] + "&limit=10"),
+                       "按编号检索")
+        self.assertTrue(any(x["mountainId"] == found["items"][0]["mountainId"]
+                            for x in by_code["items"]))
         old = self.http.post("/api/admin/master-applications/%d/review" % app["id"],
                              json={"decision": "approved", "note": "旧入口不应授权"},
                              headers=self.reviewer["headers"])

@@ -140,7 +140,12 @@ def build_king_router(engine, err, require_user, require_reviewer):
                 viewer_id = None
         with engine.begin() as conn:
             rows = conn.execute(text("""
-                SELECT m.id, m.name, m.altitude, m.region,
+                SELECT m.id, m.name, m.altitude,
+                       coalesce(m.region,
+                         (SELECT p.city FROM points p WHERE p.mountain_id=m.id
+                           AND p.status='published' AND p.city IS NOT NULL
+                           ORDER BY CASE WHEN p.type='peak' THEN 0 ELSE 1 END, p.id
+                           LIMIT 1)) AS region,
                        (SELECT p.code FROM points p WHERE p.mountain_id=m.id
                          AND p.status='published'
                          ORDER BY CASE WHEN p.type='peak' THEN 0 ELSE 1 END, p.id
@@ -162,9 +167,11 @@ def build_king_router(engine, err, require_user, require_reviewer):
                      WHERE mm.mountain_id=m.id AND mm.role='owner' AND mm.status='active'
                      LIMIT 1) owner ON true
                   LEFT JOIN clans c ON c.mountain_id=m.id AND c.status IN ('pending','active')
-                 WHERE (:kw = '' OR m.name ILIKE :like
+                 WHERE (:kw = '' OR m.name ILIKE :like OR m.region ILIKE :like
                         OR EXISTS (SELECT 1 FROM points p
-                                    WHERE p.mountain_id=m.id AND p.code ILIKE :like))
+                                    WHERE p.mountain_id=m.id
+                                      AND (p.code ILIKE :like OR p.name ILIKE :like
+                                           OR p.city ILIKE :like)))
                    AND (CAST(:cursor AS BIGINT) IS NULL
                         OR m.id > CAST(:cursor AS BIGINT))
                  ORDER BY
