@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import APIRouter, Body, Depends, File, Form, Header, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
@@ -599,11 +599,12 @@ def build_king_router(engine, err, require_user, require_reviewer):
                 LIMIT 1"""), {"k": filename}).first()
         if not ok:
             err(404, "MEDIA_NOT_FOUND", "图片不存在")
-        path = M.root() / filename
-        if not path.is_file():
+        try:
+            data = M.read(filename)
+        except M.MediaError:
             err(404, "MEDIA_NOT_FOUND", "图片不存在")
-        return FileResponse(path, media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=86400"})
+        return Response(content=data, media_type="image/jpeg",
+                        headers={"Cache-Control": "public, max-age=86400"})
 
     @router.post("/api/routes/{slug}/cover-submissions", response_model=dict,
                  tags=["路书封面"], summary="投稿真实封面；只接受 JPEG/PNG/WebP")

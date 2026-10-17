@@ -1,0 +1,15 @@
+.git
+.local-backups
+.impeccable
+app/.codex-preview.html
+archive
+output
+outputs
+docs
+pipeline
+server/tests
+server/media
+server/media-test
+server/.pytest_cache
+__pycache__
+*.pyc

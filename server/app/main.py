@@ -46,7 +46,17 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://hikes:hikes@db:54
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-change-me")
 JWT_ALG = "HS256"
 PUBLIC_BASE = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/")
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+_engine_options = {"pool_pre_ping": True}
+if "supabase.co" in DATABASE_URL or "pooler.supabase.com" in DATABASE_URL:
+    # Supabase 的 Vercel 连接应使用 transaction pooler：
+    # 每个 warm instance 只保留一个连接，且 psycopg 不能依赖预处理语句。
+    _engine_options.update(
+        pool_size=1,
+        max_overflow=0,
+        pool_recycle=300,
+        connect_args={"prepare_threshold": None, "sslmode": "require"},
+    )
+engine = create_engine(DATABASE_URL, **_engine_options)
 
 app = FastAPI(title="到此一游 API", version="1.0",
               description="契约见仓库 docs/API.md。错误响应统一为 "
@@ -4373,7 +4383,9 @@ import pathlib  # noqa: E402
 _theme = pathlib.Path(os.getenv("THEME_DIR", "/srv/theme"))
 if _theme.is_dir():
     app.mount("/theme", StaticFiles(directory=str(_theme)), name="theme")
-_webapp = pathlib.Path("/srv/webapp")
+_webapp = pathlib.Path(os.getenv("WEBAPP_DIR", "/srv/webapp"))
+if not _webapp.is_dir():
+    _webapp = pathlib.Path(__file__).resolve().parents[2] / "app"
 if _webapp.is_dir():
     app.mount("/app", StaticFiles(directory=str(_webapp), html=True), name="webapp")
     # /theme/*.css 里的 url() 是按"站点根 = app/"写的（../images/home/…、
@@ -4385,6 +4397,8 @@ if _webapp.is_dir():
         if _dir.is_dir():
             app.mount(f"/{_prefix}", StaticFiles(directory=str(_dir)), name=f"app-{_prefix}")
 _static = pathlib.Path(os.getenv("STATIC_DIR", "/srv/web"))
+if not _static.is_dir():
+    _static = pathlib.Path(__file__).resolve().parents[2] / "app" / "web"
 if _static.is_dir():
     @app.get("/", include_in_schema=False)
     def index_page():

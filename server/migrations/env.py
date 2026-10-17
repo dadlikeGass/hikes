@@ -54,7 +54,13 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    engine = create_engine(DATABASE_URL, poolclass=pool.NullPool)
+    engine_options = {"poolclass": pool.NullPool}
+    if "supabase.co" in DATABASE_URL or "pooler.supabase.com" in DATABASE_URL:
+        # Session pooler is recommended for migrations; still avoid prepared
+        # statements so the same command works if a transaction pooler is used.
+        engine_options["connect_args"] = {
+            "prepare_threshold": None, "sslmode": "require"}
+    engine = create_engine(DATABASE_URL, **engine_options)
     with engine.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata,
                           on_version_apply=_record_version)

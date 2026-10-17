@@ -1,5 +1,8 @@
 # 上线部署
 
+> Vercel + Supabase 的逐步部署见
+> [DEPLOY_VERCEL_SUPABASE.md](DEPLOY_VERCEL_SUPABASE.md)。本文件保留 Docker/自托管方案。
+
 ## 一、服务器准备
 
 香港/新加坡节点（免备案）。最低 2 核 4G、40G 盘。
