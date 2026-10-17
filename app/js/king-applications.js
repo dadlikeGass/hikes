@@ -129,11 +129,11 @@
 
   function selectedHTML() {
     if (A.mode === 'new') {
-      return '<div class="ka-selected new"><div class="ka-selected-main"><span class="ka-selected-icon">＋</span><div>' +
+      return '<div class="ka-selected is-new"><div class="ka-selected-main"><span class="ka-selected-icon">＋</span><div>' +
         '<b>申请一个新山头</b><p>名称、地区、准确位置和介绍在下方填写；审核通过前不公开。</p></div></div></div>';
     }
     if (!A.target) {
-      return '<div class="ka-selected empty"><div class="ka-selected-main"><span class="ka-selected-icon">⌕</span><div>' +
+      return '<div class="ka-selected is-empty"><div class="ka-selected-main"><span class="ka-selected-icon">⌕</span><div>' +
         '<b>搜索全库山头</b><p>可以按山头名、地区或点位编号查找；列表不受首页只加载一部分的限制。</p></div></div></div>';
     }
     var t = A.target;
@@ -167,7 +167,7 @@
       '<header class="king-apply-head">' +
       '<span class="eyebrow">MOUNTAIN KEEPER</span>' +
       '<h1>把一座山，认真接过来</h1>' +
-      '<p>不用猜自己是“山大王”还是“版主”。选好山头，写清楚为什么想做、以后怎么经营；平台审核后再授予权限。</p>' +
+      '<p>选好山头，写清楚为什么想做、以后怎么经营；平台审核通过后，再授予负责人或成员身份。</p>' +
       '<div class="ka-steps"><span class="on">01 选山头</span><span>02 写申请</span><span>03 平台审核</span><span>04 开始管理</span></div>' +
       '</header>' +
       (!isLoggedIn() ? '<div class="ka-login-note"><div><b>正式填写前先登录</b><p>草稿和联系方式只跟你的账号绑定，其他普通用户看不到。</p></div>' +
@@ -178,8 +178,8 @@
       '<div class="ka-mode"><button class="' + (A.mode === 'existing' ? 'on' : '') + '" data-act="ka-mode" data-val="existing">已有山头</button>' +
       '<button class="' + (A.mode === 'new' ? 'on' : '') + '" data-act="ka-mode" data-val="new">申请新山头</button></div></div>' +
       '<div data-ka-existing style="display:' + (A.mode === 'existing' ? 'block' : 'none') + '">' +
-      '<label class="ka-search"><span>' + U.icon('search') + '</span><input id="kaSearch" type="search" autocomplete="off" placeholder="搜索山头名、地区或编号，例如 妙峰山 / BJ-1041"></label>' +
-      '<div id="kaResults" class="ka-results"><div class="ka-search-hint">输入关键词，从服务端全库搜索。</div></div>' +
+      '<label class="ka-search" for="kaSearch"><span class="sr">搜索山头</span><span aria-hidden="true">' + U.icon('search') + '</span><input id="kaSearch" type="search" aria-label="搜索山头名称、地区或编号" autocomplete="off" placeholder="搜索山头名、地区或编号，例如 妙峰山 / BJ-1041"></label>' +
+      '<div id="kaResults" class="ka-results" role="status" aria-live="polite" aria-atomic="true"><div class="ka-search-hint">输入关键词，从服务端全库搜索。</div></div>' +
       '</div>' +
       '<div data-ka-new style="display:' + (A.mode === 'new' ? 'block' : 'none') + '">' +
       '<div class="ka-new-grid">' +
@@ -194,8 +194,8 @@
       '<button class="btn ghost mini" data-act="ka-locate">取当前坐标（选填）</button> ' +
       '<span class="ka-locate" id="kaLocateState">坐标只在审核时用于核对位置</span>' +
       '</div>' +
-      '<div id="kaSelected">' + selectedHTML() + '</div>' +
-      '<div id="kaIntent">' + intentHTML() + '</div>' +
+      '<div id="kaSelected" aria-live="polite">' + selectedHTML() + '</div>' +
+      '<div id="kaIntent" aria-live="polite">' + intentHTML() + '</div>' +
       '</section>' +
       '<section class="king-panel">' +
       '<div class="king-panel-head"><div><span class="king-step">02</span><h2>写下你的计划</h2></div>' +
@@ -213,8 +213,8 @@
       '<label class="ka-field"><span>昵称</span><input id="kaNick" class="ka-edit" maxlength="80" placeholder="审核通过后展示的名字"></label>' +
       '</div>' +
       '<label class="ka-field"><span>联系方式（选填）<em>不会公开</em></span><input id="kaContact" class="ka-edit" maxlength="200" placeholder="微信号 / 手机 / 邮箱，仅在审核沟通时使用"></label>' +
-      '<div id="kaError" class="ka-error"></div>' +
-      '<div id="kaSaveState" class="ka-save-state">正式提交前会自动保存账号草稿；换设备登录后继续。</div>' +
+      '<div id="kaError" class="ka-error" role="alert" aria-live="assertive"></div>' +
+      '<div id="kaSaveState" class="ka-save-state" role="status" aria-live="polite">正式提交前会自动保存账号草稿；换设备登录后继续。</div>' +
       '<div class="king-actions"><button class="btn ghost" data-act="ka-save">保存草稿</button>' +
       '<button class="btn coral" data-act="ka-submit">提交申请<em class="btn-note">重复点击不会产生第二份申请</em></button></div>' +
       '</section>' +

@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#F7F3EC">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f3f5f1">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0e1814">
 <meta name="description" content="到此一游 mark mountains · 给每一个岔路口一个路书，给每一个山峰一个打卡点">
 <title>到此一游 · mark mountains</title>
 <!-- 山头卡的四字标题使用本地字库，岔路卡保留马善政；取不到时回退到系统楷体。 -->
@@ -13,12 +14,13 @@
 <!-- v= 是缓存版本号：改了 css/js 就把它加一，否则浏览器（尤其是一直开着的标签页）
      会继续跑内存里的旧代码，页面看着"没改" -->
 <link rel="stylesheet" href="css/app.css?v=20261016v6">
-<link rel="stylesheet" href="css/redesign.css?v=20261017v2">
+<link rel="stylesheet" href="css/redesign.css?v=20261017v4">
 </head>
 <body>
+<a class="skip-link" href="#view">跳到主要内容</a>
 <div id="app">
   <header id="topbar" class="topbar"></header>
-  <main id="view" class="view"></main>
+  <main id="view" class="view" tabindex="-1"></main>
   <nav id="tabbar" class="tabbar"></nav>
 </div>
 
@@ -26,16 +28,16 @@
   <div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
 </div>
 
-<div id="toast" class="toast" hidden></div>
+<div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
 <script src="js/data.js?v=20261013filters1"></script>
-<script src="js/ui.js?v=20261015home-nav"></script>
+<script src="js/ui.js?v=20261017v2"></script>
 <script src="js/track.js?v=20261013v2"></script>
 <script src="js/api.js?v=20261017v2"></script>
 <script src="js/offline-store.js?v=20261016v3c"></script>
 <script src="js/checkin.js?v=20261016v3c"></script>
-<script src="js/king-applications.js?v=20261017v3"></script>
-<script src="js/app.js?v=20261017v2"></script>
+<script src="js/king-applications.js?v=20261017v5"></script>
+<script src="js/app.js?v=20261017v4"></script>
 <script src="js/admin.js?v=20261017v2"></script>
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/app/sw.js', {scope:'/app/'}).catch(function () {});</script>
 </body>

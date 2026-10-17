@@ -516,7 +516,7 @@ html,body,#app{background:var(--bg)}.topbar{background:#e4f5fd;border-color:#d9e
   border-radius:12px;background:var(--blue-bg);color:var(--blue-deep);font-size:18px}
 .ka-selected{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;
   padding:13px;border-radius:16px;background:#f7faf7;border:1px solid var(--line)}
-.ka-selected.empty,.ka-selected.new{background:#fbfcfb;border-style:dashed}
+.ka-selected.is-empty,.ka-selected.is-new{background:#fbfcfb;border-style:dashed;text-align:left}
 .ka-selected-main{display:flex;align-items:center;gap:11px;min-width:0}
 .ka-selected b{display:block;font-size:14px;color:var(--blue-deep)}
 .ka-selected p{margin:2px 0 0;font-size:11.5px;color:var(--ink2);line-height:1.55}
@@ -696,5 +696,367 @@ html,body,#app{background:var(--bg)}.topbar{background:#e4f5fd;border-color:#d9e
   .king-timeline>div{padding-left:9px}.king-timeline b{font-size:10px}
   .managed-empty,.ka-login-note,.managed-detail-head,.clan-head{align-items:flex-start;flex-direction:column}
   .king-join-app{flex-direction:column}.king-join-actions{flex-direction:row}
+}
+
+/* ==========================================================================
+   Mature Apple-style pass · 山野路簿
+   保留山景插画、手写标题和真实轨迹；把颜色、层级、焦点、导航、深色模式
+   收敛成一套可验证的系统。玻璃只用于顶栏和标签栏，内容卡恢复为纸面材料。
+   ========================================================================== */
+
+:root{
+  color-scheme:light;
+  --ui-bg:#f3f5f1;
+  --ui-paper:#fffdf8;
+  --ui-surface-2:#e9eee8;
+  --ui-ink:#18241f;
+  --ui-ink2:#4f6058;
+  --ui-ink3:#5f6f68;
+  --ui-line:#dbe4dc;
+  --ui-hair:#edf1ec;
+  --ui-accent:#1f5a4a;
+  --ui-accent-soft:#e7efe8;
+  --ui-action:#1f5a4a;
+  --ui-action-hover:#174739;
+  --ui-coral:#b8462b;
+  --ui-coral-solid:#b8462b;
+  --ui-coral-soft:#f7e9e3;
+  --ui-focus:rgba(31,90,74,.24);
+  --ui-chrome:rgba(250,252,249,.86);
+  --ui-shadow:0 1px 2px rgba(24,36,31,.04),0 10px 28px rgba(24,36,31,.055);
+  --ui-shadow-raised:0 2px 4px rgba(24,36,31,.05),0 18px 44px rgba(24,36,31,.10);
+  --ui-radius:18px;
+  --ui-radius-sm:13px;
+  --bg:var(--ui-bg);
+  --paper:var(--ui-paper);
+  --ink:var(--ui-ink);
+  --ink2:var(--ui-ink2);
+  --ink3:var(--ui-ink3);
+  --line:var(--ui-line);
+  --hair:var(--ui-hair);
+  --blue:var(--ui-accent);
+  --blue-bg:var(--ui-accent-soft);
+  --blue-deep:var(--ui-accent);
+  --coral:var(--ui-coral);
+  --coral-bg:var(--ui-coral-soft);
+  --violet:var(--ui-accent);
+  --violet-bg:var(--ui-accent-soft);
+  --violet-deep:var(--ui-accent);
+  --shadow:var(--ui-shadow);
+  --r:var(--ui-radius);
+}
+
+@media(prefers-color-scheme:dark){
+  :root{
+    color-scheme:dark;
+    --ui-bg:#0e1814;
+    --ui-paper:#16221d;
+    --ui-surface-2:#1b2a24;
+    --ui-ink:#eef5ef;
+    --ui-ink2:#b8c5bd;
+    --ui-ink3:#93a49a;
+    --ui-line:#2b3b33;
+    --ui-hair:#223029;
+    --ui-accent:#8fc7b4;
+    --ui-accent-soft:#1e332a;
+    --ui-action:#2f6b59;
+    --ui-action-hover:#3a7d69;
+    --ui-coral:#ff9a7a;
+    --ui-coral-solid:#c8482b;
+    --ui-coral-soft:#3b241f;
+    --ui-focus:rgba(143,199,180,.30);
+    --ui-chrome:rgba(14,24,20,.88);
+    --ui-shadow:0 1px 2px rgba(0,0,0,.22),0 12px 32px rgba(0,0,0,.20);
+    --ui-shadow-raised:0 2px 4px rgba(0,0,0,.28),0 20px 50px rgba(0,0,0,.32);
+  }
+}
+
+html,body,#app{background:var(--ui-bg);color:var(--ui-ink)}
+body{font-size:15.5px;line-height:1.62}
+::selection{background:var(--ui-accent-soft);color:var(--ui-ink)}
+
+.skip-link{
+  position:fixed;z-index:200;left:12px;top:-64px;padding:10px 14px;border-radius:10px;
+  background:var(--ui-action);color:#fff;text-decoration:none;font-weight:700;
+  transition:top .16s ease
+}
+.skip-link:focus{top:12px}
+
+/* 顶栏与标签栏是唯一的功能性玻璃层。 */
+.topbar{
+  display:flex;align-items:center;gap:10px;position:relative;z-index:20;
+  min-height:58px;padding:7px 18px;
+  background:var(--ui-chrome);border-bottom:1px solid var(--ui-line);
+  -webkit-backdrop-filter:blur(22px) saturate(1.16);
+  backdrop-filter:blur(22px) saturate(1.16)
+}
+.tb-bar{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;position:relative}
+.tb-title{
+  position:absolute;left:50%;transform:translateX(-50%);
+  max-width:42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--ui-ink);font-size:15px;font-weight:700;letter-spacing:-.015em
+}
+.tb-brand{
+  display:inline-flex;align-items:center;gap:8px;min-height:44px;padding-right:6px;
+  color:var(--ui-ink);text-decoration:none;font-size:13px;font-weight:700;white-space:nowrap
+}
+.tb-brand img{display:block;width:27px;height:27px;object-fit:contain}
+.top-actions{display:flex;align-items:center;gap:7px;margin-left:auto}
+.iconbtn,.back{
+  display:inline-grid;place-items:center;flex:0 0 44px;width:44px;height:44px;
+  padding:0;border:1px solid var(--ui-line);border-radius:50%;
+  background:var(--ui-paper);color:var(--ui-ink2);box-shadow:none;text-decoration:none
+}
+.iconbtn .ico,.back .ico{width:20px;height:20px;stroke:currentColor}
+.scan-entry{color:var(--ui-accent)}
+.topbar.home{padding-top:calc(9px + env(safe-area-inset-top));background:var(--ui-chrome)}
+.topbar.home .brand b{color:var(--ui-ink);font-size:17px;font-weight:750;letter-spacing:-.02em}
+.topbar.home .brand em{color:var(--ui-coral);font-size:8.5px}
+
+.tabbar{
+  display:flex;align-items:stretch;gap:4px;
+  min-height:58px;padding:5px 10px calc(5px + env(safe-area-inset-bottom));
+  background:var(--ui-chrome);border-top:1px solid var(--ui-line);
+  -webkit-backdrop-filter:blur(22px) saturate(1.16);
+  backdrop-filter:blur(22px) saturate(1.16)
+}
+.tabbar a{
+  flex:1;min-width:0;min-height:48px;border-radius:12px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  color:var(--ui-ink2);font-size:12px;font-weight:600;text-decoration:none
+}
+.tabbar a .ico{width:22px;height:22px;stroke:currentColor}
+.tabbar a.on,.tabbar a.on .ico{color:var(--ui-accent);stroke:var(--ui-accent)}
+#app.home-image .tabbar{
+  background:var(--ui-chrome);border-color:var(--ui-line)
+}
+
+@supports not ((backdrop-filter:blur(2px)) or (-webkit-backdrop-filter:blur(2px))){
+  .topbar,.tabbar{background:var(--ui-paper)}
+}
+@media(prefers-reduced-transparency:reduce){
+  .topbar,.tabbar{background:var(--ui-paper);-webkit-backdrop-filter:none;backdrop-filter:none}
+}
+@media(prefers-contrast:more){
+  .topbar,.tabbar{background:var(--ui-paper);border-color:var(--ui-ink2)}
+  .card,.rowlink,.trailcard,.king-panel,.king-detail-block,.king-app-card,.managed-card{
+    border-color:var(--ui-ink2)
+  }
+}
+
+/* 内容层使用纸面材料，不再叠加玻璃。 */
+.home-page{background:var(--ui-bg)}
+.home-copy,.trailbook-feature{
+  background:var(--ui-paper) !important;
+  -webkit-backdrop-filter:none !important;
+  backdrop-filter:none !important;
+  border:1px solid var(--ui-line) !important;
+  box-shadow:var(--ui-shadow-raised)
+}
+.home-actions .btn.ghost{background:var(--ui-paper);border-color:var(--ui-line)}
+.home-copy p{color:var(--ui-ink2)}
+.home-copy h1{color:var(--ui-ink)}
+.home-primary{
+  min-height:58px;border-radius:14px;background:var(--ui-action);color:#fff;
+  font-size:18px;font-weight:700;box-shadow:0 8px 20px rgba(31,90,74,.18)
+}
+.home-primary:hover{background:var(--ui-action-hover)}
+
+/* 统一组件：纸面、细边、层级清晰。 */
+.card,.rowlink,.trailcard,.hotcard,.profilebox,.signage,.msg,.intel,.comment,.guide{
+  background:var(--ui-paper);border:1px solid var(--ui-line);border-radius:var(--ui-radius);
+  box-shadow:var(--ui-shadow)
+}
+.btn{min-height:46px;border-radius:14px;font-weight:650;letter-spacing:-.005em}
+.btn.coral,.btn.blue,.home-primary,.scanstrip,.pill-btn.acc,.scan-btn{
+  background:var(--ui-action);color:#fff;box-shadow:none
+}
+.board-write,.king-step,.hotcard .no.top,.hotrow .no.top{
+  background:var(--ui-coral-solid);color:#fff
+}
+.home-core-scan .home-core-icon{background:var(--ui-action);color:#fff}
+.btn.ghost{background:var(--ui-paper);border:1px solid var(--ui-line);color:var(--ui-ink)}
+.btn.mini{min-height:44px;padding:9px 15px;font-size:13px}
+.pill-btn{min-height:32px}
+.board-write,.board-follow button,.board-sort select,.places-seg button,.ka-mode button{
+  min-height:44px
+}
+.managed-board-head a{
+  display:inline-flex;align-items:center;min-height:44px;padding:0 6px;margin:-8px -6px
+}
+.king-back{min-height:44px;padding:8px 0}
+.home-scene>.message-entry{width:44px;height:44px}
+.board-empty a{display:inline-flex;align-items:center;min-height:44px;padding:0 10px}
+.seg,.ka-mode,.filter-trigger{background:var(--ui-surface-2);border-color:var(--ui-line)}
+.seg button.on,.ka-mode button.on{
+  background:var(--ui-paper);color:var(--ui-accent);box-shadow:0 1px 4px rgba(24,36,31,.08)
+}
+
+.searchbar,.ka-search{
+  min-height:48px;padding:10px 14px;border:1px solid var(--ui-line);border-radius:14px;
+  background:var(--ui-paper);box-shadow:none
+}
+.searchbar input,.ka-search input{
+  min-height:26px;font-size:15px;color:var(--ui-ink);background:transparent
+}
+::placeholder{color:var(--ui-ink3);opacity:1}
+.ka-field input,.ka-field select,.ka-field textarea,.fld input,.fld select,.fld textarea,
+.board-mountains input,.board-mountains select,.board-sort select,.board-follow button{
+  background:var(--ui-paper);color:var(--ui-ink);border-color:var(--ui-line)
+}
+
+/* 可读性：小字不再是灰色谜题。 */
+.hint,.tiny,.board-count,.king-footnote{
+  color:var(--ui-ink2);font-size:12.5px;line-height:1.62
+}
+.sec-head .more{color:var(--ui-ink2);font-size:13px;font-weight:650}
+.ka-field>span{font-size:12.5px}
+.ka-field small,.ka-save-state,.king-block-head span,.ka-selected p,.ka-intent p,
+.ka-search-hint,.king-app-card>p{font-size:12.5px;color:var(--ui-ink2)}
+.king-status{font-size:11px;min-height:24px}
+.king-app-meta,.king-list-label,.king-app-version{font-size:11.5px;color:var(--ui-ink2)}
+.route-cover-tools span{font-size:12px;color:var(--ui-ink2)}
+.route-cover-tools{background:var(--ui-surface-2)}
+
+/* 山野签名保留，但把卡片配色收敛成纸张与雾。 */
+.kingcard.king-hero{
+  background:linear-gradient(120deg,#f8f0e4 0%,#efe3d4 58%,#e5d6c5 100%);
+  border:1px solid rgba(120,86,60,.14);
+  box-shadow:var(--ui-shadow-raised)
+}
+.king-hero .kk-sub{color:var(--ui-ink2);font-size:12.5px}
+.kingcard.king-hero .kk-go{
+  display:inline-flex;align-items:center;min-height:34px;padding:0 14px;
+  border-radius:999px;background:var(--ui-action);color:#fff;
+  font-size:12.5px;font-weight:700;letter-spacing:0
+}
+.kingcard.king-hero .kk-go i{font-size:15px}
+.king-hero .kk-ridge{opacity:.38}
+.king-progress{color:var(--ui-ink2);font-size:12.5px}
+.king-progress a{color:var(--ui-accent)}
+
+.king-apply-head,.board-intro{
+  background:var(--ui-surface-2);border:1px solid var(--ui-line);box-shadow:none
+}
+.king-apply-page>.king-back{display:none}
+.king-apply-head h1,.king-simple-head h1,.route-compact-head h1,
+.king-status-head h1{color:var(--ui-ink);text-wrap:balance}
+.king-panel,.king-detail-block,.managed-board-block,.king-app-card,.managed-card,
+.king-notices,.king-empty,.managed-empty,.king-join-app,.managed-suggestion{
+  background:var(--ui-paper);border-color:var(--ui-line)
+}
+.king-panel,.king-detail-block,.managed-board-block,.king-notices{
+  border-radius:var(--ui-radius);box-shadow:var(--ui-shadow)
+}
+.king-step{background:var(--ui-coral);color:#fff}
+.ka-steps span{background:var(--ui-paper);color:var(--ui-ink2);border:1px solid var(--ui-line)}
+.ka-steps span.on{background:var(--ui-action);color:#fff;border-color:var(--ui-action)}
+.ka-selected,.ka-intent,.ka-app-banner,.king-review-note,.ka-login-note{
+  background:var(--ui-surface-2);border-color:var(--ui-line)
+}
+.ka-selected.is-empty,.ka-selected.is-new{background:var(--ui-paper);text-align:left}
+.king-empty,.managed-empty{background:var(--ui-paper)}
+
+/* 桌面：把首页两栏收进同一条基线，减少漂浮的空白。 */
+@media(min-width:900px){
+  .home-content{
+    grid-template-columns:minmax(420px,1.06fr) minmax(320px,.94fr);
+    column-gap:clamp(28px,4vw,56px);align-items:start;
+    padding-top:clamp(18px,2.6vw,36px)
+  }
+  .home-copy{margin:-104px 0 0}
+  .home-content .pad{padding-top:0}
+  .home-scene{height:clamp(400px,52vh,590px);min-height:0}
+}
+@media(min-width:700px){
+  .tabbar{min-height:60px;padding:8px max(28px,calc((100vw - 1160px)/2));gap:6px}
+  .tabbar a{
+    flex:0 1 auto;min-width:112px;min-height:44px;flex-direction:row;gap:9px;
+    padding:0 16px;font-size:13px;border-radius:12px
+  }
+  .tabbar a.on{background:var(--ui-accent-soft)}
+  .topbar{padding-left:max(28px,calc((100vw - 1160px)/2));padding-right:max(28px,calc((100vw - 1160px)/2))}
+}
+
+/* 200% 缩放与窄屏：横向字段主动堆叠，而不是把标签和计数挤成两条窄柱。 */
+.ka-field>span{flex-wrap:wrap;align-items:baseline;gap:2px 10px}
+.ka-field>span em{white-space:normal;margin-left:auto}
+@media(max-width:420px){
+  .king-apply-head h1{font-size:clamp(24px,7vw,30px);line-height:1.18}
+  .ka-two,.ka-new-grid{grid-template-columns:1fr}
+  .ka-field>span em{width:100%;margin-left:0;text-align:left}
+  .king-actions .btn{width:100%;min-width:0}
+  .tb-title{max-width:46%}
+  .king-join-actions{flex-direction:column}
+  .managed-nav{flex-wrap:wrap;overflow:visible}
+}
+@media(max-width:360px){
+  .ka-steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+/* 键盘焦点：按钮和输入框都必须清楚可见。 */
+:focus-visible{outline:3px solid var(--ui-accent);outline-offset:3px}
+input:focus-visible,textarea:focus-visible,select:focus-visible{
+  outline:3px solid var(--ui-accent);outline-offset:2px;border-color:var(--ui-accent)
+}
+.ka-search input:focus-visible,.searchbar input:focus-visible{outline:none}
+.ka-search:focus-within,.searchbar:focus-within{
+  border-color:var(--ui-accent);box-shadow:0 0 0 3px var(--ui-focus)
+}
+.ka-field input:focus,.ka-field textarea:focus,.ka-field select:focus{
+  border-color:var(--ui-accent);box-shadow:0 0 0 3px var(--ui-focus)
+}
+
+/* 深色外观：同一套语义色，内容层保持纸面层级。 */
+@media(prefers-color-scheme:dark){
+  html,body,#app{background:var(--ui-bg);color:var(--ui-ink)}
+  .topbar,.tabbar,.topbar.home{background:var(--ui-chrome)}
+  .home-copy,.trailbook-feature,.card,.rowlink,.trailcard,.hotcard,.profilebox,
+  .signage,.msg,.intel,.comment,.guide,.king-panel,.king-detail-block,
+  .managed-board-block,.king-app-card,.managed-card,.king-notices,.king-empty,
+  .managed-empty,.king-join-app,.managed-suggestion{
+    background:var(--ui-paper);border-color:var(--ui-line);box-shadow:var(--ui-shadow)
+  }
+  .home-page{background:var(--ui-bg)}
+  .home-content{background:var(--ui-bg)}
+  .home-scene{filter:saturate(.9) brightness(.88)}
+  .kingcard.king-hero{
+    background:linear-gradient(120deg,#23332b 0%,#1e2d26 58%,#1a2822 100%);
+    border-color:var(--ui-line);box-shadow:var(--ui-shadow-raised)
+  }
+  .king-hero .kk-big{color:var(--ui-ink)}
+  .king-hero .kk-sub{color:var(--ui-ink2)}
+  .king-apply-head,.board-intro,.seg,.ka-mode,.filter-trigger,
+  .ka-selected,.ka-intent,.ka-app-banner,.king-review-note,.ka-login-note,
+  .route-cover-tools,.managed-kpis div,.managed-stats div,.king-dl>div,
+  .clan-members>div,.page-quote-hero{
+    background:var(--ui-surface-2);border-color:var(--ui-line)
+  }
+  .searchbar,.ka-search,.ka-field input,.ka-field select,.ka-field textarea,
+  .fld input,.fld select,.fld textarea,.board-mountains input,.board-mountains select,
+  .board-sort select,.board-follow button,.sheet,.tracewrap,.iconbtn,.back{
+    background:var(--ui-paper);color:var(--ui-ink);border-color:var(--ui-line)
+  }
+  .ka-field input::placeholder,.ka-field textarea::placeholder,
+  .searchbar input::placeholder,.ka-search input::placeholder{color:var(--ui-ink3)}
+  .king-status{background:#223029;color:var(--ui-ink2)}
+  .king-status.approved{background:#173528;color:#9be0bf}
+  .king-status.pending,.king-status.waiting_clan{background:#372f1d;color:#f2cf83}
+  .king-status.needs_info{background:#3b271e;color:#ffb58e}
+  .king-status.pending_confirmation{background:#1d3038;color:#a8d7ea}
+  .king-status.rejected{background:#3b2222;color:#ffaaa2}
+  .king-status.draft{background:#25312c;color:var(--ui-ink2)}
+  .badge.easy{background:#173528;color:#9be0bf}
+  .badge.mid{background:#372f1d;color:#f2cf83}
+  .badge.hard{background:#3b2222;color:#ffaaa2}
+  .badge.hidden{background:#2a302c;color:var(--ui-ink)}
+  .board-place{background:var(--ui-accent-soft);color:var(--ui-accent)}
+  .toast{background:#eef5ef;color:#18241f}
+}
+
+@media(prefers-reduced-motion:reduce){
+  html:not(.force-motion) .home-primary,
+  html:not(.force-motion) .btn,
+  html:not(.force-motion) .tabbar a{transition:none}
 }
 

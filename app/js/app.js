@@ -511,7 +511,7 @@
   /* 搜索与筛选摘要固定在列表上方，详细条件放到底部面板。 */
   function trailFilterBar() {
     return '<div class="searchbar">' + U.icon('search') +
-      '<input id="q" type="text" placeholder="搜索线路名称或地区" value="' + esc(q) + '"></div>' +
+      '<input id="q" type="search" aria-label="搜索线路名称或地区" placeholder="搜索线路名称或地区" value="' + esc(q) + '"></div>' +
       filterTrigger('trails');
   }
 
@@ -568,7 +568,7 @@
     /* "今天去走哪条？"下面那条线路：随机取一条，之后每 4 秒打字机换下一条（见 startListFeatured） */
     var feat = randomTrail(null);
     var featHref = feat ? '#/trails/' + encodeURIComponent(feat.id) : '#/trails';
-    var originalHero = '<section class="route-hero route-hero-bottom"><div class="route-hero-copy"><h1>下一条路，去山里找</h1>' +
+    var originalHero = '<section class="route-hero route-hero-bottom"><div class="route-hero-copy"><h2>下一条路，去山里找</h2>' +
       '<p>' + H.trails.length + ' 条山野线路，按长度和爬升挑一条</p></div>' +
       '<img class="route-hero-art" src="images/home/hero-routes-male.png" alt="" aria-hidden="true"></section>';
     return '<section class="trailbook-intro" aria-label="今天去走哪条"><div class="trailbook-copy">' +
@@ -1414,7 +1414,7 @@
       : [['all', '全部'], ['ok', '已核验'], ['wait', '待核验']];
     if (FILTERS.every(function (f) { return f[0] !== pf; })) pf = 'all';
     var bar =
-      '<div class="searchbar">🔍<input id="pq" placeholder="' +
+      '<div class="searchbar">🔍<input id="pq" type="search" aria-label="搜索山头名称或所属线路" placeholder="' +
       (seg === 'peak' ? '搜索山头名称或所属线路' : '搜索岔路名称或情报内容') +
       '" value="' + esc(pq) + '"></div>' +
       filterTrigger(seg === 'peak' ? 'peaks' : 'junctions');
@@ -1440,7 +1440,7 @@
             (plv === 'all' || p.level === plv);
         });
       /* 顶部不再放"山野地点 / 占山为王"那组标题（2026-10-15 用户要求删） */
-      return '<div class="places-page">' + segmentTabs + newKingEntry('peak') + bar +
+      return '<div class="places-page"><h1 class="sr">占山为王</h1>' + segmentTabs + newKingEntry('peak') + bar +
         /* 登顶榜放在山头列表之前：这是"占山为王"的主榜（人次口径），
            下面的山头卡是完整名单。先选山头也能直接点进榜上的山。 */
         '<div class="sec-head" id="page-board" style="margin-top:6px"><h3>登顶榜</h3>' +
@@ -2694,7 +2694,8 @@
       }).join('');
       return '<div class="group-label">' + g + '</div>' + rows;
     }).join('');
-    return pageQuoteHero('messages', '走过山路的人，最懂一句问候的重量。') +
+    return '<h1 class="sr">通知</h1>' +
+      pageQuoteHero('messages', '走过山路的人，最懂一句问候的重量。') +
       (window.KING_APP && window.KING_APP.noticesBlock ? window.KING_APP.noticesBlock() : '') +
       messageDiscovery() + mySummitsBlock() + notifBlock() + hiddenCommentsBlock() + followBlock() + body +
       '<div class="hint" style="text-align:center">每条通知都带一个地点上下文胶囊，点它回到现场，而不是回到某个人的主页</div>';
@@ -2707,7 +2708,7 @@
     var recs = summitRecords();
     if (!recs.length) {
       return '<div class="card record"><div class="row-between" style="margin-bottom:6px">' +
-        '<h3 style="font-size:16px;font-weight:800">我的登顶 records</h3></div>' +
+        '<h3 style="font-size:16px;font-weight:800">我的登顶记录</h3></div>' +
         '<div class="empty" style="padding:18px 0"><span class="big">⛰</span>还没有登顶记录<br>' +
         '<span style="font-size:12.5px">到山顶扫一次码，这里就记上时间</span></div></div>';
     }
@@ -2734,7 +2735,7 @@
     return '<button class="card record" style="width:100%;text-align:left;font-family:inherit" ' +
       'data-act="records-all">' +
       '<div class="row-between" style="margin-bottom:4px"><h3 style="font-size:16px;font-weight:800">' +
-      '我的登顶 records</h3>' +
+      '我的登顶记录</h3>' +
       '<span class="tiny muted">' + list.length + ' 座 · 共 ' + recs.length + ' 次 ›</span></div>' +
       '<div class="tiny muted" style="margin-bottom:8px">用时只和自己比 · 点开看每一次的年月日</div>' +
       '<div>' + rows + '</div>' +
@@ -2965,7 +2966,8 @@
 
   function meView() {
     var visitedCount = S.visited.length;
-    return pageQuoteHero('me', '每一次出发，都是把自己带回山野。') +
+    return '<h1 class="sr">我的山野记录</h1>' +
+      pageQuoteHero('me', '每一次出发，都是把自己带回山野。') +
       '<div class="profile"><div class="big">我</div>' +
       '<div><b>' + esc(H.me.name) + '</b><span>到过 ' + visitedCount + ' 个点位 · 认领 1 座山头 · 连续 ' + H.me.streak + ' 周上山</span></div></div>' +
 
@@ -3423,6 +3425,10 @@
     return '<a class="iconbtn message-entry" href="#/messages" aria-label="消息' + (unread ? '，有未读消息' : '') + '" title="消息">' +
       U.icon('chat') + (unread ? '<span class="dot" aria-hidden="true"></span>' : '') + '</a>';
   }
+  function scanEntry() {
+    return '<a class="iconbtn scan-entry" href="#/scan" aria-label="扫一扫" title="扫一扫">' +
+      U.icon('scan') + '</a>';
+  }
   var TAB_SUB = { trails: 'TRAILBOOK', places: 'PLACES', board: 'MOUNTAIN NOTES', messages: 'MESSAGES', me: 'MY HIKES' };
 
   function renderTopbar(r) {
@@ -3434,31 +3440,28 @@
       messageEntry() + '</div>';
       return;
     }
-    /* 顶栏只有一种形态：logo + 回主页 居中；二级及更深页面在左上角放返回键。
-       tab 页（name === tab）是顶层页，不给返回键，右侧保留消息入口。
-       返回目标：二级页回自己的列表页（"我的到访"回"我"）；#/admin 这种
-       父级等于自己的，回首页，别做一个点了没反应的按钮。 */
+    /* 工具栏只保留当前位置、返回与当前页真正可用的动作。 */
     var isTabPage = !!r.tab && r.name === r.tab;
     var parent = r.name.indexOf('me-') === 0 ? '#/me' : (r.parent || '#/');
     var backTo = parent === '#/' + r.name ? '#/' : parent;
     el.className = 'topbar';
-    el.innerHTML = '<div class="row-between tb-bar">' +
-      (isTabPage ? '' :
-        '<a class="back" href="' + esc(backTo) + '" aria-label="返回">' + U.icon('back') + '</a>') +
-      '<a class="brand-tap home-return" href="#/" aria-label="回主页">' +
-      /* 用裁掉透明边的 logo-mark.png：图里那 18% 的透明留白会让"文本框和 logo 一样宽"对不齐 */
-      '<img src="assets/brand/logo-mark.png" alt=""><span>回主页</span></a>' +
-      '<div class="top-actions">' + (isTabPage ? messageEntry() : '') + '</div>' +
+    var leading = isTabPage
+      ? '<a class="tb-brand" href="#/" aria-label="回主页"><img src="assets/brand/logo-mark.png" alt="">' +
+        '<span>到此一游</span></a>'
+      : '<a class="back" href="' + esc(backTo) + '" aria-label="返回">' + U.icon('back') + '</a>';
+    var title = isTabPage ? (TAB_TITLE[r.tab] || '') : (r.title || '');
+    el.innerHTML = '<div class="tb-bar">' + leading +
+      (isTabPage ? '' : '<span class="tb-title">' + esc(title) + '</span>') +
+      '<div class="top-actions">' + scanEntry() + (isTabPage ? messageEntry() : '') + '</div>' +
       '</div>';
   }
 
   function renderTabbar(tab) {
     var el = U.$('#tabbar');
-    function cls(k) { return tab === k ? ' class="on"' : ''; }
+    function cls(k) { return tab === k ? ' class="on" aria-current="page"' : ''; }
     el.innerHTML =
-      '<a href="#/places"' + cls('places') + '>' + U.icon('hill') + '占山为王</a>' +
+      '<a href="#/places" aria-label="占山为王"' + cls('places') + '>' + U.icon('hill') + '山头</a>' +
       '<a href="#/trails"' + cls('trails') + '>' + U.icon('book') + '路书</a>' +
-      '<a class="scan" href="#/scan">' + '<span class="scan-btn">' + U.icon('scan') + '</span><em>扫一扫</em></a>' +
       '<a href="#/board"' + cls('board') + '>' + U.icon('chat') + '留言版</a>' +
       '<a href="#/me"' + cls('me') + '>' + U.icon('me') + '我</a>';
   }
@@ -3475,8 +3478,8 @@
         else { r.name = 'trails'; r.tab = 'trails'; }
         break;
       case 'places': r.name = 'places'; r.tab = 'places'; break;
-      case 'peaks': r.name = parts[1] ? 'peak' : 'places'; r.id = parts[1]; r.tab = 'peaks'; r.parent = '#/peaks'; break;
-      case 'junctions': r.name = parts[1] ? 'junction' : 'places'; r.id = parts[1]; r.tab = 'junctions'; r.parent = '#/junctions'; break;
+      case 'peaks': r.name = parts[1] ? 'peak' : 'places'; r.id = parts[1]; r.tab = 'places'; r.parent = '#/peaks'; break;
+      case 'junctions': r.name = parts[1] ? 'junction' : 'places'; r.id = parts[1]; r.tab = 'places'; r.parent = '#/junctions'; break;
       case 'messages': r.name = 'messages'; r.tab = 'messages'; break;
       case 'board': r.name = 'board'; r.tab = 'board'; break;
       case 'me':
@@ -3486,7 +3489,7 @@
         } else if (parts[1]) { r.name = 'me-' + parts[1]; } else { r.name = 'me'; }
         break;
       case 'king':
-        r.parent = '#/places';
+        r.parent = '#/places'; r.tab = 'places';
         if (parts[1] === 'apply') { r.name = 'king-apply'; r.id = null; }
         else if (parts[1] === 'application') { r.name = 'king-application'; r.id = parts[2] || null; }
         else { r.name = 'king-applications'; }

@@ -142,7 +142,7 @@
     el.textContent = msg;
     el.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { el.hidden = true; }, 1900);
+    toastTimer = setTimeout(function () { el.hidden = true; }, 4200);
   }
 
   function openSheet(html, center) {
