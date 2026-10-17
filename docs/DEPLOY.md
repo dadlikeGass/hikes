@@ -20,6 +20,33 @@ docker compose -f docker-compose.prod.yml exec api alembic upgrade head   # 建�
 
 **建表和升级统一走 alembic**（2026-10-14 起）。Docker 启动不再自动执行 SQL，`docker compose up` 之后必须跑一次 `alembic upgrade head`，否则表不存在；不能把“重启 Compose”当作迁移。生产 API 挂载当前 `/app/` 页面，不使用旧静态原型替代。`021_board_collaboration.sql` 增加按板协作申请及独立审核角色；`022_maintenance_audit.sql` 增加维护操作审计；`023_comment_appeals.sql` 增加留言申诉。运营账号需由数据库管理员明确授予对应审核角色，不能由维护人或注册流程自动授予。
 
+### 统一山大王与路书封面（0015–0017，2026-10-17 起）
+
+`alembic upgrade head` 会继续执行：
+
+- `0015_king_domain`：申请目标/草稿字段、`mountain_members`（同山唯一在任负责人）、
+  山寨、移交、通知、留言置顶/隐藏理由、封面投稿；回填历史负责人/成员，冲突写入
+  `king_migration_conflicts`。
+- `0016_king_review_fields`：负责人意见、申请人确认时间、资料修改建议、成员移除申请。
+- `0017_cover_recommendations`：关联山头成员对封面的推荐记录（推荐不等于通过）。
+
+升级后先核对：
+
+```bash
+docker compose -f docker-compose.prod.yml exec db psql -U hikes -d hikes -c \
+  "SELECT version_num FROM alembic_version;
+   SELECT count(*) FROM mountain_members;
+   SELECT count(*) FROM king_migration_conflicts WHERE resolved_at IS NULL;"
+```
+
+冲突清单非空时先人工处理，不自动覆盖负责人。旧接口 `POST /api/claims`、
+`POST /api/master-applications`、旧协作申请/审核已返回 410，回滚前端也不能重新开放。
+
+封面上传依赖 `Pillow` 与 `python-multipart`（见 `server/requirements.txt`），镜像必须重建。
+生产必须给 API 配置持久化存储并设置 `ROUTE_MEDIA_ROOT`（例如对象存储挂载点）；
+本机 `server/media/` 只是开发目录，不能作为上线存储。新通过封面会替换旧公开封面，
+旧文件由接口清理；撤回/驳回不进入公开地址。
+
 ### V3 表结构（0010–0013）与保养作业（2026-10-16 起）
 
 `alembic upgrade head` 会依次带上 V3 的四个修订：

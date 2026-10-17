@@ -683,10 +683,15 @@
     var cs = [];
     H.posts.forEach(function (p) { if (p.place.id === t.id) cs.push({ who: p.who, when: p.when, text: p.text }); });
     return (
-      '<div class="hero tall">' + U.scene(t.id) +
-      '<div class="cap">' + esc(t.name) + '</div></div>' +
-      '<div class="hint" style="margin:0 2px 14px">' + t.km + ' km · ↗ ' + t.up + ' m · ' + esc(t.hours) +
-      ' · 六只脚人气 ' + t.visits7 + '</div>' +
+      /* 路书首屏先给可信信息：线路名、区域、距离、爬升。通用山景不再占一整屏，
+         真实轨迹图提前出现；没有已审核封面时自然收起，不做丑陋占位。 */
+      (t.coverUrl ? '<figure class="route-cover"><img src="' + esc(t.coverUrl) +
+        '" alt="" loading="eager"><figcaption>' + esc(t.coverByline || '') + '</figcaption></figure>' : '') +
+      '<header class="route-compact-head"><span class="eyebrow">TRAILBOOK</span>' +
+      '<h1>' + esc(t.name) + '</h1><p>' + esc(t.city || t.sub || '山野线路') +
+      ' · ' + t.km + ' km · ↗ ' + t.up + ' m' + (t.hours ? ' · 约 ' + esc(t.hours) : '') + '</p></header>' +
+      '<div class="route-cover-tools"><span>封面只展示已审核的真实照片；没有照片时不占位。</span>' +
+      '<button class="btn ghost mini" data-act="cover-open" data-id="' + esc(t.id) + '">投稿真实封面</button></div>' +
       '<p class="muted" style="font-size:13.5px">' + esc(t.desc) + '</p>' +
       (t.group === 'park' ? runCard(t) : '') +
       /* 轨迹图可以缩放：滚轮 / 双指 / 右下角按钮都行，双击复位。
@@ -1767,43 +1772,55 @@
     });
   }
 
-  function sheetBecomeMaster() {
-    /* 一条线路上的 5 个顶名字都一样（都没采到真名），逐个列出来就是刷屏。
-       按线路去重，一座山一行——认领本来就是认领整座山。 */
-    var nOf = {};
-    (H.peaks || []).forEach(function (p) {
-      var k = p.routeSlug || p.id;
-      nOf[k] = (nOf[k] || 0) + 1;
-    });
+  var newPointDraft = null;
+  function masterCandidateRows(query) {
+    /* 使用点位台账；只展示主峰会漏掉岔路与同线路的其它可认领点。 */
     var seen = {};
-    var cand = (H.peaks || []).slice().sort(function (a, b) {
-      return (b.visits30 || 0) - (a.visits30 || 0) || b.alt - a.alt;
+    var cand = (H.points || []).filter(function (p) {
+      return p.status === 'published' && (p.type === 'peak' || p.type === 'junction');
+    }).map(function (p) {
+      return { code: p.code, name: p.name, trailName: p.route_name,
+        alt: p.altitude, kind: p.type, visits30: p.visit_count || 0 };
+    }).sort(function (a, b) {
+      return (b.visits30 || 0) - (a.visits30 || 0) || (b.alt || 0) - (a.alt || 0);
     }).filter(function (p) {
-      var k = p.routeSlug || p.id;
+      var k = p.code;
       if (seen[k]) return false;
       seen[k] = 1;
       return true;
-    }).slice(0, 8);
+    }).filter(function (p) {
+      var haystack = [p.name, p.trailName, p.code].join(' ').toLowerCase();
+      return !query || haystack.indexOf(query.toLowerCase()) >= 0;
+    }).slice(0, query ? 100 : 8);
+    return cand.length ? cand.map(function (p) {
+      return '<button class="hotrow" style="width:100%;text-align:left;background:none" ' +
+        'data-act="master-claim" data-code="' + esc(p.code) + '" ' +
+        'data-name="' + esc(p.name || p.trailName || '名称待定') + '">' +
+        '<span class="no">' + (p.alt || '') + '</span>' +
+        '<span class="nm"><b>' + (p.name ? esc(p.name) : '<span class="tbd">名称待定</span>') + '</b>' +
+        '<em>' + (p.trailName ? esc(p.trailName) + ' · ' : '') +
+        (p.kind === 'junction' ? '岔路 · ' : '山头 · ') + '编号 ' + esc(p.code) +
+        ' · 海拔 ' + (p.alt || '—') + ' m' +
+        '</em></span><span class="mt" style="color:var(--coral)">申请维护</span></button>';
+    }).join('') : '<div class="empty">没有找到这个点位。试试名称、城市或编号。</div>';
+  }
+
+  function sheetBecomeMaster() {
     U.openSheet(
       '<h3>成为版主</h3>' +
       '<div class="sh-sub">选一个已经立好的山头或岔路，你来做它的维护人</div>' +
       '<div class="card" style="box-shadow:none;background:var(--blue-bg);padding:14px;margin-bottom:12px">' +
       '<div style="font-size:12.5px;color:#2B3568;line-height:1.75">' +
-      '版主干什么：<b>认领这个点位</b>，管它的留言板，核验岔路情报，' +
-      '缺东西就补——上线后会给你一个编号和二维码，你也能自己印。<br>' +
-      '不用上传 GPX，因为轨迹已经在了。</div></div>' +
-      '<div class="group-label">可以认领的点位</div>' +
-      '<div class="card tight">' + cand.map(function (p) {
-        return '<button class="hotrow" style="width:100%;text-align:left;background:none" ' +
-          'data-act="master-claim" data-code="' + esc(p.code) + '" ' +
-          'data-name="' + esc(p.name || p.trailName || '名称待定') + '">' +
-          '<span class="no">' + (p.alt || '') + '</span>' +
-          '<span class="nm"><b>' + (p.name ? esc(p.name) : '<span class="tbd">名称待定</span>') + '</b>' +
-          '<em>' + (p.city ? esc(p.city) + ' · ' : '') + '最高 ' + p.alt + ' m' +
-          (nOf[p.routeSlug || p.id] > 1 ? ' · ' + nOf[p.routeSlug || p.id] + ' 个顶' : '') +
-          ' · 本周热度 ' + (p.visits30 || 0) + '</em></span>' +
-          '<span class="mt" style="color:var(--coral)">我来维护</span></button>';
-      }).join('') + '</div>' +
+      '版主负责已有点位的留言板与路况信息。提交后进入 3 天审核，' +
+      '通过才开放管理权限；已有点位的编号和二维码保持不变。<br>' +
+      '如果山头尚未收录，请从下方新建入口填写资料和 GPX 轨迹。</div></div>' +
+      '<div class="group-label">可以申请维护的点位</div>' +
+      '<div class="field"><label for="masterSearch">搜索点位、线路或编号</label>' +
+      '<input id="masterSearch" type="search" placeholder="例如 妙峰山 / 线路名 / MFS-01"></div>' +
+      '<div class="card tight" id="masterCandidates">' + masterCandidateRows('') + '</div>' +
+      '<button class="btn ghost" style="margin-top:12px" data-act="master-new-point">' +
+      '没找到我的山？新建山头并领取二维码</button>' +
+      (newPointDraft ? '<button class="btn ghost" style="margin-top:9px" data-act="new-point-resume">返回刚才填写的新建资料</button>' : '') +
       '<button class="btn ghost" style="margin-top:12px" data-act="close">先算了</button>');
   }
 
@@ -1857,7 +1874,7 @@
      data-kind 一并带出去，点进去建的就是对应类型的点位（后端 /api/points 认 kind）。 */
   function newKingEntry(kind) {
     var jc = kind === 'junction';
-    return '<button class="kingcard' + (jc ? ' npc' : '') + '" data-act="king-new" ' +
+    return '<button class="kingcard king-hero' + (jc ? ' npc' : '') + '" data-act="king-open" ' +
       'data-kind="' + (jc ? 'junction' : 'peak') + '">' +
       '<span class="kk-ridge">' +
       '<svg viewBox="0 0 400 80" preserveAspectRatio="none" aria-hidden="true">' +
@@ -1867,24 +1884,24 @@
       '<span class="kk-tx">' +
       '<b class="kk-big">' + (jc ? '<span class="kk-line">我是 <em>NPC</em></span><span class="kk-line kk-line-big">指路人</span>' : '占山为王') + '</b>' +
       '<span class="kk-sub">' + (jc ? '站在岔路口，给后来的人指条明路'
-        : '做一个游戏人间的山大王～') + '</span>' +
-      '<span class="kk-sub">' + (jc ? '立一个岔路点位，写清往哪走、能不能过'
-        : '为你热爱的山峰做一个更大的留言板') + '</span>' +
+        : '申请成为负责人，或加入一座山的山寨') + '</span>' +
+      '<span class="kk-sub">' + (jc ? '统一申请 · 平台审核 · 通过后发编号和二维码'
+        : '申请、审核、成员协作都在这一条线里') + '</span>' +
       '</span>' +
       '<span class="kk-imp">' +
       '<span class="kk-say">' + (jc ? '前面左转上山' : '大王叫我来巡山') + '</span>' +
       '<img class="kk-mascot" src="images/mascots/' + (jc ? 'guide.png' : 'patrol.png') +
       '" alt="" width="108" height="114">' +
-      '<span class="kk-go">点卡片开始<i>›</i></span>' +
-      '</span></button>';
+      '<span class="kk-go">开始统一申请<i>›</i></span>' +
+      '</span></button>' +
+      '<div id="kingProgress" class="king-progress"></div>';
   }
 
   var npGeo = { lat: null, lng: null };
   var npGpx = null;      /* 选中的 GPX 原文 */
   var npKind = 'peak';   /* 这次建的是山头还是岔路口——决定表单和建成后的文案 */
-  function newPointSheet(kind) {
-    npGeo = { lat: null, lng: null };
-    npGpx = null;
+  function newPointSheet(kind, resume) {
+    if (!resume) { npGeo = { lat: null, lng: null }; npGpx = null; newPointDraft = null; }
     npKind = kind === 'junction' ? 'junction' : 'peak';
     var jc = npKind === 'junction';
     U.openSheet(
@@ -1920,7 +1937,15 @@
       (jc ? '成为NPC指路人<em class="btn-note">给后来的人指路</em>'
           : '成为山大王<em class="btn-note">让大家扫码打卡</em>') + '</button>' +
       '<button class="btn ghost" style="margin-top:9px" data-act="become-master">' +
-      '成为版主<em class="btn-note">建立留言板</em></button>');
+      '已有点位？申请成为版主<em class="btn-note">保留当前填写，去搜索已有点位</em></button>');
+    if (resume && newPointDraft) {
+      ['Name', 'Intro', 'Area', 'Alt', 'Nick', 'Contact'].forEach(function (key) {
+        document.getElementById('np' + key).value = newPointDraft[key] || '';
+      });
+      if (npGpx) document.getElementById('npGpxMsg').textContent = '✓ 已保留刚才选的 GPX 轨迹';
+      if (npGeo.lat !== null) document.getElementById('npGeoMsg').textContent =
+        '✓ 已保留位置 ' + npGeo.lat.toFixed(5) + ', ' + npGeo.lng.toFixed(5);
+    }
     var fi = document.getElementById('npGpx');
     fi.onchange = function () {
       var f = this.files && this.files[0];
@@ -2553,18 +2578,33 @@
   function loadBoardComments() {
     if (boardLoading || boardLoaded) return;
     boardLoading = true;
-    Promise.all((H.peaks || []).filter(function (p) { return p.pointId; }).map(function (p) {
-      return fetch('/api/points/' + encodeURIComponent(p.pointId) + '/comments?limit=50')
+    var items = (H.peaks || []).filter(function (p) { return p.pointId; });
+    if (!items.length) { boardLoaded = true; boardLoading = false; return; }
+    var cursor = 0, active = 0, failed = false;
+    function finish() {
+      if (boardLoaded && !boardLoading) return;
+      boardLoaded = true; boardError = failed; boardLoading = false;
+      if (parse().name === 'board') render();
+    }
+    function worker() {
+      if (cursor >= items.length) {
+        if (active === 0) finish();
+        return;
+      }
+      var p = items[cursor++];
+      active++;
+      fetch('/api/points/' + encodeURIComponent(p.pointId) + '/comments?limit=50')
         .then(function (r) { if (!r.ok) throw new Error('留言加载失败'); return r.json(); })
         .then(function (d) { p.boardComments = (d.items || []).map(function (c) {
           return { id:c.id, replyCount:c.reply_count || 0, bad:c.bad_count, who:c.nickname, text:c.text, when:new Date(c.created_at).toLocaleString(), at:c.created_at, claps:c.like_count, real:true };
-        }); });
-    })).then(function () { boardLoaded = true; boardError = false; })
-      .catch(function () { boardError = true; boardLoaded = true; })
-      .then(function () { boardLoading = false; if (parse().name === 'board') render(); });
+        }); })
+        .catch(function () { failed = true; })
+        .then(function () { active--; worker(); });
+    }
+    /* 最多 8 个并发：166 个山头同时开请求会挤占「我管理的留言版」等更重要的请求。 */
+    for (var w = 0; w < 8; w++) worker();
   }
   function boardView() {
-    loadBoardComments();
     var entries = [];
     (H.peaks || []).forEach(function (p) {
       var route = trail(p.trailId);
@@ -2585,6 +2625,7 @@
     return '<div class="board-page"><header class="board-intro"><span class="eyebrow">MOUNTAIN NOTES</span>' +
       '<h1>山友留言版</h1><p>每句话都来自一座山。看看大家在山上遇见了什么。</p>' +
       '<a class="board-write" href="#/scan">扫码留言 <b>＋</b></a></header>' +
+      (window.KING_APP && window.KING_APP.boardBlock ? window.KING_APP.boardBlock() : '') +
       '<div class="board-mountains"><label>搜索山头<input id="board-search" type="search" placeholder="输入山头名称" value="' + esc(boardQuery) + '"></label><label>选择山头<select id="board-peak-filter"><option value="">全部山头</option>' + (H.peaks || []).map(function (p) { return '<option value="' + esc(p.id) + '"' + (p.id === boardPeakFilter ? ' selected' : '') + '>' + esc(p.name || '名称待定') + '</option>'; }).join('') + '</select></label></div>' +
       '<div class="board-controls"><div class="board-follow" role="group" aria-label="留言范围">' +
       filters.map(function (f) { return '<button class="' + (boardFollow === f[0] ? 'on' : '') +
@@ -2653,6 +2694,7 @@
       return '<div class="group-label">' + g + '</div>' + rows;
     }).join('');
     return pageQuoteHero('messages', '走过山路的人，最懂一句问候的重量。') +
+      (window.KING_APP && window.KING_APP.noticesBlock ? window.KING_APP.noticesBlock() : '') +
       messageDiscovery() + mySummitsBlock() + notifBlock() + hiddenCommentsBlock() + followBlock() + body +
       '<div class="hint" style="text-align:center">每条通知都带一个地点上下文胶囊，点它回到现场，而不是回到某个人的主页</div>';
   }
@@ -2934,7 +2976,7 @@
       /* 我的山头 = 拿二维码的地方，不是展示位 */
       rowlink('#/me/peak', '⛰', '我的山头',
         '成为山大王 / NPC指路人拿二维码 · 成为版主管留言板') +
-      rowlink('#/me/applications', '★', '我的维护申请', '山大王 / 版主的申请进度与审核说明') +
+      rowlink('#/king/applications', '★', '我的统一申请', '山大王、加入山寨的进度与审核说明') +
       rowlink('#/me/letters', '✉', '山间信箱', '写给未来的自己，满足条件后打开') +
       '<button class="rowlink" style="width:100%;text-align:left" data-act="leaderboard-settings">' +
       '<span class="em">⏱</span><div class="tx"><b>上榜设置</b><span>选择是否公开我的有效登顶用时</span></div><span class="ar">›</span></button>' +
@@ -3049,15 +3091,12 @@
     var k = H.king;
     return '<div class="card" style="padding:16px">' +
       '<h3 style="font-size:17px;font-weight:800;margin-bottom:6px">我的山头</h3>' +
-      '<div class="note" style="line-height:1.7">三条路，选一条走。' +
-      '开一座山、立一个岔路点位，都当场发编号和二维码；' +
-      '或者不发码，接手一个已有山头的留言板。</div>' +
-      '<button class="btn coral" style="margin-top:12px" data-act="king-new">' +
-      '成为山大王<em class="btn-note">自己开一座山 · 拿编号和二维码 · 让大家扫码打卡</em></button>' +
-      '<button class="btn ghost" style="margin-top:9px" data-act="king-new" data-kind="junction">' +
-      '我是NPC指路人<em class="btn-note">立在岔路口 · 给路过的人指条明路 · 一样发编号和二维码</em></button>' +
-      '<button class="btn ghost" style="margin-top:9px" data-act="become-master">' +
-      '成为版主<em class="btn-note">不发二维码 · 接管一个已有山头的留言板</em></button>' +
+      '<div class="note" style="line-height:1.7">申请成为山头负责人，或加入一座山的山寨。' +
+      '平台审核通过后才授予权限；新山头通过时一次性创建点位、短链和二维码。</div>' +
+      '<button class="btn coral" style="margin-top:12px" data-act="king-open">' +
+      '统一申请<em class="btn-note">搜索已有山头，或申请一个新山头</em></button>' +
+      '<a class="btn ghost" style="margin-top:9px" href="#/king/applications">' +
+      '我的申请与草稿<em class="btn-note">进度、补充资料和撤回都在这里</em></a>' +
       '</div>' +
       (k ? '<div class="card" style="margin-top:12px">' +
         '<div class="row-between"><h3 style="font-size:15px;font-weight:800">我的等级</h3>' +
@@ -3160,6 +3199,8 @@
         '<div class="hint">成为维护人后的期待：' + esc(a.expectations) + '</div>' +
         (a.reviewNote ? '<div class="hint" style="color:var(--ink2)"><b>审核说明：</b>' +
           esc(a.reviewNote) + '</div>' : '') +
+        (a.status === 'approved' ? '<a class="btn coral mini" style="margin-top:10px" href="#/admin/p/' +
+          encodeURIComponent(a.pointCode) + '">进入这座山的留言板管理</a>' : '') +
         (a.status === 'pending' ? '<button class="btn ghost" style="width:auto;padding:6px 12px" ' +
           'data-act="application-withdraw" data-id="' + a.id + '">撤回申请</button>' : '') +
         '</div>';
@@ -3423,7 +3464,7 @@
 
   /* ==================== 路由 ==================== */
   function parse() {
-    var h = decodeURIComponent((location.hash || '#/').replace(/^#/, ''));
+    var h = decodeURIComponent((location.hash || '#/').replace(/^#/, '')).split('?')[0];
     var parts = h.split('/').filter(Boolean);
     var r = { name: 'home', parts: parts };
     if (!parts.length) { r.name = 'home'; r.tab = null; return r; }
@@ -3439,7 +3480,15 @@
       case 'board': r.name = 'board'; r.tab = 'board'; break;
       case 'me':
         r.tab = 'me'; r.parent = '#/me';
-        if (parts[1]) { r.name = 'me-' + parts[1]; } else { r.name = 'me'; }
+        if (parts[1] === 'managed') {
+          r.name = 'me-managed'; r.id = parts[2] || null;
+        } else if (parts[1]) { r.name = 'me-' + parts[1]; } else { r.name = 'me'; }
+        break;
+      case 'king':
+        r.parent = '#/places';
+        if (parts[1] === 'apply') { r.name = 'king-apply'; r.id = null; }
+        else if (parts[1] === 'application') { r.name = 'king-application'; r.id = parts[2] || null; }
+        else { r.name = 'king-applications'; }
         break;
       case 'scan': r.name = 'scan'; break;
       case 'arrive': r.name = 'arrive'; r.id = parts[1] || ''; r.parent = '#/scan'; break;
@@ -3457,7 +3506,9 @@
     scan: '扫一扫', arrive: '到达页', trail: '线路详情', peak: '山头', junction: '岔路',
     'me-visited': '我去过的地方', 'me-want': '我想去的地方', 'me-peak': '我的山头',
     'me-records': '我的纪录', 'me-applications': '我的维护申请', 'me-letters': '山间信箱',
-    'me-activity': '发起活动', messages: '通知',
+    'me-activity': '发起活动', 'me-managed': '我管理的留言版',
+    'king-apply': '统一申请', 'king-applications': '我的申请', 'king-application': '申请进度',
+    messages: '通知',
     admin: '维护台', 'admin-p': '管理点位'
   };
 
@@ -3513,11 +3564,20 @@
       case 'me-applications': html = meApplicationsView(); break;
       case 'me-letters': html = meLettersView(); break;
       case 'me-activity': html = meActivityView(); break;
+      case 'king-apply':
+      case 'king-applications':
+      case 'king-application':
+      case 'me-managed':
+        html = (window.KING_APP && window.KING_APP.view) ? window.KING_APP.view(r) : '<div class="empty">管理模块加载中…</div>';
+        break;
       case 'scan': html = scanView(); break;
       case 'arrive': html = arrivalView(r.id); break;
       default: html = (window.EXTRA_VIEWS && window.EXTRA_VIEWS[r.name]) ? window.EXTRA_VIEWS[r.name](r) : notFound();
     }
     view.innerHTML = html;
+    if (window.KING_APP && window.KING_APP.mount) window.KING_APP.mount(r);
+    /* 留言瀑布流放到管理卡之后启动，先让获批用户看到自己的管理身份。 */
+    if (r.name === 'board') setTimeout(loadBoardComments, 180);
     /* 每次渲染先把上一页的轮换定时器停掉，再按当前页启动（顺序不能反，否则刚启动就被清） */
     stopHomeAnim();
     stopListFeatured();
@@ -3599,6 +3659,11 @@
     if (e.target.matches('[data-act="board-sort"]')) { boardSort = e.target.value; render(); }
   });
   document.addEventListener('input', function (e) {
+    if (e.target.id === 'masterSearch') {
+      var list = document.getElementById('masterCandidates');
+      if (list) list.innerHTML = masterCandidateRows(e.target.value.trim());
+      return;
+    }
     if (e.target.id !== 'arrivalPrivate' && e.target.id !== 'arrivalPublic') return;
     var save = document.querySelector('[data-act="arrival-draft-save"]');
     if (!save) return;
@@ -3615,6 +3680,18 @@
     var id = t.getAttribute('data-id');
     var type = t.getAttribute('data-type');
     var val = t.getAttribute('data-val');
+    /* 统一申请入口：旧的自建山头 / 认领 / 协作入口全部收口到这一页。
+       它们不再在浏览器里当场创建点位或授予身份。 */
+    if (act === 'king-open' || act === 'king-new' || act === 'become-master' ||
+        act === 'master-claim' || act === 'collaboration-open') {
+      var targetCode = t.getAttribute('data-code') || '';
+      var targetKind = t.getAttribute('data-kind') || 'peak';
+      location.hash = '#/king/apply' + (targetCode ? '?target=' + encodeURIComponent(targetCode) :
+        '?type=' + targetKind);
+      return;
+    }
+    if (window.KING_APP && window.KING_APP.handleAction &&
+        window.KING_APP.handleAction(act, t, { id: id, type: type, val: val })) return;
     if (act === 'retry-boot') { location.reload(); return; }
     if (act === 'home-retry') { homeData = null; loadHomeData(); return; }
     if (act === 'receipts-retry') { myReceipts = null; myReceiptsError = false; loadMyReceipts(); return; }
@@ -4084,7 +4161,23 @@
       return;
     }
     /* 成为版主：不新建点位，去认领一个已经立好的山头 / 岔路，把它的留言板管起来 */
-    if (act === 'become-master') { sheetBecomeMaster(); return; }
+    if (act === 'become-master') {
+      if (document.getElementById('npName')) {
+        newPointDraft = {};
+        ['Name', 'Intro', 'Area', 'Alt', 'Nick', 'Contact'].forEach(function (key) {
+          newPointDraft[key] = document.getElementById('np' + key).value;
+        });
+        newPointDraft.kind = npKind;
+      }
+      sheetBecomeMaster(); return;
+    }
+    if (act === 'master-new-point') {
+      newPointSheet(newPointDraft ? newPointDraft.kind : 'peak', !!newPointDraft); return;
+    }
+    if (act === 'new-point-resume') { newPointSheet(newPointDraft.kind, true); return; }
+    if (act === 'master-application-status') {
+      U.closeSheet(); U.go('#/me/applications'); render(); return;
+    }
     if (act === 'share') { U.toast('已生成分享图（演示）'); U.closeSheet(); render(); return; }
     if (act === 'doc') { sheetDoc(); return; }
     if (act === 'intel-up') {
@@ -4205,6 +4298,57 @@
     }
     if (act === 'board-follow') { boardFollow = val || 'all'; render(); return; }
     if (act === 'board-sort') return;
+    if (act === 'cover-open') {
+      var coverSlug = t.getAttribute('data-id');
+      U.openSheet('<h3>投稿真实封面</h3><div class="sh-sub">通过审核后才会显示在路书顶部；不会直接替换官方封面。</div>' +
+        '<div class="field"><label>照片</label><input id="coverFile" type="file" accept="image/jpeg,image/png,image/webp"></div>' +
+        '<div class="field"><label>拍摄者署名</label><input id="coverBy" maxlength="80" value="' + esc(H.me.name) + '"></div>' +
+        '<div class="field"><label>拍摄时间 · 选填</label><input id="coverShot" type="date"></div>' +
+        '<div class="field"><label>说明 · 选填</label><input id="coverCaption" maxlength="300" placeholder="例如：从南坡林道回望主峰"></div>' +
+        '<label class="hint" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px">' +
+        '<input id="coverLicense" type="checkbox" style="width:auto;margin-top:3px">' +
+        '<span>我确认拥有这张照片的使用权，同意平台在路书页展示并保留署名。</span></label>' +
+        '<div class="hint" id="coverError" style="color:#a13b30"></div>' +
+        '<button class="btn coral" data-act="cover-submit" data-id="' + esc(coverSlug) + '">提交审核</button>' +
+        '<button class="btn ghost" style="margin-top:9px" data-act="close">取消</button>');
+      return;
+    }
+    if (act === 'cover-submit') {
+      var coverSlug2 = t.getAttribute('data-id');
+      var coverInput = document.getElementById('coverFile');
+      var coverErr = document.getElementById('coverError');
+      var coverFile = coverInput && coverInput.files && coverInput.files[0];
+      var coverLicense = document.getElementById('coverLicense');
+      if (!coverFile) { if (coverErr) coverErr.textContent = '先选择一张 JPEG / PNG / WebP 照片'; return; }
+      if (!coverLicense || !coverLicense.checked) { if (coverErr) coverErr.textContent = '请确认照片使用权'; return; }
+      var fd = new FormData();
+      fd.append('file', coverFile);
+      fd.append('photographer', (document.getElementById('coverBy') || {}).value || '');
+      fd.append('shotAt', (document.getElementById('coverShot') || {}).value || '');
+      fd.append('caption', (document.getElementById('coverCaption') || {}).value || '');
+      fd.append('licenseConfirmed', 'true');
+      t.disabled = true;
+      apiToken().then(function (tk) {
+        if (!tk) throw new Error('请先注册或登录');
+        return fetch('/api/routes/' + encodeURIComponent(coverSlug2) + '/cover-submissions', {
+          method: 'POST', headers: { Authorization: 'Bearer ' + tk }, body: fd
+        }).then(function (res) {
+          return res.json().then(function (data) {
+            if (!res.ok) {
+              var info = data && data.detail && data.detail.error;
+              throw new Error(info && info.message || '投稿失败');
+            }
+            return data;
+          });
+        });
+      }).then(function () {
+        U.closeSheet(); U.toast('封面投稿已提交，等待平台审核');
+      }).catch(function (e) {
+        if (coverErr) coverErr.textContent = e.message;
+        t.disabled = false;
+      });
+      return;
+    }
     /* 成为版主：不发编号、不发二维码，只接管这个山头的线上留言板 */
     if (act === 'master-claim') {
       var mcCode = t.getAttribute('data-code'), mcName = t.getAttribute('data-name');
@@ -4234,8 +4378,6 @@
         '<div class="field"><label>成为维护人之后的期待 · 至少 10 字</label>' +
         '<textarea id="msExpect" maxlength="1000" placeholder="例如：把岔路口的指路牌补齐，冬天封路时第一时间标注。" style="min-height:72px"></textarea>' +
         '<div class="hint" id="msExpectHint">0 / 10 字</div></div>' +
-        '<div class="field"><label>联系方式 · 选填（微信号，用于寄物料）</label>' +
-        '<input id="msContact" type="text" placeholder="例如 wx: agan"></div>' +
         '<div class="hint" id="msApplyError" style="color:#c62828"></div>' +
         '<button class="btn coral" data-act="master-submit" data-code="' + esc(mcCode) +
         '" data-name="' + esc(mcName) + '">提交申请（3 天审核期）</button>' +
@@ -4306,15 +4448,15 @@
       var apCode = t.getAttribute('data-code'), apName = t.getAttribute('data-name') || apCode;
       var reason = ((document.getElementById('msReason') || {}).value || '').trim();
       var expect = ((document.getElementById('msExpect') || {}).value || '').trim();
-      var contact = ((document.getElementById('msContact') || {}).value || '').trim() || null;
       var errorEl = document.getElementById('msApplyError');
       if (reason.length < 20) { errorEl.textContent = '申请理由至少 20 个字（现在 ' + reason.length + ' 个）'; return; }
       if (expect.length < 10) { errorEl.textContent = '成为维护人后的期待至少 10 个字'; return; }
       t.disabled = true; t.textContent = '提交中…';
       window.API.ja('/api/master-applications', { method: 'POST', body: JSON.stringify({
         code: apCode, kind: masterKind, reason: reason, expectations: expect,
-        visitsPerMonth: masterVisits, contact: contact
+        visitsPerMonth: masterVisits
       }) }).then(function (d) {
+        myApplications = null;
         U.openSheet('<h3>申请已提交</h3><div class="sh-sub">' + esc(apName) + ' · ' +
           (masterKind === 'clan' ? '山寨（多人协作）' : '山大王（单人独占）') + '</div>' +
           '<div class="card" style="box-shadow:none;background:var(--blue-bg);padding:14px">' +
@@ -4323,7 +4465,7 @@
           (masterKind === 'solo' ? '<br>同一个人只能有一份待审申请；同一座山通过一位山大王后，其它申请会自动收到说明。'
             : '<br>山寨允许多人一起维护，通过后协作入口保持开放。') +
           '<br>3 天内没人处理会自动失效，届时可以重新申请。</div></div>' +
-          '<button class="btn ghost" data-act="close">好</button>');
+          '<button class="btn coral" data-act="master-application-status">查看我的申请进度</button>');
       }).catch(function (e) {
         if (errorEl && errorEl.isConnected) errorEl.textContent = e.message || '提交失败，请稍后重试';
       }).then(function () { t.disabled = false; t.textContent = '提交申请（3 天审核期）'; });

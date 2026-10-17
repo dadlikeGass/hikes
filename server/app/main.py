@@ -39,6 +39,8 @@ from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from app.checkins import record_visit
 from app.efforts import reconcile_efforts
 from app.letters import public_letter, letter_is_unlocked
+from app.king_routes import build_king_router
+from app.king_service import ServiceError
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://hikes:hikes@db:5432/hikes")
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-change-me")
@@ -130,6 +132,19 @@ def require_content_reviewer(uid: int = Depends(require_user)) -> int:
     if not q1("SELECT 1 AS ok FROM system_roles WHERE user_id = :u AND role = 'content_reviewer'", u=uid):
         err(403, "CONTENT_REVIEW_FORBIDDEN", "只有平台内容审核员可以复核留言申诉")
     return uid
+
+
+# 统一山大王申请 / 山寨 / 留言版管理。路由模块不反向导入 main，
+# 引擎与鉴权依赖在这里注入，避免循环依赖。
+app.include_router(build_king_router(
+    engine, err, require_user, require_collaboration_reviewer))
+
+
+@app.exception_handler(ServiceError)
+async def _service_error_handler(request: Request, exc: ServiceError):
+    """业务状态机错误统一成既有 error.code / error.message 结构。"""
+    return JSONResponse(status_code=exc.status, content={
+        "detail": {"error": {"code": exc.code, "message": exc.message}}})
 
 
 ERR_401 = {401: {"description": "未登录 / token 无效"}}
@@ -258,6 +273,9 @@ class RouteDetail(BaseModel):
     checkpoints: list[CheckpointOut] = Field(
         default_factory=list, description="赛道打卡点；没有组委会轨迹的线路是空的")
     can_maintain_route: bool = False
+    coverUrl: str | None = Field(default=None, description="审核通过的真实封面；没有则为空")
+    coverThumbnailUrl: str | None = None
+    coverByline: str | None = Field(default=None, description="拍摄者署名")
 
 
 class CommentOut(BaseModel):
@@ -269,6 +287,8 @@ class CommentOut(BaseModel):
     like_count: int
     bad_count: int
     status: Literal["normal", "flagged", "hidden"]
+    pinned: bool = False
+    hidden_reason: str | None = None
     created_at: datetime
 
 
@@ -766,6 +786,10 @@ def get_route(slug: str, authorization: str | None = Header(default=None)):
     cps = q("""SELECT id, no, name, km, altitude, lat, lng, off_track_m,
                       supply_type, notes, source
                FROM route_checkpoints WHERE route_id = :id ORDER BY km, no""", id=r["id"])
+    cover = q1("""SELECT storage_key, thumbnail_key, photographer, caption
+                    FROM route_cover_submissions
+                   WHERE route_id=:id AND status='approved'
+                   ORDER BY reviewed_at DESC LIMIT 1""", id=r["id"])
     d = dict(r)
     coordinates = []
     if d.get("route_geojson"):
@@ -800,6 +824,9 @@ def get_route(slug: str, authorization: str | None = Header(default=None)):
     return RouteDetail(**{k: d[k] for k in keys},
                        elevation_m=elevation_m,
                        can_maintain_route=_route_board_maintainer(r["id"], uid),
+                       coverUrl=("/media/" + cover["storage_key"]) if cover else None,
+                       coverThumbnailUrl=("/media/" + cover["thumbnail_key"]) if cover else None,
+                       coverByline=(cover["photographer"] if cover else None),
                        coordinates=coordinates, terrain_url=terrain_url,
                        terrain_bounds=terrain_bounds, terrain_contour=terrain_contour,
                        segments=[dict(s) for s in segs],
@@ -813,14 +840,9 @@ def _route_board_maintainer(route_id: int, uid: int) -> bool:
     return bool(q1("""SELECT 1 AS ok
         FROM route_peaks rp
         JOIN mountains m ON m.id = rp.mountain_id
-        LEFT JOIN boards b ON b.mountain_id = m.id AND b.board_type = 'summit'
-        LEFT JOIN points pt ON pt.mountain_id = m.id AND pt.type = 'peak'
-        LEFT JOIN claims cl ON cl.code = pt.code AND cl.status = 'active'
+        JOIN mountain_members mm ON mm.mountain_id = m.id
         WHERE rp.route_id = :route_id
-          AND (pt.maintainer_id = :uid OR cl.user_id = :uid
-               OR EXISTS (SELECT 1 FROM board_collaboration_applications ca
-                          WHERE ca.board_id = b.id
-                            AND ca.applicant_id = :uid AND ca.status = 'approved'))
+          AND mm.user_id = :uid AND mm.status = 'active'
         LIMIT 1""", route_id=route_id, uid=uid))
 
 
@@ -1260,6 +1282,9 @@ def _master_application_row(conn, application_id: int):
                      409: {"description": "已经有人维护 / 你已有一份待审申请"}},
           summary="申请成为山大王或版主：写理由与频次，进 3 天审核期")
 def create_master_application(body: MasterApplicationIn, uid: int = Depends(require_user)):
+    err(410, "UPGRADE_REQUIRED",
+        "申请入口已升级：请在「占山为王 → 统一申请」填写申请原因、经营计划与目标山头。"
+        "旧客户端不会再直接创建或授予身份。")
     reason = body.reason.strip()
     expectations = body.expectations.strip()
     if len(reason) < 20:
@@ -1366,6 +1391,8 @@ class MasterApplicationReview(BaseModel):
           summary="审核维护申请：通过则授予山大王或协作者身份")
 def review_master_application(application_id: int, body: MasterApplicationReview,
                               uid: int = Depends(require_collaboration_reviewer)):
+    err(410, "UPGRADE_REQUIRED",
+        "旧审核入口已停用：请在平台审核台使用统一申请审核，旧接口不会再授予负责人或成员身份。")
     note = body.note.strip()
     with engine.begin() as conn:
         _expire_master_applications(conn)
@@ -2009,20 +2036,13 @@ def my_summits(uid: int = Depends(require_user)):
         SELECT pt.id AS point_id, pt.code, pt.name, pt.altitude, pt.level, pt.mountain_id,
                pt.type AS point_type, b.id AS board_id,
                coalesce(pt.city, r.city) AS city, r.slug AS route_slug,
-               (pt.maintainer_id = :uid) AS is_maint,
-               EXISTS (SELECT 1 FROM board_collaboration_applications ca
-                 WHERE ca.board_id = b.id AND ca.applicant_id = :uid
-                   AND ca.status = 'approved') AS is_collab
+               (mm.role = 'owner') AS is_maint,
+               (mm.role = 'member') AS is_collab
           FROM points pt
+          JOIN mountain_members mm ON mm.mountain_id = pt.mountain_id
           LEFT JOIN routes r ON r.id = pt.route_id
           LEFT JOIN boards b ON b.mountain_id = pt.mountain_id AND b.board_type = 'summit'
-         WHERE EXISTS (SELECT 1 FROM points peer LEFT JOIN claims cl
-                 ON cl.code = peer.code AND cl.status = 'active' AND cl.user_id = :uid
-                 WHERE (peer.id = pt.id OR (pt.type = 'peak' AND peer.mountain_id = pt.mountain_id))
-                   AND (peer.maintainer_id = :uid OR cl.id IS NOT NULL))
-            OR EXISTS (SELECT 1 FROM board_collaboration_applications ca
-                WHERE ca.board_id = b.id AND ca.applicant_id = :uid
-                  AND ca.status = 'approved')
+         WHERE mm.user_id = :uid AND mm.status = 'active'
          ORDER BY pt.id""", uid=uid)
     groups: dict[int, list] = {}
     for row in rows:
@@ -2176,9 +2196,10 @@ def hide_comment(comment_id: int, body: HideCommentIn | None = None,
     if row["status"] == "hidden":
         return
     with engine.begin() as conn:
-        changed = conn.execute(text("""UPDATE comments SET status = 'hidden'
+        changed = conn.execute(text("""UPDATE comments SET status = 'hidden',
+              hidden_reason = coalesce(:reason, hidden_reason)
             WHERE id = :id AND status <> 'hidden' RETURNING id"""),
-            {"id": comment_id}).first()
+            {"id": comment_id, "reason": reason}).first()
         if changed:
             _audit(conn, uid, "comment.hide", "comment", comment_id,
                    {"status": row["status"]}, {"status": "hidden"},
@@ -2593,6 +2614,19 @@ def delete_account(body: DeleteAccountIn, uid: int = Depends(require_user)):
         removed["appeals"] = run("DELETE FROM comment_appeals WHERE author_id = :u", u=uid)
         removed["collaborationApplications"] = run(
             "DELETE FROM board_collaboration_applications WHERE applicant_id = :u", u=uid)
+        removed["transfers"] = run(
+            "DELETE FROM transfer_applications WHERE from_user_id = :u OR to_user_id = :u",
+            u=uid)
+        removed["memberRemovals"] = run(
+            "DELETE FROM member_removal_applications "
+            "WHERE member_user_id = :u OR requested_by = :u", u=uid)
+        removed["createdClans"] = run("DELETE FROM clans WHERE created_by = :u", u=uid)
+        removed["coverSubmissions"] = run(
+            "DELETE FROM route_cover_submissions WHERE submitter_id = :u", u=uid)
+        removed["kingNotifications"] = run(
+            "DELETE FROM king_notifications WHERE user_id = :u", u=uid)
+        removed["pointSuggestions"] = run(
+            "DELETE FROM point_edit_suggestions WHERE author_id = :u", u=uid)
         removed["claims"] = run("DELETE FROM claims WHERE user_id = :u", u=uid)
         removed["roles"] = run("DELETE FROM system_roles WHERE user_id = :u", u=uid)
         removed["letters"] = run("DELETE FROM letters WHERE user_id = :u", u=uid)
@@ -2703,18 +2737,20 @@ def _is_maintainer_of(point_row, uid: int | None) -> bool:
     if uid is None:
         return False
     point_id = point_row.get("id") or point_row.get("point_id")
-    ids = _board_point_ids(point_id) if point_id else []
-    return bool(q1("""SELECT 1 AS ok FROM points pt LEFT JOIN claims cl
-        ON cl.code = pt.code AND cl.status = 'active'
-        WHERE pt.id = ANY(:ids) AND (pt.maintainer_id = :uid OR cl.user_id = :uid)
-        LIMIT 1""", ids=ids, uid=uid))
+    if not point_id:
+        return False
+    return bool(q1("""SELECT 1 AS ok
+        FROM points pt JOIN mountain_members mm ON mm.mountain_id = pt.mountain_id
+        WHERE pt.id = :pid AND mm.user_id = :uid
+          AND mm.status = 'active' AND mm.role = 'owner'
+        LIMIT 1""", pid=point_id, uid=uid))
 
 
 def _is_board_collaborator(point_id: int, uid: int) -> bool:
-    return bool(q1("""SELECT 1 AS ok FROM board_collaboration_applications ca
-        JOIN boards b ON b.id = ca.board_id AND b.board_type = 'summit'
-        JOIN points pt ON pt.mountain_id = b.mountain_id AND pt.type = 'peak'
-        WHERE pt.id = :pid AND ca.applicant_id = :uid AND ca.status = 'approved'
+    return bool(q1("""SELECT 1 AS ok
+        FROM points pt JOIN mountain_members mm ON mm.mountain_id = pt.mountain_id
+        WHERE pt.id = :pid AND mm.user_id = :uid
+          AND mm.status = 'active' AND mm.role = 'member'
         LIMIT 1""", pid=point_id, uid=uid))
 
 
@@ -2758,6 +2794,8 @@ def my_collaboration_applications(uid: int = Depends(require_user)):
           tags=["维护协作"], responses={**ERR_401, **ERR_404})
 def apply_board_collaboration(board_id: int, body: CollaborationApplyIn,
                               uid: int = Depends(require_user)):
+    err(410, "UPGRADE_REQUIRED",
+        "协作申请入口已并入统一山头申请：请从「占山为王 → 申请成为负责人 / 加入山寨」提交。")
     message = body.message.strip()
     if len(message) < 8:
         err(422, "APPLICATION_MESSAGE_TOO_SHORT", "请至少写 8 个字说明维护计划")
@@ -2809,6 +2847,8 @@ def list_collaboration_applications(status: Literal["pending", "approved", "reje
           response_model=CollaborationOut, tags=["维护协作"])
 def review_collaboration_application(application_id: int, body: CollaborationReviewIn,
                                      uid: int = Depends(require_collaboration_reviewer)):
+    err(410, "UPGRADE_REQUIRED",
+        "旧协作审核入口已停用：新的成员身份只由统一申请审核授予。")
     row = q1("SELECT * FROM board_collaboration_applications WHERE id = :id", id=application_id)
     if not row:
         err(404, "APPLICATION_NOT_FOUND", "协作申请不存在")
@@ -3591,20 +3631,20 @@ class VoteIn(BaseModel):
     value: Literal["like", "bad"] | None = Field(default=None, description="null 表示取消投票")
 
 
-_COMMENT_SQL = """SELECT (SELECT count(*) FROM comment_replies cr WHERE cr.comment_id=c.id) AS reply_count, c.id, c.text, c.like_count, c.bad_count, c.status, c.created_at,
+_COMMENT_SQL = """SELECT (SELECT count(*) FROM comment_replies cr WHERE cr.comment_id=c.id) AS reply_count, c.id, c.text, c.like_count, c.bad_count, c.status, c.pinned, c.hidden_reason, c.created_at,
                          u.nickname, EXISTS (
                            SELECT 1 FROM points responsible
-                           LEFT JOIN claims cl ON cl.code = responsible.code
-                             AND cl.status = 'active'
+                           JOIN mountain_members mm
+                             ON mm.mountain_id = responsible.mountain_id
                            WHERE responsible.id = ANY(:ids)
-                             AND (responsible.maintainer_id = c.user_id OR cl.user_id = c.user_id)
+                             AND mm.user_id = c.user_id AND mm.status = 'active'
                          ) AS is_maintainer
                   FROM comments c
                   JOIN users  u  ON u.id = c.user_id
                   WHERE c.point_id = ANY(:ids) AND c.status <> 'hidden'"""
 
 # 排序固定：维护人置顶 → 净分(赞-踩) → 时间。前端不要再排。
-_COMMENT_ORDER = """ ORDER BY is_maintainer DESC, (c.like_count - c.bad_count) DESC,
+_COMMENT_ORDER = """ ORDER BY c.pinned DESC, is_maintainer DESC, (c.like_count - c.bad_count) DESC,
                               c.created_at DESC, c.id DESC """
 
 
@@ -3613,12 +3653,14 @@ def _comment_by_id(cid: int) -> "CommentOut":
     if not point:
         err(404, "COMMENT_NOT_FOUND", "留言不存在")
     point_ids = _board_point_ids(point["point_id"]) if point["point_id"] else []
-    row = q1("""SELECT c.id, c.text, c.like_count, c.bad_count, c.status, c.created_at,
+    row = q1("""SELECT c.id, c.text, c.like_count, c.bad_count, c.status, c.pinned,
+                       c.hidden_reason, c.created_at,
                        u.nickname, EXISTS (
-                         SELECT 1 FROM points responsible LEFT JOIN claims cl
-                           ON cl.code = responsible.code AND cl.status = 'active'
+                         SELECT 1 FROM points responsible
+                         JOIN mountain_members mm
+                           ON mm.mountain_id = responsible.mountain_id
                          WHERE responsible.id = ANY(:ids)
-                           AND (responsible.maintainer_id = c.user_id OR cl.user_id = c.user_id)
+                           AND mm.user_id = c.user_id AND mm.status = 'active'
                        ) AS is_maintainer
                 FROM comments c
                 JOIN users  u  ON u.id = c.user_id
@@ -4043,6 +4085,9 @@ def _ensure_point_mountain(conn, point_id: int, code: str, name: str | None,
           responses={**ERR_401, 409: {"description": "这个点位已经有人认领了"}},
           summary="申请成为山头主：填信息 → 立即拿到编号与二维码")
 def create_claim(body: ClaimIn, uid: int = Depends(require_user)):
+    err(410, "UPGRADE_REQUIRED",
+        "自建山头不再当场发布：请走「占山为王 → 统一申请」，审核通过后才会创建点位、"
+        "短链与二维码并获得负责人身份。")
     if q1("SELECT 1 AS x FROM claims WHERE target_key = :k", k=body.target_key):
         err(409, "ALREADY_CLAIMED", "这个点位已经有人认领了")
     lv, _nx, used, _p, _k = _king_level(uid)

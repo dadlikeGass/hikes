@@ -33,6 +33,7 @@ services:
       TRUST_PROXY_HEADERS: "1"
       WX_APPID: ${WX_APPID}
       WX_SECRET: ${WX_SECRET}
+      ROUTE_MEDIA_ROOT: /srv/media/covers
       # 写接口限流阈值（每小时）。留空用代码默认值，口径见 docs/API.md「写接口限流」。
       RATE_LIMIT_COMMENT_PER_IDENTITY_HOUR: ${RATE_LIMIT_COMMENT_PER_IDENTITY_HOUR:-}
       RATE_LIMIT_COMMENT_PER_IP_HOUR: ${RATE_LIMIT_COMMENT_PER_IP_HOUR:-}
@@ -46,6 +47,7 @@ services:
       - ../app/css:/srv/theme:ro
       - ../app:/srv/webapp:ro
       - ../pipeline/out:/srv/routes-data:ro
+      - covermedia:/srv/media
     depends_on:
       db:
         condition: service_healthy
@@ -101,3 +103,4 @@ services:
 
 volumes:
   dbdata:
+  covermedia:

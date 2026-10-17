@@ -12,3 +12,5 @@ venv/
 .vscode/
 *.tmp
 .local-backups/
+server/media/
+server/media-test/

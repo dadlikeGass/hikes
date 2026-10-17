@@ -105,7 +105,7 @@
     /* 取全量：库里 166 个山头（96 条线路主峰 + 69 座名山 + 用户点位），
        limit=100 会把香港、江苏、上海那批整段截掉，地区筛选的计数也会跟着错 */
     j('/api/summits?limit=300'),
-    j('/api/points?limit=300'),
+    j('/api/points?limit=2000'),
     /* 热门登顶榜：拿不到不要因此整页报"后端没连上"，但也不能悄悄吞掉——
        把真实原因记在 API.hotError 里，榜单空态会把它原样显示出来 */
     /* 取 50 条而不是 10 条：榜上只展示前 5，但页面上的筛选要在这 50 条里筛，
@@ -155,6 +155,9 @@
         trail.terrainUrl = d.terrain_url || null;
         trail.terrainBounds = d.terrain_bounds || null;
         trail.terrainContour = d.terrain_contour || null;
+        trail.coverUrl = d.coverUrl || d.cover_url || null;
+        trail.coverThumbnailUrl = d.coverThumbnailUrl || d.cover_thumbnail_url || null;
+        trail.coverByline = d.coverByline || d.cover_byline || null;
         trail.profile = d.profile || [];
         trail.elevationM = d.elevation_m || [];
         trail.segments = d.segments || [];

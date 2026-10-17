@@ -53,6 +53,7 @@ services:
       - ../pipeline/out:/srv/routes-data:ro   # pipeline 生成的分级结果
       - ../pipeline:/srv/pipeline:ro          # 给山顶找名字的脚本要在这里跑
       - ../app:/srv/webapp:ro                 # app/index.html 原型（接后端用）
+      - ./media:/srv/media                    # 本机开发封面；生产必须换持久化存储
     depends_on:
       db:
         condition: service_healthy

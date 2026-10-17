@@ -306,6 +306,38 @@ CLEANUP_SQL = """
 -- 否则删用户会被 maintenance_audit_logs 的外键挡住。只认 drill 前缀的 actor。
 DELETE FROM maintenance_audit_logs
  WHERE actor_id IN (SELECT id FROM users WHERE username ILIKE {p});
+DELETE FROM route_cover_submissions
+ WHERE submitter_id IN (SELECT id FROM users WHERE username ILIKE {p})
+    OR route_id IN (SELECT id FROM routes WHERE slug ILIKE {p});
+DELETE FROM routes WHERE slug ILIKE {p};
+DELETE FROM king_notifications
+ WHERE user_id IN (SELECT id FROM users WHERE username ILIKE {p});
+DELETE FROM point_edit_suggestions
+ WHERE author_id IN (SELECT id FROM users WHERE username ILIKE {p})
+    OR point_id IN (SELECT id FROM points WHERE code ILIKE {p});
+DELETE FROM transfer_applications
+ WHERE mountain_id IN (SELECT id FROM mountains WHERE name ILIKE {p})
+    OR from_user_id IN (SELECT id FROM users WHERE username ILIKE {p})
+    OR to_user_id IN (SELECT id FROM users WHERE username ILIKE {p});
+DELETE FROM member_removal_applications
+ WHERE mountain_id IN (SELECT id FROM mountains WHERE name ILIKE {p})
+    OR member_user_id IN (SELECT id FROM users WHERE username ILIKE {p})
+    OR requested_by IN (SELECT id FROM users WHERE username ILIKE {p});
+DELETE FROM king_application_versions
+ WHERE application_id IN (SELECT id FROM master_applications WHERE applicant_id IN
+   (SELECT id FROM users WHERE username ILIKE {p}));
+DELETE FROM master_applications
+ WHERE applicant_id IN (SELECT id FROM users WHERE username ILIKE {p})
+    OR mountain_id IN (SELECT id FROM mountains WHERE name ILIKE {p})
+    OR target_mountain_id IN (SELECT id FROM mountains WHERE name ILIKE {p});
+DELETE FROM clans
+ WHERE mountain_id IN (SELECT id FROM mountains WHERE name ILIKE {p});
+DELETE FROM mountain_members
+ WHERE mountain_id IN (SELECT id FROM mountains WHERE name ILIKE {p})
+    OR user_id IN (SELECT id FROM users WHERE username ILIKE {p});
+DELETE FROM king_migration_conflicts
+ WHERE mountain_id IN (SELECT id FROM mountains WHERE name ILIKE {p})
+    OR user_id IN (SELECT id FROM users WHERE username ILIKE {p});
 DELETE FROM segment_efforts
  WHERE course_id IN (SELECT id FROM ascent_courses WHERE name ILIKE {p})
     OR user_id IN (SELECT id FROM users WHERE username ILIKE {p})
@@ -324,12 +356,19 @@ DELETE FROM visits
  WHERE user_id IN (SELECT id FROM users WHERE username ILIKE {p})
     OR guest_id IN (SELECT id FROM guests WHERE nickname ILIKE {p})
     OR point_id IN (SELECT id FROM points WHERE code ILIKE {p});
+DELETE FROM claims
+ WHERE user_id IN (SELECT id FROM users WHERE username ILIKE {p})
+    OR code IN (SELECT sl.code FROM short_links sl JOIN points pt ON pt.id=sl.point_id
+                 WHERE pt.code ILIKE {p}
+                    OR pt.mountain_id IN (SELECT id FROM mountains WHERE name ILIKE {p}));
 -- 路线也要按端点归属清：drill 有时会给路线起个不带前缀的名字（比如截图用的演示路线），
 -- 只按名字清会留下引用点位的路线行，接着删点位就被外键挡住。
 DELETE FROM ascent_courses
  WHERE name ILIKE {p}
     OR start_point_id IN (SELECT id FROM points WHERE code ILIKE {p})
     OR end_point_id IN (SELECT id FROM points WHERE code ILIKE {p});
+DELETE FROM points
+ WHERE mountain_id IN (SELECT id FROM mountains WHERE name ILIKE {p});
 DELETE FROM points WHERE code ILIKE {p};
 DELETE FROM mountains WHERE name ILIKE {p};
 DELETE FROM guests WHERE nickname ILIKE {p};

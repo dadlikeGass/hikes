@@ -555,70 +555,109 @@ v1 **只收纯文本，最多 200 字**，图片走 v1.1。
 - checkin 模式要求写信之后在该点位有新的有效到访（`occurred_at > created_at`）才解锁，离线补传入账后同样生效。
 - 越权一律 404；删除后不可访问；没有"改模式"入口，封存不能绕过。
 
-### 占山为王申请（山大王 / 版主，2026-10-16 起改为"申请 + 3 天审核"）
+### 统一山头身份（2026-10-17 起）
 
-**口径变化**：接管一座已有山头不再是"先到先得、点了就给"。申请人要写清为什么申请、
-成为维护人后的期待、一个月能去几次，然后进 3 天审核期。两条通道：
+山头是权限边界，**不是点位编号**。同一山头的起点、顶点、二维码共享一块留言板和一组
+在任成员。旧 `points.maintainer_id`、`claims` 与协作申请只作为历史兼容/审计字段保留，
+不再能绕过统一审核授予身份。旧入口 `POST /api/claims`、`POST /api/master-applications`、
+旧协作申请与旧审核接口统一返回 `410 UPGRADE_REQUIRED`。
 
-| 类型 | 含义 | 通过后 |
+#### 目标解析
+
+- `targetKind=existing`：传 `mountainId`（或 `pointCode`），服务端补齐稳定山头。
+- `targetKind=new`：传 `newPointType`（`peak|junction`）、`newName`、`newRegion`、
+  `newLocationText`，可选 `newLat/newLng/newAltitude/newIntro/newGpxRef`。
+- 没有在任负责人：`intent=owner`，申请成为负责人。
+- 有负责人但没有山寨：`intent=join`，提交后是 `waiting_clan` 加入意向。
+- 有已成立山寨：`intent=join`，进入正式加入申请；负责人意见只是参考，平台审核后才创建成员。
+- 两人竞争同一座山：先通过一人；其余申请变 `pending_confirmation`，必须申请人本人
+  `confirm-join` 才继续，不能自动成为成员。
+
+状态：`draft → pending → needs_info → approved / rejected`，另有
+`withdrawn / expired / waiting_clan / pending_confirmation`。3 天只是处理目标，
+到期不自动失效、不自动通过。
+
+#### 申请与草稿
+
+| 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `solo` 山大王 | 单人独占这座山 | 成为唯一维护人；同一座山其它待审申请自动驳回并写明理由 |
-| `clan` 山寨 | 多人协作 | 成为协作者（同山可多人）；第一个人顺带成为维护人，负责物料对接；协作入口保持开放 |
+| `GET` | `/api/mountains/search?q=&cursor=&limit=` | 服务端全库检索；未审核新山头不出现 |
+| `POST` | `/api/me/king-application-drafts` | 创建账号私有草稿 |
+| `GET/PUT` | `/api/me/king-application-drafts/{id}` | 读取/保存草稿；PUT 带 `version` 做乐观锁 |
+| `POST` | `/api/king-applications` | 提交；带 `id` 可在原申请上重新提交 |
+| `GET` | `/api/me/king-applications` | 我的全部申请、草稿与状态 |
+| `GET` | `/api/king-applications/{id}` | 详情；联系方式只对申请人与审核员可见 |
+| `POST` | `/api/king-applications/{id}/withdraw` | 本人撤回待审/需补充/待确认申请 |
+| `POST` | `/api/king-applications/{id}/resubmit` | 在需补充的原申请上再次提交 |
+| `POST` | `/api/king-applications/{id}/confirm-join` | 本人确认从竞争申请转为加入 |
 
-自建全新山头（`POST /api/claims`，新编号新二维码）不走审核：它不跟任何人抢，
-而且二维码要当场印出来贴到山上，卡在审核里这条链路就废了。
+提交校验：为什么申请 20–1000 字、经营计划 20–2000 字、维护频率 1–30 次/月。
+新山头名称、地区和准确位置必填；新山头在通过前不创建公开山头、点位、短链或二维码。
+每次保存/重交保留 `king_application_versions` 快照；版本冲突返回
+`409 VERSION_CONFLICT`，不会覆盖别人的修改。
 
-### POST /api/master-applications
+#### 平台审核
 
-```json
-{ "code": "CNP-003", "kind": "solo",
-  "reason": "这条线我走了三年，雨季哪几段会塌、哪里能补水都清楚，想整理出来给后来的人",
-  "expectations": "把岔路口指路牌补齐，封路时第一时间标注",
-  "visitsPerMonth": 4, "contact": "wx: agan" }
-// 200：{ "id": 12, "status": "pending", "kind": "solo", "pointCode": "CNP-003",
-//         "dueAt": "2026-10-19T…", "message": "申请已提交：3 天内给答复……" }
-```
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/admin/king-applications?status=` | 统一审核队列 |
+| `POST` | `/api/admin/king-applications/{id}/review` | `approved|rejected|needs_info` |
+| `GET` | `/api/admin/clans?status=` | 山寨组建队列 |
+| `POST` | `/api/admin/clans/{id}/review` | 成立/驳回山寨 |
+| `POST` | `/api/admin/cover-submissions/{id}/review` | 通过/驳回封面 |
 
-- 校验：`reason` 20–1000 字、`expectations` 10–1000 字、`visitsPerMonth` 1–30；点位必须存在。
-- 错误：`REASON_TOO_SHORT` / `EXPECTATIONS_TOO_SHORT`(422)、`POINT_NOT_FOUND`(404)、
-  `APPLICATION_PENDING`(409，同一个人对同一座山只能有一份待审)、
-  `ALREADY_MASTERED`(409，这座山已被单人独占——提示改投"山寨"）。
+审核说明至少 6 字；禁止自审（`SELF_REVIEW_FORBIDDEN`）。审批与授权、审计、通知在
+同一事务内完成。同一山头审核使用事务级 advisory lock，再锁申请行；并发双批准只有一次
+成功，另一次返回 409，数据库还有 `uq_mountain_active_owner` 唯一索引兜底。
+新山头审批会一次性创建 `mountains / points / boards / short_links / claims(历史兼容)`
+与负责人成员关系，任一步失败整笔回滚。
 
-### GET /api/me/master-applications
+#### 我管理的留言版
 
-我提交过的申请（含 `status` / `dueAt` / `reviewNote`）。用于"我 → 我的维护申请"。
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/me/managed-boards` | 按山头汇总角色、待处理留言、申请提醒、未读 |
+| `GET` | `/api/me/managed-boards/{mountainId}` | 详情、隐藏留言、申请、成员、操作记录 |
+| `POST` | `/api/boards/{boardId}/notices` | 负责人/成员发布置顶公告 |
+| `POST` | `/api/comments/{id}/pin` | 置顶/取消置顶 |
+| `POST` | `/api/points/{id}/suggestions` | 成员提交资料修改建议 |
 
-### POST /api/master-applications/{id}/withdraw
+权限每请求由后端按 `mountain_members(status='active')` 判定：负责人可编辑介绍与广告素材；
+负责人和成员都可发布路况/公告、置顶、带理由隐藏；成员不能直接改他人原文、打卡记录或读私信。
+退出、移除或移交后立即失效，不依赖重新登录。
 
-本人撤回待审申请（`{"note": "今年去不了"}` 可选）。
+#### 山寨、移交与退出
 
-### GET /api/admin/master-applications?status=pending|approved|rejected|expired|withdrawn
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/mountains/{id}/clan` | 山寨、成员与招募状态 |
+| `POST` | `/api/mountains/{id}/clan-applications` | 负责人组建山寨，平台审核 |
+| `POST` | `/api/clans/{id}/join-applications` | 提交加入申请 |
+| `POST` | `/api/clan-join-applications/{id}/owner-opinion` | 负责人意见，不直接授权 |
+| `POST` | `/api/clan-join-applications/{id}/review` | 平台最终通过/驳回 |
+| `POST` | `/api/clans/{id}/recruiting` | 负责人暂停/重开招募 |
+| `POST` | `/api/clans/{id}/leave` | 成员退出；负责人须先移交 |
+| `POST` | `/api/mountains/{id}/transfer-applications` | 负责人发起移交 |
+| `POST` | `/api/transfers/{id}/accept` | 接任人本人确认 |
+| `POST` | `/api/transfers/{id}/review` | 平台最终审核 |
+| `POST` | `/api/mountains/{id}/member-removal-applications` | 负责人申请移除成员 |
+| `POST` | `/api/admin/mountains/{id}/takeover` | 负责人失联时平台接管 |
 
-审核队列（需要 `collaboration_reviewer` 角色）。每条带申请人昵称、类型、理由、
-期待、每月频次与截止时间，供审核人判断。
+山寨不另建留言板；成员共享原留言、二维码与打卡记录。移交、移除、接管都保留历史内容与二维码。
 
-### POST /api/admin/master-applications/{id}/review
+#### 路书封面
 
-```json
-{ "decision": "approved", "note": "资料核过，欢迎维护这座山" }
-// 200：{ "status": "approved", "kind": "solo", "autoRejected": 2, "message": "…" }
-```
-
-- `note` 至少 6 字：驳回说明会原样展示给申请人（"为什么被拒"必须有人回答）。
-- 不能审核自己的申请（403 `SELF_REVIEW_FORBIDDEN`）；同一份申请不能二次审核（409 `APPLICATION_CLOSED`）。
-- `solo` 通过时会把同一座山其它待审申请自动驳回（`autoRejected` 告诉你有几条），
-  理由写"这座山已由另一位申请人获得"——不让"谁先被点通过"成为暗箱规则。
-- 每次提交与审核都写 `maintenance_audit_logs`（`master_application.submit` /
-  `.approved` / `.rejected`）。
-
-### 3 天审核期怎么算
-
-`due_at = created_at + 3 天`。到点还没人处理，接口在读取时（`GET /api/me/master-applications`、
-审核队列）把这条置为 `expired` 并写明"超过 3 天审核期，未处理自动失效"，申请人可以重新提交。
-**刻意不做"到期自动通过"**：山大王是独占身份，没人看就自动给出去，等于把抢注变成策略。
-
-现存的 `POST /api/claims`（自建新点位）与 `POST /api/claims/master`（版主）保留；
-`/api/claims/master` 现在也走申请审核，不再即时生效。
+- `POST /api/routes/{slug}/cover-submissions`：`multipart/form-data`，字段 `file`、
+  `photographer`、可选 `shotAt/caption`、`licenseConfirmed=true`。只收 JPEG/PNG/WebP，
+  原图上限 10MB；服务端重新编码为 JPEG（最长边 1920px）并生成 640px 缩略图，
+  重编码同时清除 EXIF/GPS，不接收 SVG 或任意 URL。
+- 待审/驳回封面不会出现在公开路书；只有 `approved` 才返回 `coverUrl`。
+- `GET /api/routes/{slug}/cover`、`GET /api/me/cover-submissions`、
+  `POST /api/me/cover-submissions/{id}/withdraw`。
+- `POST /api/routes/{slug}/cover-recommendations?submission_id=`：只有关联线路的
+  山头在任成员可推荐；推荐不等于通过，管理员审核后才替换公开封面。
+- 新封面通过时旧封面标为 `deleted` 并清理旧文件；被替换/撤回的存储键不再公开。
+- 开发环境使用 `server/media/`；生产必须挂载持久化存储，本机目录不是生产方案。
 
 ### 保养作业（不是 HTTP 接口）
 

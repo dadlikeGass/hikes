@@ -14,7 +14,7 @@ html{background:var(--bg)}body{background:var(--bg);color:var(--ink);font-family
 .home-page{background:var(--bg)}.home-content h1{color:var(--blue-deep)}.home-content p{color:var(--ink2)}.home-primary{background:var(--coral);box-shadow:none}.home-featured{background:var(--paper);border:1px solid var(--line);border-radius:var(--r)}.home-brand{color:var(--blue-deep)}#app.home-image .tabbar{background:var(--paper)}#app.home-image .tabbar .scan-btn{background:var(--coral)}#app.home-image .tabbar .scan em{color:var(--blue-deep)}
 @media(min-width:700px){body{padding:0;display:block}#app,#app:not(.home-image){max-width:none;height:100dvh;border:0;border-radius:0;box-shadow:none}.topbar{padding-left:max(28px,calc((100vw - 1160px)/2));padding-right:max(28px,calc((100vw - 1160px)/2))}.view{width:100%;padding-left:max(28px,calc((100vw - 1160px)/2));padding-right:max(28px,calc((100vw - 1160px)/2))}.tabbar{padding-left:max(28px,calc((100vw - 1160px)/2));padding-right:max(28px,calc((100vw - 1160px)/2))}.tabbar a{font-size:13px;flex-direction:row;justify-content:center;gap:9px}.tabbar .scan{transform:none}.scan-btn{width:34px;height:34px}.scan-btn .ico{width:18px;height:18px}.tabbar .scan em{font-size:13px}.hero.tall{height:clamp(240px,26vw,360px)}.view:not(.flush) .hero{margin-left:0;margin-right:0}.view.flush>.hero{max-width:1160px;margin-left:auto;margin-right:auto}.trailcard{flex-basis:280px}.home-content{max-width:1160px}}
 @media(max-width:699px){#app{max-width:none}.view{padding-top:17px}.topbar{padding-top:calc(13px + env(safe-area-inset-top))}.tabbar{padding-bottom:calc(10px + env(safe-area-inset-bottom))}.home-content{padding-bottom:24px}.home-featured{min-width:0}.home-featured span{overflow:hidden;text-overflow:ellipsis}}
-@media(prefers-reduced-motion:reduce){.btn,.home-primary,.tabbar a{transition:none}}
+@media(prefers-reduced-motion:reduce){.btn,.home-primary,.tabbar a,.trailbook-find{transition:none}}
 @media(min-width:700px){
   #app[data-page="me"] .view,#app[data-page^="me-"] .view,#app[data-page="messages"] .view,#app[data-page="places"] .view,#app[data-page="scan"] .view,#app[data-page="arrive"] .view,#app[data-page="peak"] .view,#app[data-page="junction"] .view,#app[data-page="trail"] .view{width:min(100%,940px);margin:0 auto;padding-left:28px;padding-right:28px}
   #app[data-page="messages"] .view,#app[data-page="scan"] .view,#app[data-page="arrive"] .view{width:min(100%,760px)}
@@ -109,6 +109,28 @@ html,body,#app{background:var(--bg)}.topbar{background:#e4f5fd;border-color:#d9e
 .home-primary .ico{width:24px;height:24px}
 .home-featured{margin:0;min-height:58px;padding:10px 14px;gap:9px;background:#f3f8fa;border:0;border-radius:18px}
 .home-featured .ico{width:23px;height:23px}.home-featured strong{font-size:14px}.home-featured span{font-size:11px}.home-featured b{font-size:22px}
+/* 首页"扫码打卡 / 附近定位打卡"这一块（.home-copy 就是它所在的模块）：
+   白底改成磨砂玻璃，并往上压住山景的底边——玻璃里能隐约看见山、湖和徒步者。
+   做法与路书页那张"找路线"卡一致：白纱只留 .44→.26 + 16px 模糊，
+   可读性靠模糊（白纱只补底）；不支持 backdrop-filter 的浏览器退回 .9 白。
+   面板比白色内容块更宽、更高，把内容块那条直边盖在下面，接缝看不出来。 */
+.home-copy{position:relative;z-index:3;border-radius:26px;
+  background:linear-gradient(180deg,rgba(255,255,255,.40),rgba(255,255,255,.22));
+  -webkit-backdrop-filter:blur(16px) saturate(140%);
+  backdrop-filter:blur(16px) saturate(140%);
+  border:1px solid rgba(255,255,255,.62);
+  box-shadow:0 12px 30px rgba(14,45,72,.16)}
+@supports not ((backdrop-filter:blur(2px)) or (-webkit-backdrop-filter:blur(2px))){
+  .home-copy{background:rgba(255,255,255,.92)}
+}
+/* 系统开了"降低透明度"：玻璃退成实底，别硬做半透明 */
+@media(prefers-reduced-transparency:reduce){
+  .home-copy{background:rgba(255,255,255,.94)}
+}
+/* 玻璃里的两行说明字要压深一档，才顶得住背后的山色 */
+.home-copy p{color:#4f5c72}
+/* 附属按钮原来是全透明的幽灵按钮，落在玻璃上会看不清边界；给一层半透明白 */
+.home-actions .btn.ghost{background:rgba(255,255,255,.58);border-color:rgba(96,124,110,.42)}
 /* 路书页顶部那条线路：名字用打字机逐字打（每 4 秒换一条，逻辑在 app.js startListFeatured）。
    光标只在打字时出现；系统"减少动态效果"时只留静态文字。 */
 .tbf-link{display:block;color:inherit;text-decoration:none}
@@ -187,8 +209,12 @@ html,body,#app{background:var(--bg)}.topbar{background:#e4f5fd;border-color:#d9e
   .home-brand span{font-size:10px;margin-top:8px}
   .home-hiker{left:-10%;bottom:-5%;width:76%;max-height:75%}
   .home-content{flex:0 0 auto;width:100%;display:flex;flex-direction:column;align-items:stretch;gap:0;padding:5px 20px 17px;text-align:center;background:#fff}
-  .home-content:before{content:"";position:absolute;left:-5%;right:-5%;top:-21px;height:30px;background:#fff;border-radius:50% 50% 0 0 / 100% 100% 0 0}
-  .home-copy{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;width:100%}
+  /* 手机上玻璃面板整幅出血（抵消内容块的 20px 内边距）并上提 118px：
+     上沿压在山景上，内容块那条白色直边整个被压在面板下面。
+     选择器要写 `.home-content>.home-copy`：`.home-content>.home-copy{align-self:start}`
+     比单个类名权重高，否则面板会被压成"内容宽度"那么窄。 */
+  .home-content>.home-copy{position:relative;z-index:3;display:flex;flex-direction:column;align-items:center;
+    width:auto;align-self:stretch;margin:-132px -20px 0;padding:18px 20px 20px;border-radius:28px 28px 0 0}
   .home-copy h1{font-size:clamp(43px,12vw,56px);font-weight:900;line-height:1.05;margin:0 auto}
   .home-copy h1:after{width:56%;height:8px;margin:0 auto}
   .home-copy p{font-size:14px;margin:9px 0 16px}
@@ -222,38 +248,50 @@ html,body,#app{background:var(--bg)}.topbar{background:#e4f5fd;border-color:#d9e
 }
 
 /* Trailbook reference hero. Scoped classes preserve the shared app styles. */
-.trailbook-intro{position:relative;isolation:isolate;overflow:hidden;margin:-17px -16px 24px;background:#85e1ef;color:#073b4b;min-height:480px;height:calc(100svh - 180px);display:flex;flex-direction:column}
-.trailbook-copy{position:relative;z-index:2;padding:20px 20px 0;background:#85e1ef}
+/* 手机：标题占顶部，山景插画从标题下方一直铺到 hero 底边，"找路线"卡片浮在山景上，
+   磨砂玻璃背后就是那片山（之前卡片是排在插画下面、压在平涂底色上的，玻璃等于没东西可磨）。
+   标题那块底色 #8fe4fd 取自插画最上面一行的天空色，两者同一个色号，
+   边界看不出来；取不到图时也只是干净的蓝天。 */
+.trailbook-intro{position:relative;isolation:isolate;overflow:hidden;margin:-17px -16px 24px;background:#8fe4fd;color:#073b4b;min-height:480px;height:calc(100svh - 180px);display:flex;flex-direction:column}
+.trailbook-copy{position:relative;z-index:2;padding:20px 20px 0;background:#8fe4fd}
 .trailbook-brand{display:flex;align-items:center;gap:10px;font-size:24px;font-weight:850;line-height:1.2}
 .trailbook-brand img{display:block;width:44px;height:40px;object-fit:contain}
 .trailbook-copy h1{font-family:'Ma Shan Zheng','STKaiti',KaiTi,serif;font-weight:500;font-size:clamp(38px,10.5vw,56px);line-height:1.25;text-align:center;white-space:nowrap;margin:25px 0 8px}
 .trailbook-copy h1:after{content:'';display:block;width:83px;height:9px;margin:0 auto;background:#ffdf4d;border-radius:70% 50%;transform:rotate(-7deg)}
-.trailbook-landscape{position:relative;overflow:hidden;flex:1;min-height:180px}
-.trailbook-landscape img{position:absolute;display:block;width:100%;height:226%;max-width:none;top:-54%;left:0;object-fit:cover;object-position:center top}
-/* 找路线模块做成磨砂玻璃：底下的山景透过来但被模糊，白字与按钮仍然清楚。
-   不支持 backdrop-filter 的浏览器回退成 0.88 白（可读优先，不做半透明假玻璃）。 */
-.trailbook-feature{position:relative;z-index:3;margin:-14px 14px 18px;padding:18px 20px;border-radius:23px;
-  background:linear-gradient(180deg,rgba(255,255,255,.62),rgba(255,255,255,.48));
-  -webkit-backdrop-filter:blur(18px) saturate(150%);
-  backdrop-filter:blur(18px) saturate(150%);
-  border:1px solid rgba(255,255,255,.72);
-  box-shadow:0 12px 30px rgba(7,59,75,.13)}
+.trailbook-landscape{position:relative;overflow:hidden;flex:1;min-height:220px}
+.trailbook-landscape img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover;object-position:center top}
+/* 找路线模块：磨砂玻璃，贴 hero 底边浮在山景上。
+   白纱只留很薄一层（.44→.26）+ 16px 模糊：山形、树林、路径隐约透出来，
+   但名字与里程仍然压得住——模糊是主要的可读性来源，白纱只是补一点底。
+   不支持 backdrop-filter 的浏览器没有模糊可依，直接退回 .9 白（可读优先）。 */
+.trailbook-feature{position:absolute;z-index:3;left:14px;right:14px;bottom:18px;padding:18px 20px;border-radius:23px;
+  background:linear-gradient(180deg,rgba(255,255,255,.44),rgba(255,255,255,.26));
+  -webkit-backdrop-filter:blur(16px) saturate(140%);
+  backdrop-filter:blur(16px) saturate(140%);
+  border:1px solid rgba(255,255,255,.62);
+  box-shadow:0 12px 30px rgba(7,59,75,.16)}
 @supports not ((backdrop-filter:blur(2px)) or (-webkit-backdrop-filter:blur(2px))){
   .trailbook-feature{background:rgba(255,255,255,.9)}
 }
 .trailbook-feature h2{font-family:'Ma Shan Zheng','STKaiti',KaiTi,serif;font-size:30px;font-weight:500;line-height:1.2}
-.trailbook-feature p{color:#647184;font-size:clamp(12px,3.7vw,17px);line-height:1.5;margin:6px 0 13px}
-.trailbook-find{display:block;width:100%;min-height:50px;border-radius:999px;background:#ff5676;color:white;font-weight:750;font-size:18px}
+.trailbook-feature p{color:#4f5c72;font-size:clamp(12px,3.7vw,17px);line-height:1.5;margin:6px 0 13px}
+.trailbook-find{display:block;width:100%;min-height:50px;border-radius:999px;background:#ff5676;color:white;font-weight:750;font-size:18px;
+  transition:transform 120ms cubic-bezier(.23,1,.32,1),background 120ms ease}
 .trailbook-find:active{background:#ed4566}
 .route-hero.route-hero-bottom{margin-top:28px;margin-bottom:0}
 @media(min-width:700px){
- .trailbook-intro{margin:0 0 28px;min-height:560px;height:auto;border-radius:22px;display:grid;grid-template-columns:43% 57%;grid-template-rows:1fr auto;background:#85e1ef}
+ /* 桌面：整张插画当 hero 的底（左栏标题、左下卡片都压在图上），
+    下面那个 .trailbook-landscape 只当版式占位，不再重复画一张图。 */
+ .trailbook-intro{margin:0 0 28px;min-height:560px;height:auto;border-radius:22px;display:grid;grid-template-columns:43% 57%;grid-template-rows:1fr auto;
+   background:#8fe4fd url('../images/home/trailbook-hero.png') center top/cover no-repeat}
  .trailbook-copy{grid-column:1;grid-row:1;padding:35px 28px 0;background:transparent;align-self:start}
- .trailbook-copy h1{font-size:clamp(34px,4.4vw,58px);white-space:normal;text-align:left;margin-top:52px}
+ .trailbook-copy h1{font-size:clamp(34px,4.4vw,58px);white-space:normal;text-wrap:balance;text-align:left;margin-top:52px}
  .trailbook-copy h1:after{margin-left:50px;width:112px;height:11px}
  .trailbook-brand{font-size:28px}
  .trailbook-landscape{grid-column:2;grid-row:1 / 3;min-height:560px;width:100%;height:100%}
- .trailbook-feature{grid-column:1;grid-row:2;margin:25px 24px 30px;padding:24px;align-self:end}
+ .trailbook-landscape img{display:none}
+ /* 桌面：卡片回到左栏底部（不是贴底通栏），背后仍是那块整铺的插画，玻璃里透出来的还是山。 */
+ .trailbook-feature{position:relative;left:auto;right:auto;bottom:auto;grid-column:1;grid-row:2;margin:25px 24px 30px;padding:24px;align-self:end}
  .trailbook-feature h2{font-size:34px}
  .trailbook-feature p{font-size:15px}
  .trailbook-find{min-height:55px;font-size:20px}
@@ -302,7 +340,9 @@ html,body,#app{background:var(--bg)}.topbar{background:#e4f5fd;border-color:#d9e
 .home-copy h1{text-align:left}.home-copy h1:after{margin-left:4px}.home-copy p{line-height:1.8}
 .home-core{grid-column:2;grid-row:1;display:grid;gap:9px}
 .home-core-item{display:flex;align-items:center;gap:13px;min-height:66px;padding:10px 14px;border:1px solid var(--line);border-radius:15px;background:var(--paper);color:var(--ink);text-decoration:none;transition:transform .16s cubic-bezier(.23,1,.32,1),border-color .16s ease}
-.home-core-item:hover{border-color:#a9c1ad;transform:translateY(-1px)}.home-core-item:active{transform:scale(.985)}
+/* 悬停位移只在真有鼠标的设备上做：触屏点一下会先触发 hover，再叠按压，看着像抖了一下 */
+@media(hover:hover)and(pointer:fine){.home-core-item:hover{border-color:#a9c1ad;transform:translateY(-1px)}}
+.home-core-item:active{transform:scale(.985)}
 .home-core-icon{display:grid;place-items:center;flex:0 0 42px;width:42px;height:42px;border-radius:12px;background:var(--blue-bg);color:var(--blue-deep)}
 .home-core-icon .ico{width:22px;height:22px;stroke:currentColor}.home-core-item>span:nth-child(2){display:flex;flex-direction:column;gap:2px;min-width:0}
 .home-core-item b{font-size:15px;color:var(--blue-deep)}.home-core-item small{font-size:12px;color:var(--ink2)}.home-core-item>i{margin-left:auto;color:var(--ink3);font-size:22px;font-style:normal}
@@ -336,6 +376,9 @@ html,body,#app{background:var(--bg)}.topbar{background:#e4f5fd;border-color:#d9e
  .home-content .home-actions{display:flex;flex-direction:column;align-items:stretch;gap:10px}
  .home-content .home-actions .home-primary{order:0;width:100%;min-height:58px}
  .home-content .home-actions .home-featured{order:1;width:100%;min-height:58px}
+ /* 桌面：同一块玻璃，上提 92px 压住山景底边；限制宽度，别把徒步者盖住太多 */
+ .home-copy{margin:-120px 0 0;max-width:560px;padding:26px 28px 28px}
+ .home-copy p{margin:10px 0 18px}
 }
 
 .board-write{text-decoration:none}
@@ -351,4 +394,307 @@ html,body,#app{background:var(--bg)}.topbar{background:#e4f5fd;border-color:#d9e
 /* 小标字（留言版 intro 的 "MOUNTAIN NOTES"）。原本和已删除的 .places-heading span 共用一条规则，
    拆成独立规则，别让删旧标题蹭掉它的样式。 */
 .eyebrow{color:var(--coral);font-size:11px;font-weight:800;letter-spacing:.12em}
+
+/* ============ 按压反馈（全站统一）============
+   前提：app.css 里 `*{-webkit-tap-highlight-color:transparent}` 已经关掉了系统自带的
+   触摸高亮，所以"按下去有没有反应"完全靠这里——按下没有反馈的按钮，手指会以为没点中。
+
+   规则（沿用 emil 的按钮规范）：只动 transform 与底色，140ms + 自定义 ease-out 曲线
+   cubic-bezier(.23,1,.32,1)（比内置 ease-out 更有"手感"）；不加入场、呼吸、弹跳这类
+   装饰动画。力度按"面"的大小分三档：
+     A 小控件：按钮 / 图标 / 分页 / chip / 标签 / 独立链接 → 缩 3%
+     B 大块面：卡片、整行卡片、hero 里那条线路 → 缩 1.5%（大面积缩 3% 会晃）
+     C 贴在大面里的条目：榜单行、卡片里的行、分段控件里的按钮 → 只变底色。
+       这些条目自己没有"面"，缩放会在卡片/轨道里露出缝。
+   已经有自己过渡的元素（.btn / .kingcard / .home-core-item / .trailbook-find）不重复声明。 */
+
+/* A：小控件 —— 任何能点的 <a>/<button>/[role=button]，减去 B、C 两组和"自带位移的"扫一扫 */
+:is(a,button,[role="button"]):not(.btn,.kingcard,.home-core-item,.trailbook-find,.scan,
+  .rowlink,.trailcard,.slide,.home-featured,.tbf-link,
+  .rank,.hotrow,.hotcard .hc-main,.hotcard .hc-route,.seg button,.board-interactions button){
+  transition:transform .14s cubic-bezier(.23,1,.32,1),background-color .14s ease,color .14s ease}
+
+/* B：大块面（卡片 / 整行卡片 / hero 里那条线路）—— 缩 1.5% */
+:is(a.rowlink,button.rowlink,a.trailcard,a.slide,a.home-featured,a.tbf-link){
+  transition:transform .14s cubic-bezier(.23,1,.32,1)}
+
+/* C：大面里的条目（榜单行 / 卡片里的行 / 分段按钮）/ 留言板互动条 —— 只变底色 */
+:is(a.rank,button.rank,a.hotrow,button.hotrow,.hotcard .hc-main,.hotcard .hc-route,
+  .seg button,.board-interactions button){
+  transition:background-color .14s ease,color .14s ease}
+:is(a.rank,button.rank,a.hotrow,button.hotrow,.hotcard .hc-main,.hotcard .hc-route,
+  .seg button,.board-interactions button):active{background:rgba(34,36,46,.06)}
+
+/* 底部导航中间的"扫一扫"：手机版抬起来 15px，按下时不能把抬升吃掉（否则会先掉下去再缩），
+   所以它从上面的 A 组里摘出来单独写。 */
+.tabbar a.scan{transition:transform .14s cubic-bezier(.23,1,.32,1)}
+
+/* 位移（缩放）只在"用户没有要求减少动态效果"时才做。用 no-preference 包住，而不是在 reduce
+   里再写一遍 transform:none——那样要跟上面几组的特异性打架（:is()/:not() 会把权重抬得很高）。 */
+@media(prefers-reduced-motion:no-preference){
+  :is(a,button,[role="button"]):not(.scan,.rowlink,.trailcard,.slide,.home-featured,.tbf-link,
+    .rank,.hotrow,.hotcard .hc-main,.hotcard .hc-route,.seg button,.board-interactions button,
+    .kingcard,.home-core-item):active{transform:scale(.97)}
+  :is(a.rowlink,button.rowlink,a.trailcard,a.slide,a.home-featured,a.tbf-link):active{transform:scale(.985)}
+  .tabbar a.scan:active{transform:translateY(-15px) scale(.97)}
+  @media(min-width:700px){.tabbar a.scan:active{transform:scale(.97)}}
+}
+
+/* 减少动态效果：没有位移，但"按下有反应"不能跟着丢——
+   小控件按下去变暗一档，大块面用底色变化（和 C 组一致）。 */
+@media(prefers-reduced-motion:reduce){
+  html:not(.force-motion) :is(a,button,[role="button"]){transition:none}
+  /* transform:none 一起写在这儿：.btn / .kingcard / .home-core-item / .pzcell 这些
+     旧规则里的缩放也要一起关掉（这里的权重比它们高）。 */
+  html:not(.force-motion) :is(a,button,[role="button"]):active{transform:none;filter:brightness(.96)}
+  /* 扫一扫的抬升是静态造型，不是动画：减少动态效果时也要留着，不然按下去会掉 15px */
+  html:not(.force-motion) .tabbar a.scan:active{transform:translateY(-15px)}
+  html:not(.force-motion) :is(a.rowlink,button.rowlink,a.trailcard,a.slide,a.home-featured,a.tbf-link):active{
+    background:rgba(34,36,46,.06)}
+}
+
+/* ============ 统一山大王申请 / 我管理的留言版 ============
+   沿用当前纸张底色、深绿标题与朱砂主按钮；页面只保留一个主要动作：
+   填完并提交。草稿是次动作，审核状态用文字而不是只靠颜色表达。 */
+.kingcard.king-hero{min-height:286px;padding:24px;border-radius:24px;
+  background:linear-gradient(115deg,#f6e7d6 0%,#f4dcc8 54%,#e8cdb7 100%);
+  border:1px solid rgba(132,83,55,.12);box-shadow:0 10px 28px rgba(104,59,34,.1)}
+.kingcard.king-hero::before{width:270px;height:270px;right:-48px;top:-92px;background:rgba(255,255,255,.24)}
+.kingcard.king-hero::after{width:220px;height:220px;right:-10px;top:-58px;background:rgba(255,255,255,.18)}
+.kingcard.king-hero .kk-tx{align-self:flex-start;padding-top:18px;max-width:62%}
+.kingcard.king-hero .kk-big{font-size:clamp(48px,11vw,76px);letter-spacing:-3px}
+.king-hero .kk-sub{font-size:13px;line-height:1.65;color:#6e4a38;margin-top:10px;max-width:29ch}
+.king-hero .kk-imp{position:absolute;right:10px;bottom:18px;top:auto;width:184px}
+.king-hero .kk-mascot{width:174px;height:180px;margin-top:-4px}
+.king-hero .kk-say{margin-right:10px;transform:rotate(-2deg)}
+.king-hero .kk-go{position:absolute;left:24px;bottom:24px;margin:0;padding:9px 14px;
+  border-radius:999px;background:var(--coral);color:#fff;font-weight:800;font-size:12px}
+.king-hero .kk-ridge{height:88px;opacity:.5}
+.king-progress{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:10px 14px 2px;color:var(--ink2);font-size:12px}
+.king-progress a{color:var(--blue-deep);font-weight:750;text-decoration:none;white-space:nowrap}
+.king-progress .king-status{vertical-align:middle;margin-right:4px}
+
+.king-apply-page,.king-apps-page,.king-detail-page,.managed-page{max-width:940px;margin:0 auto;padding-bottom:32px}
+.king-back{display:inline-flex;align-items:center;gap:4px;color:var(--ink2);text-decoration:none;
+  font-size:13px;font-weight:650;padding:6px 0;margin-bottom:8px}
+.king-apply-head{padding:20px 22px;border-radius:22px;background:#e7eee3;margin-bottom:14px}
+.king-apply-head h1,.king-simple-head h1{margin:6px 0 6px;font-size:clamp(28px,5vw,40px);
+  line-height:1.14;letter-spacing:-.045em;color:var(--blue-deep)}
+.king-apply-head p,.king-simple-head p{margin:0;color:var(--ink2);font-size:13.5px;line-height:1.75;max-width:64ch}
+.ka-steps{display:flex;gap:6px;flex-wrap:wrap;margin-top:16px}
+.ka-steps span{padding:5px 9px;border-radius:999px;background:rgba(255,255,255,.52);color:#6b7b72;font-size:11px}
+.ka-steps span.on{background:var(--blue-deep);color:#fff}
+.ka-login-note{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:12px 14px;margin-bottom:12px;border:1px solid #e6d6a8;border-radius:16px;background:#fbf5dd}
+.ka-login-note b{display:block;font-size:13px;color:#6c571e}.ka-login-note p{margin:3px 0 0;font-size:12px;color:#82713e}
+.king-panel{background:var(--paper);border:1px solid rgba(37,70,98,.08);border-radius:22px;
+  padding:18px;margin-bottom:14px;box-shadow:0 3px 16px rgba(37,70,98,.04)}
+.king-panel-head,.king-block-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
+.king-panel-head>div,.king-block-head>div{display:flex;align-items:center;gap:9px}
+.king-panel-head h2,.king-block-head h2{font-size:18px;margin:0;color:var(--blue-deep)}
+.king-block-head span{font-size:11.5px;color:var(--ink3);text-align:right;max-width:38ch;line-height:1.5}
+.king-step{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;
+  background:var(--coral);color:#fff;font-size:11px;font-weight:850}
+.ka-mode{display:inline-flex;background:#f0f4f1;padding:3px;border-radius:999px;gap:2px}
+.ka-mode button{border:0;background:transparent;border-radius:999px;min-height:32px;padding:0 12px;
+  color:var(--ink2);font-size:12px;font-weight:700;font-family:inherit}
+.ka-mode button.on{background:var(--paper);color:var(--blue-deep);box-shadow:0 2px 8px rgba(37,70,98,.1)}
+.ka-search{display:flex;align-items:center;gap:8px;padding:0 13px;min-height:48px;
+  border:1px solid var(--line);border-radius:14px;background:#fff}
+.ka-search .ico{width:18px;height:18px;color:var(--ink3)}
+.ka-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;font-size:14px;color:var(--ink)}
+.ka-results{margin-top:8px;border-radius:14px;overflow:hidden}
+.ka-search-hint{padding:12px 4px;color:var(--ink3);font-size:12px}
+.ka-search-hint.error{color:#a13b30}
+.ka-result{display:flex;align-items:center;gap:10px;width:100%;padding:11px 9px;border:0;border-bottom:1px solid var(--line);
+  background:transparent;text-align:left;font-family:inherit;color:var(--ink)}
+.ka-result:last-child{border-bottom:0}.ka-result>span:nth-child(2){display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.ka-result b{font-size:13.5px}.ka-result small,.ka-result em{font-size:11.5px;color:var(--ink2);font-style:normal}
+.ka-result em{color:#7c8a82}.ka-result-go{font-size:20px;color:var(--ink3)}
+.ka-result-icon,.ka-selected-icon{display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;
+  border-radius:12px;background:var(--blue-bg);color:var(--blue-deep);font-size:18px}
+.ka-selected{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;
+  padding:13px;border-radius:16px;background:#f7faf7;border:1px solid var(--line)}
+.ka-selected.empty,.ka-selected.new{background:#fbfcfb;border-style:dashed}
+.ka-selected-main{display:flex;align-items:center;gap:11px;min-width:0}
+.ka-selected b{display:block;font-size:14px;color:var(--blue-deep)}
+.ka-selected p{margin:2px 0 0;font-size:11.5px;color:var(--ink2);line-height:1.55}
+.ka-selected .ka-owner-line{color:#7b6857}
+.ka-intent{display:flex;align-items:flex-start;gap:10px;margin-top:12px;padding:13px 14px;border-radius:16px;
+  background:#eef5f0;border:1px solid #dce8df}
+.ka-intent.join{background:#eef3f7;border-color:#dce7ee}.ka-intent.wait{background:#fbf6e9;border-color:#ebdfbc}
+.ka-intent-dot{flex:0 0 9px;width:9px;height:9px;border-radius:50%;background:var(--blue-deep);margin-top:5px}
+.ka-intent.wait .ka-intent-dot{background:#b68428}.ka-intent.join .ka-intent-dot{background:#3b6f91}
+.ka-intent b{font-size:12.5px;color:var(--blue-deep)}.ka-intent p{margin:3px 0 0;font-size:11.5px;line-height:1.65;color:var(--ink2)}
+.ka-new-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.ka-field{display:flex;flex-direction:column;gap:6px;margin-bottom:11px}
+.ka-field>span{display:flex;justify-content:space-between;gap:8px;font-size:12px;font-weight:750;color:var(--ink2)}
+.ka-field>span em{font-style:normal;font-weight:600;color:var(--ink3)}
+.ka-field input,.ka-field select,.ka-field textarea{width:100%;box-sizing:border-box;border:1px solid var(--line);
+  border-radius:12px;background:#fff;padding:11px 12px;font:inherit;font-size:13.5px;color:var(--ink);outline:0}
+.ka-field textarea{min-height:88px;resize:vertical;line-height:1.65}
+.ka-field.big textarea{min-height:126px}
+.ka-field small{font-size:11px;color:var(--ink3)}.ka-field small.ok{color:#25705a}
+.ka-two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.king-private{font-size:11px;color:var(--ink3);background:#f2f5f2;padding:5px 9px;border-radius:999px}
+.king-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
+.king-actions .btn{flex:1;min-width:150px}.king-actions .btn em{display:block;font-style:normal;font-size:10.5px;opacity:.8;margin-top:2px}
+.king-footnote{font-size:11.5px;line-height:1.7;color:var(--ink3);padding:2px 4px 12px}
+.ka-error{display:none;color:#a13b30;font-size:12px;line-height:1.6;margin-top:4px}
+.ka-error.on{display:block}.ka-save-state{font-size:11px;color:var(--ink3);margin-top:9px}
+.ka-app-banner{display:flex;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:16px;
+  background:#f2f5f2;border:1px solid var(--line);margin-bottom:12px}
+.ka-app-banner b{font-size:13px;color:var(--blue-deep)}.ka-app-banner p{margin:3px 0 0;font-size:11.5px;color:var(--ink2);line-height:1.55}
+.ka-app-banner>span{font-size:11px;color:var(--ink3);white-space:nowrap}
+.king-loading{padding:28px 16px;text-align:center;color:var(--ink3);font-size:12.5px}
+.king-empty{text-align:center;padding:34px 18px;border:1px dashed var(--line);border-radius:18px;background:#fbfcfb}
+.king-empty.small{padding:20px 14px}.king-empty b{display:block;font-size:14px;color:var(--blue-deep)}
+.king-empty p{margin:6px auto 14px;max-width:44ch;font-size:12px;line-height:1.7;color:var(--ink2)}
+.king-simple-head{padding:18px 4px 14px}.king-simple-head .eyebrow{color:var(--coral)}
+.king-list-label{font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--ink3);margin:15px 2px 8px}
+.king-app-list{display:grid;gap:9px}
+.king-app-card{display:block;padding:15px;border:1px solid var(--line);border-radius:18px;background:var(--paper);
+  text-decoration:none;color:var(--ink)}
+.king-app-card h3{margin:9px 0 4px;font-size:17px;color:var(--blue-deep)}
+.king-app-card>p{margin:0;font-size:12px;color:var(--ink2);line-height:1.6}
+.king-app-top{display:flex;align-items:center;gap:7px}.king-app-kind{font-size:11px;color:var(--ink2)}
+.king-app-version{margin-left:auto;font-size:10.5px;color:var(--ink3)}
+.king-app-meta{display:flex;gap:12px;padding-top:10px;font-size:11px;color:var(--ink3)}
+.king-app-meta b{margin-left:auto;font-size:17px;color:var(--ink3);font-weight:400}
+.king-status{display:inline-flex;align-items:center;min-height:22px;padding:2px 8px;border-radius:999px;
+  background:#eef2ee;color:#567064;font-size:10.5px;font-weight:800;white-space:nowrap}
+.king-status.pending,.king-status.waiting_clan{background:#fbf3dd;color:#8c6b1e}
+.king-status.needs_info{background:#fff0e6;color:#a55326}
+.king-status.pending_confirmation{background:#eaf2f7;color:#356882}
+.king-status.approved{background:#e5f3ea;color:#24684f}
+.king-status.rejected{background:#fbeaea;color:#9f3a32}
+.king-status.draft{background:#edf0f2;color:#59666e}
+.king-status-head{padding:14px 2px 8px}.king-status-head h1{margin:10px 0 4px;font-size:clamp(26px,5vw,38px);
+  letter-spacing:-.04em;color:var(--blue-deep)}.king-status-head p{margin:0;font-size:13px;color:var(--ink2);line-height:1.7}
+.king-timeline{display:flex;gap:0;padding:16px 4px 18px}
+.king-timeline>div{position:relative;flex:1;display:flex;flex-direction:column;gap:3px;padding-left:12px}
+.king-timeline>div::before{content:"";position:absolute;left:0;top:4px;width:7px;height:7px;border-radius:50%;background:#cbd6cd}
+.king-timeline>div.on::before{background:var(--coral)}
+.king-timeline b{font-size:11px;color:var(--ink2)}.king-timeline span{font-size:10px;color:var(--ink3)}
+.king-review-note{padding:13px 15px;border-radius:16px;background:#fbf5e7;border:1px solid #eadfbd;margin-bottom:12px}
+.king-review-note b{font-size:12px;color:#6d5721}.king-review-note p{margin:4px 0 0;font-size:12.5px;line-height:1.7;color:#655a3d}
+.king-review-note small{font-size:10.5px;color:#8a7d5d}
+.king-detail-block{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:17px;margin-bottom:12px}
+.king-detail-block h2{margin:0 0 10px;font-size:17px;color:var(--blue-deep)}
+.king-dl{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0}
+.king-dl>div{padding:9px 11px;background:#f7faf7;border-radius:12px}
+.king-dl dt{font-size:10.5px;color:var(--ink3)}.king-dl dd{margin:3px 0 0;font-size:12.5px;color:var(--ink);font-weight:650}
+.king-dl dd small{font-weight:500;color:var(--ink3);font-size:10px}
+.king-long{white-space:pre-wrap;margin:0;font-size:13.5px;line-height:1.85;color:var(--ink2)}
+.managed-board-block{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:16px;margin:0 0 16px}
+.managed-board-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
+.managed-board-head h2{font-size:17px;margin:2px 0 0;color:var(--blue-deep)}
+.managed-board-head a{font-size:12px;color:var(--blue-deep);text-decoration:none;font-weight:700}
+.managed-empty{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;
+  border-radius:14px;background:#f7faf7}
+.managed-empty b{font-size:13px;color:var(--blue-deep)}.managed-empty p{margin:3px 0 0;font-size:11.5px;color:var(--ink2)}
+.managed-board-card{display:grid;grid-template-columns:auto 1fr;gap:3px 9px;padding:12px;border:1px solid var(--line);
+  border-radius:16px;background:#fff;text-decoration:none;color:var(--ink);margin-bottom:8px}
+.managed-board-card:last-child{margin-bottom:0}
+.managed-role{display:inline-flex;align-items:center;padding:2px 7px;border-radius:999px;background:#e5f3ea;
+  color:#24684f;font-size:10px;font-weight:800;align-self:center;justify-self:start}
+.managed-board-card>b{font-size:14px;color:var(--blue-deep)}
+.managed-board-card>small{grid-column:2;font-size:11px;color:var(--ink3)}
+.managed-board-card>div{grid-column:1/-1;display:flex;gap:10px;flex-wrap:wrap;margin-top:5px;font-size:10.5px;color:var(--ink2)}
+.managed-board-card .hot{color:var(--coral);font-weight:750}
+.managed-list{display:grid;gap:10px}
+.managed-card{display:block;padding:16px;border:1px solid var(--line);border-radius:20px;background:var(--paper);
+  text-decoration:none;color:var(--ink)}
+.managed-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--ink3)}
+.managed-card h3{margin:10px 0 2px;font-size:19px;color:var(--blue-deep)}
+.managed-card>p{margin:0;font-size:11.5px;color:var(--ink2)}
+.managed-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:12px}
+.managed-stats div{padding:9px;border-radius:12px;background:#f5f8f5;text-align:center}
+.managed-stats b{display:block;font-size:18px;color:var(--blue-deep)}.managed-stats span{font-size:10px;color:var(--ink3)}
+.managed-detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 2px 10px}
+.managed-detail-head h1{margin:8px 0 3px;font-size:clamp(26px,5vw,38px);letter-spacing:-.04em;color:var(--blue-deep)}
+.managed-detail-head p{margin:0;font-size:12px;color:var(--ink2)}
+.managed-nav{display:flex;gap:6px;overflow:auto;padding:2px 0 10px;scrollbar-width:none}
+.managed-nav a{flex:0 0 auto;padding:7px 10px;border-radius:999px;background:#eef3ef;color:var(--blue-deep);
+  text-decoration:none;font-size:11.5px;font-weight:700}
+.managed-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.managed-kpis div{padding:11px;border-radius:13px;background:#f5f8f5}
+.managed-kpis b{display:block;font-size:20px;color:var(--blue-deep)}.managed-kpis span{font-size:10.5px;color:var(--ink3)}
+.managed-owner-tools{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.managed-owner-tools h3{margin:0 0 5px;font-size:14px;color:var(--blue-deep)}
+.managed-owner-tools p{margin:0 0 10px;font-size:11.5px;line-height:1.65;color:var(--ink2)}
+.managed-suggestion{margin-top:14px;padding:12px 13px;border:1px dashed var(--line);border-radius:14px;background:#fbfcfb}
+.managed-suggestion summary{font-size:12px;font-weight:750;color:var(--blue-deep);cursor:pointer}
+.managed-suggestion>p{margin:7px 0 10px;font-size:11px;line-height:1.6;color:var(--ink2)}
+.king-join-app{display:flex;gap:12px;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line)}
+.king-join-app:last-child{border-bottom:0}.king-join-app b{font-size:13px;color:var(--blue-deep)}
+.king-join-app p{margin:5px 0 3px;font-size:12px;line-height:1.65;color:var(--ink2)}
+.king-join-app small{font-size:10.5px;color:var(--ink3)}
+.king-join-actions{display:flex;flex-direction:column;gap:5px;flex:0 0 auto}
+.clan-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.clan-head h3{margin:7px 0 3px;font-size:18px;color:var(--blue-deep)}.clan-head p{margin:0;font-size:12px;line-height:1.65;color:var(--ink2)}
+.clan-members{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.clan-members>div{display:grid;grid-template-columns:auto 1fr;gap:1px 7px;align-items:center;padding:8px 10px;border-radius:13px;background:#f5f8f5}
+.clan-members .av{grid-row:span 2}.clan-members b{font-size:12px;color:var(--blue-deep)}.clan-members small{font-size:9.5px;color:var(--ink3)}
+.clan-remove{grid-column:1/-1;margin-top:4px;border:0;background:transparent;padding:0;color:#a55326;
+  font:inherit;font-size:9.5px;font-weight:700;text-align:left;cursor:pointer}
+.clan-plan{margin-top:12px;font-size:12px;color:var(--ink2);line-height:1.7}
+.clan-plan summary{font-weight:750;color:var(--blue-deep);cursor:pointer}
+.managed-comment{padding:11px 0;border-bottom:1px solid var(--line)}
+.managed-comment:last-child{border-bottom:0}.managed-comment b{font-size:12px;color:var(--blue-deep)}
+.managed-comment span{margin-left:7px;font-size:10px;color:var(--ink3)}
+.managed-comment p{margin:4px 0 2px;font-size:12.5px;line-height:1.65;color:var(--ink)}
+.managed-comment small{font-size:10.5px;color:#976748}
+.managed-audit{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.managed-audit:last-child{border-bottom:0}.managed-audit b{font-size:11.5px;color:var(--blue-deep)}
+.managed-audit span{font-size:10.5px;color:var(--ink2)}.managed-audit small{grid-column:2;grid-row:1;font-size:10px;color:var(--ink3)}
+.managed-audit p{grid-column:1/-1;margin:3px 0 0;font-size:11px;color:var(--ink2)}
+.king-notices{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:14px 16px;margin-bottom:14px}
+.king-notices-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.king-notices-head b{font-size:14px;color:var(--blue-deep)}
+.king-notices-head button{border:0;background:transparent;color:var(--ink3);font:inherit;font-size:10.5px;cursor:pointer}
+.king-notice{display:flex;gap:9px;padding:9px 0;border-top:1px solid var(--line);text-decoration:none;color:var(--ink)}
+.king-notice>span{flex:0 0 7px;width:7px;height:7px;border-radius:50%;background:#cbd6cd;margin-top:6px}
+.king-notice.unread>span{background:var(--coral)}
+.king-notice b{display:block;font-size:12.5px;color:var(--blue-deep)}
+.king-notice p{margin:2px 0;font-size:11.5px;line-height:1.6;color:var(--ink2)}
+.king-notice small{font-size:10px;color:var(--ink3)}
+
+/* 路书详情：可信信息先行，真实轨迹图提前；封面只在审核通过后出现。 */
+.route-compact-head{padding:3px 2px 12px}
+.route-compact-head h1{margin:5px 0 4px;font-size:clamp(28px,4.6vw,42px);line-height:1.12;
+  letter-spacing:-.045em;color:var(--blue-deep)}
+.route-compact-head p{margin:0;color:var(--ink2);font-size:13px;line-height:1.6}
+.route-cover{margin:0 0 16px;border-radius:18px;overflow:hidden;background:#f1f4f1}
+.route-cover img{display:block;width:100%;aspect-ratio:16/7;object-fit:cover}
+.route-cover figcaption{padding:7px 11px;font-size:10.5px;color:var(--ink3)}
+.route-cover-tools{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  margin:0 2px 13px;padding:9px 11px;border-radius:13px;background:#f6f8f5;color:var(--ink3)}
+.route-cover-tools span{font-size:10.5px;line-height:1.5}
+.route-cover-tools .btn{flex:0 0 auto}
+@media(min-width:700px){
+  .kingcard.king-hero{min-height:340px;padding:32px}
+  .king-hero .kk-tx{max-width:56%}.king-hero .kk-big{font-size:clamp(60px,6vw,84px)}
+  .king-hero .kk-imp{right:34px;bottom:36px;width:230px}.king-hero .kk-mascot{width:220px;height:228px}
+  .king-hero .kk-go{left:32px;bottom:34px;font-size:13px;padding:11px 18px}
+  .king-apply-page,.king-apps-page,.king-detail-page,.managed-page{max-width:820px}
+  .king-panel{padding:24px}.king-apply-head{padding:26px 30px}
+  .king-detail-block{padding:21px 24px}
+}
+@media(max-width:699px){
+  .kingcard.king-hero{min-height:246px;padding:20px 18px}
+  .king-hero .kk-tx{max-width:66%;padding-top:8px}.king-hero .kk-big{font-size:46px;letter-spacing:-2px}
+  .king-hero .kk-sub{font-size:11.5px;max-width:24ch}
+  .king-hero .kk-imp{width:130px;right:-4px;bottom:4px}.king-hero .kk-mascot{width:128px;height:136px}
+  .king-hero .kk-go{left:18px;bottom:16px;font-size:11px;padding:8px 12px}
+  .king-apply-head{padding:17px 16px}.king-panel{padding:15px}
+  .king-panel-head{align-items:flex-start;flex-direction:column}
+  .ka-new-grid,.ka-two{grid-template-columns:1fr}
+  .king-dl{grid-template-columns:1fr}
+  .king-actions .btn{min-width:0;width:100%}
+  .king-timeline>div{padding-left:9px}.king-timeline b{font-size:10px}
+  .managed-empty,.ka-login-note,.managed-detail-head,.clan-head{align-items:flex-start;flex-direction:column}
+  .king-join-app{flex-direction:column}.king-join-actions{flex-direction:row}
+}
 

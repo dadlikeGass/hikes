@@ -179,22 +179,76 @@
   function fillMasterQueue() {
     var box = document.getElementById('masterQueue');
     if (!box) return;
-    window.API.ja('/api/admin/master-applications?status=pending').then(function (items) {
-      box.innerHTML = '<div class="sec-head"><h3>山大王 / 版主申请待审</h3>' +
-        '<span class="more">' + items.length + ' 条 · 3 天审核期</span></div>' +
+    Promise.all([
+      window.API.ja('/api/admin/king-applications?status=pending'),
+      window.API.ja('/api/admin/king-applications?status=pending_confirmation')
+    ]).then(function (res) {
+      var items = res[0] || [], waiting = res[1] || [];
+      box.innerHTML = '<div class="sec-head"><h3>统一山头申请待审</h3>' +
+        '<span class="more">' + items.length + ' 条 · 3 天处理目标</span></div>' +
         (items.length ? items.map(function (a) {
           var due = (a.dueAt || '').slice(0, 16).replace('T', ' ');
-          return '<div class="card"><b>' + esc(a.mountainName || a.pointCode) + ' · ' +
+          return '<div class="card"><b>' + esc(a.mountainName || a.newName || a.pointCode) + ' · ' +
             esc(a.applicantName || ('申请人 #' + a.id)) + '</b>' +
-            '<div class="hint">类型：' + (a.kind === 'clan' ? '山寨（多人协作）' : '山大王（单人独占）') +
+            '<div class="hint">' + (a.targetKind === 'new' ? '申请新山头' : a.intent === 'join' ? '申请加入山寨' : '申请成为负责人') +
             ' · 一个月能去 ' + a.visitsPerMonth + ' 次 · 截止 ' + esc(due) + '</div>' +
+            (a.isDelayed ? '<div class="hint" style="color:#a55326"><b>已延迟：</b>超过 3 天处理目标，不会自动失效或通过</div>' : '') +
+            (a.contact ? '<div class="hint">联系方式（仅审核可见）：' + esc(a.contact) + '</div>' : '') +
+            (a.ownerName ? '<div class="hint">现任负责人：' + esc(a.ownerName) + ' · 负责人意见：' +
+              esc(a.ownerOpinion || '尚未提交') + '</div>' : '') +
             '<div class="hint">为什么申请：' + esc(a.reason) + '</div>' +
-            '<div class="hint">成为版主后的期待：' + esc(a.expectations) + '</div>' +
+            '<div class="hint">经营计划：' + esc(a.expectations) + '</div>' +
+            (a.newRegion || a.newLocationText ? '<div class="hint">位置：' + esc(a.newRegion || '') +
+              ' · ' + esc(a.newLocationText || '') + '</div>' : '') +
             '<div class="mini-actions">' +
             '<button class="pill-btn acc" data-act="master-approve" data-id="' + a.id + '">通过</button>' +
+            '<button class="pill-btn" data-act="master-needs" data-id="' + a.id + '">要求补充</button>' +
             '<button class="pill-btn ign" data-act="master-reject" data-id="' + a.id + '">驳回</button>' +
             '</div></div>';
-        }).join('') : '<div class="empty">没有待审的维护申请。</div>');
+        }).join('') : '<div class="empty">没有待审的统一申请。</div>') +
+        (waiting.length ? '<div class="sec-head" style="margin-top:14px"><h3>待申请人确认加入</h3>' +
+          '<span class="more">' + waiting.length + ' 条 · 确认前没有成员权限</span></div>' +
+          waiting.map(function (a) {
+            return '<div class="card"><b>' + esc(a.mountainName || a.pointCode) + ' · ' +
+              esc(a.applicantName || '申请人') + '</b><div class="hint">' + esc(a.reviewNote || '等待本人确认继续') +
+              '</div></div>';
+          }).join('') : '');
+    }).catch(function () { box.innerHTML = ''; });
+  }
+
+  function fillClanQueue() {
+    var box = document.getElementById('clanQueue');
+    if (!box) return;
+    window.API.ja('/api/admin/clans?status=pending').then(function (items) {
+      box.innerHTML = '<div class="sec-head"><h3>山寨组建待审</h3><span class="more">' + items.length + ' 条</span></div>' +
+        (items.length ? items.map(function (c) {
+          return '<div class="card"><b>' + esc(c.mountainName || ('山头 #' + c.mountainId)) +
+            ' · ' + esc(c.name) + '</b>' +
+            '<div class="hint">介绍：' + esc(c.intro) + '</div>' +
+            '<div class="hint">协作计划：' + esc(c.collaborationPlan) + '</div>' +
+            '<div class="hint">招募要求：' + esc(c.recruitRequirements) + '</div>' +
+            '<div class="mini-actions"><button class="pill-btn acc" data-act="clan-approve" data-id="' + c.id + '">成立</button>' +
+            '<button class="pill-btn ign" data-act="clan-reject" data-id="' + c.id + '">驳回</button></div></div>';
+        }).join('') : '<div class="empty">没有待审的山寨。</div>');
+    }).catch(function () { box.innerHTML = ''; });
+  }
+
+  function fillCoverQueue() {
+    var box = document.getElementById('coverQueue');
+    if (!box) return;
+    window.API.ja('/api/admin/cover-submissions?status=pending').then(function (items) {
+      box.innerHTML = '<div class="sec-head"><h3>路书封面待审</h3><span class="more">' + items.length + ' 条</span></div>' +
+        (items.length ? items.map(function (c) {
+          return '<div class="card"><b>' + esc(c.routeSlug || ('线路 #' + c.routeId)) +
+            ' · ' + esc(c.photographer) + '</b>' +
+            (c.thumbnailUrl ? '<img src="' + esc(c.thumbnailUrl) + '" alt="" loading="lazy" ' +
+              'style="width:100%;max-width:420px;aspect-ratio:16/7;object-fit:cover;border-radius:12px;margin:8px 0">' : '') +
+            '<div class="hint">拍摄：' + esc(c.shotAt || '未填日期') + ' · 投稿人 ' +
+            esc(c.submitterName || '山友') + ' · 山头推荐 ' + (c.recommendations || 0) + ' 次</div>' +
+            (c.caption ? '<div class="hint">说明：' + esc(c.caption) + '</div>' : '') +
+            '<div class="mini-actions"><button class="pill-btn acc" data-act="cover-approve" data-id="' + c.id + '">通过</button>' +
+            '<button class="pill-btn ign" data-act="cover-reject" data-id="' + c.id + '">驳回</button></div></div>';
+        }).join('') : '<div class="empty">没有待审封面。</div>');
     }).catch(function () { box.innerHTML = ''; });
   }
 
@@ -315,12 +369,15 @@
       }).catch(function () { box.innerHTML = '<div class="empty">请先登录，再查看维护任务。</div>'; });
       fillAdQueue();
       fillCollaborationQueue();
-    fillMasterQueue();
+      fillMasterQueue();
+      fillClanQueue();
+      fillCoverQueue();
       fillCommentAppeals();
     }, 0);
     return '<div class="pad"><div class="sec-head"><h3>我维护的山头</h3></div>' +
       '<div id="maintenanceList" class="card tight"><div class="empty">正在读取…</div></div>' +
-      '<div id="adqueue"></div><div id="masterQueue"></div><div id="collaborationQueue"></div>' +
+      '<div id="adqueue"></div><div id="masterQueue"></div><div id="clanQueue"></div>' +
+      '<div id="coverQueue"></div><div id="collaborationQueue"></div>' +
       '<div id="commentAppeals"></div></div>';
   }
 
@@ -402,17 +459,57 @@
     'master-approve': function (t, o) {
       var note = window.prompt('通过说明（申请人会看到）：', '资料核过，欢迎维护这座山');
       if (note === null) return;
-      window.API.ja('/api/admin/master-applications/' + o.id + '/review', {
+      window.API.ja('/api/admin/king-applications/' + o.id + '/review', {
         method: 'POST', body: JSON.stringify({ decision: 'approved', note: note })
-      }).then(function () { U.toast('已通过'); fillMasterQueue(); fillCollaborationQueue(); })
+      }).then(function () { U.toast('已通过'); fillMasterQueue(); fillClanQueue(); fillCollaborationQueue(); })
         .catch(function (e) { U.toast('没通过：' + e.message); });
+    },
+    'master-needs': function (t, o) {
+      var note = window.prompt('要申请人补充什么？（至少 6 个字）', '请补充 GPX 轨迹或位置说明');
+      if (note === null) return;
+      window.API.ja('/api/admin/king-applications/' + o.id + '/review', {
+        method: 'POST', body: JSON.stringify({ decision: 'needs_info', note: note })
+      }).then(function () { U.toast('已要求补充'); fillMasterQueue(); })
+        .catch(function (e) { U.toast('操作失败：' + e.message); });
     },
     'master-reject': function (t, o) {
       var note = window.prompt('驳回理由（申请人会看到，至少 6 个字）：', '');
       if (note === null) return;
-      window.API.ja('/api/admin/master-applications/' + o.id + '/review', {
+      window.API.ja('/api/admin/king-applications/' + o.id + '/review', {
         method: 'POST', body: JSON.stringify({ decision: 'rejected', note: note })
       }).then(function () { U.toast('已驳回'); fillMasterQueue(); })
+        .catch(function (e) { U.toast('驳回失败：' + e.message); });
+    },
+    'clan-approve': function (t, o) {
+      var note = window.prompt('成立说明（至少 6 个字）：', '招募要求清楚，同意成立山寨');
+      if (note === null) return;
+      window.API.ja('/api/admin/clans/' + o.id + '/review', {
+        method: 'POST', body: JSON.stringify({ decision: 'approved', note: note })
+      }).then(function () { U.toast('山寨已成立'); fillClanQueue(); })
+        .catch(function (e) { U.toast('操作失败：' + e.message); });
+    },
+    'clan-reject': function (t, o) {
+      var note = window.prompt('驳回理由（至少 6 个字）：', '');
+      if (note === null) return;
+      window.API.ja('/api/admin/clans/' + o.id + '/review', {
+        method: 'POST', body: JSON.stringify({ decision: 'rejected', note: note })
+      }).then(function () { U.toast('已驳回'); fillClanQueue(); })
+        .catch(function (e) { U.toast('驳回失败：' + e.message); });
+    },
+    'cover-approve': function (t, o) {
+      var note = window.prompt('通过说明（作者会看到）：', '真实性与授权已核对');
+      if (note === null) return;
+      window.API.ja('/api/admin/cover-submissions/' + o.id + '/review', {
+        method: 'POST', body: JSON.stringify({ decision: 'approved', note: note })
+      }).then(function () { U.toast('封面已通过'); fillCoverQueue(); })
+        .catch(function (e) { U.toast('操作失败：' + e.message); });
+    },
+    'cover-reject': function (t, o) {
+      var note = window.prompt('驳回理由（作者会看到，至少 6 个字）：', '');
+      if (note === null) return;
+      window.API.ja('/api/admin/cover-submissions/' + o.id + '/review', {
+        method: 'POST', body: JSON.stringify({ decision: 'rejected', note: note })
+      }).then(function () { U.toast('已驳回'); fillCoverQueue(); })
         .catch(function (e) { U.toast('驳回失败：' + e.message); });
     },
     'collaboration-approve': function (t, o) {
