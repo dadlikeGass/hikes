@@ -3,41 +3,10 @@
   "version": 2,
   "regions": ["sin1"],
   "functions": {
-    "server/app/main.py": {
+    "main.py": {
       "maxDuration": 60,
       "memory": 1024
     }
-  },
-  "builds": [
-    {
-      "src": "server/app/main.py",
-      "use": "@vercel/python"
-    },
-    {
-      "src": "app/**",
-      "use": "@vercel/static"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "server/app/main.py"
-    },
-    {
-      "src": "/media/(.*)",
-      "dest": "server/app/main.py"
-    },
-    {
-      "src": "/terrain/(.*)",
-      "dest": "app/web/terrain/$1"
-    },
-    {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "app/index.html"
-    }
-  ]
+  }
 }
 
