@@ -55,7 +55,7 @@ JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-change-me")
 JWT_ALG = "HS256"
 PUBLIC_BASE = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/")
 # 部署验收用：/health 里能直接看出跑的是哪一版，避免"推了但没上线"时误判。
-BUILD_REVISION = "2026-10-18.2"
+BUILD_REVISION = "2026-10-18.3"
 _engine_options = {"pool_pre_ping": True}
 if "supabase.co" in DATABASE_URL or "pooler.supabase.com" in DATABASE_URL:
     # Supabase 的 Vercel 连接应使用 transaction pooler，且 psycopg 不能依赖预处理语句。
@@ -1099,7 +1099,8 @@ class PointBrief(BaseModel):
     type: Literal["peak", "junction", "trailhead"]
     name: str | None = Field(default=None, description="空 = 名称待定")
     route_name: str | None = None
-    level: Literal["easy", "mid", "hard", "hidden"]
+    # 线路识别出的点位可能没有逐点难度；此时沿用所属线路的综合难度。
+    level: Literal["easy", "mid", "hard", "hidden"] = "mid"
     altitude: int | None = None
     status: Literal["draft", "published"]
     visit_count: int
@@ -1108,7 +1109,8 @@ class PointBrief(BaseModel):
 @app.get("/api/points", response_model=list[PointBrief], tags=["点位"],
          summary="点位台账（维护台用）")
 def list_points(limit: int = 200):
-    rows = q("""SELECT pt.id, pt.code, pt.type, pt.name, r.name AS route_name, pt.level,
+    rows = q("""SELECT pt.id, pt.code, pt.type, pt.name, r.name AS route_name,
+                       coalesce(pt.level, r.hardest_level, 'mid') AS level,
                        pt.altitude, pt.status,
                        (SELECT count(*) FROM visits v WHERE v.point_id = pt.id) AS visit_count
                 FROM points pt LEFT JOIN routes r ON r.id = pt.route_id
@@ -1313,7 +1315,7 @@ def list_peaks(limit: int = 200, route: str | None = None):
     from_route = """SELECT p.id, 'route' AS origin, NULL AS code,
                     r.slug AS route_slug, r.name AS route_name, p.idx, p.km,
                     p.altitude, p.rise, p.name, p.lat, p.lng,
-                    r.city, r.hardest_level AS level,
+                    r.city, coalesce(r.hardest_level, 'mid') AS level,
                     (SELECT count(*) FROM visits v JOIN points pt ON pt.id = v.point_id
                        WHERE pt.route_id = r.id AND v.created_at > now() - interval '7 days')
                        AS weekly_heat
@@ -1327,7 +1329,7 @@ def list_peaks(limit: int = 200, route: str | None = None):
              SELECT pt.id, 'user' AS origin, pt.code,
                     NULL, NULL, 0, coalesce(pt.track_km, 0),
                     pt.altitude, coalesce(pt.track_up, 0)::int, pt.name,
-                    ST_Y(pt.geom), ST_X(pt.geom), NULL, pt.level,
+                    ST_Y(pt.geom), ST_X(pt.geom), NULL, coalesce(pt.level, 'mid'),
                     (SELECT count(*) FROM visits v WHERE v.point_id = pt.id
                        AND v.created_at > now() - interval '7 days') AS weekly_heat
              FROM points pt
@@ -1941,6 +1943,7 @@ def delete_private_letter(letter_id: int, uid: int = Depends(require_user)):
 @app.get("/api/points/{code}", response_model=PointDetail, tags=["点位"], responses=ERR_404)
 def get_point(code: str):
     p = q1("""SELECT pt.*, r.slug AS route_slug, r.name AS route_name,
+                     r.hardest_level AS route_hardest_level,
                      coalesce(u.nickname, owner.nickname, cl.nickname) AS maintainer_name,
                      coalesce(pt.maintainer_id, cl.user_id) AS responsible_id
               FROM points pt LEFT JOIN routes r ON r.id = pt.route_id
@@ -1978,6 +1981,8 @@ def get_point(code: str):
         ORDER BY c.created_at DESC LIMIT 1""", ids=point_ids,
         uid=responsible["uid"] if responsible else None)
     d = dict(p)
+    if d.get("level") is None:
+        d["level"] = d.get("route_hardest_level") or "mid"
     keys = ("id", "code", "type", "name", "route_id", "route_slug", "route_name", "index_in_route",
             "total_in_route", "level", "altitude", "guide", "status", "version")
     return PointDetail(**{k: d.get(k) for k in keys}, visitCount=n["n"],
@@ -2108,7 +2113,7 @@ def series_of(code: str | None) -> str | None:
 def list_summits(limit: int = 100):
     rows = q(f"""
         SELECT 'p-' || pt.code        AS id, pt.id AS "pointId", pt.code,
-               pt.name, mp.altitude, pt.level,
+               pt.name, mp.altitude, coalesce(pt.level, r.hardest_level, 'mid') AS level,
                r.slug                 AS "routeSlug", r.name AS "routeName",
                coalesce(pt.city, r.city) AS city, pt.country, pt.province,
                r.peak_count           AS "peakCount",
@@ -2127,7 +2132,8 @@ def list_summits(limit: int = 100):
         JOIN ({MAIN_PEAK}) mp ON mp.route_id = r.id
         JOIN points pt ON pt.route_id = r.id AND pt.index_in_route = mp.idx
         UNION ALL
-        SELECT 'p-' || pt.code, pt.id, pt.code, pt.name, pt.altitude, pt.level,
+        SELECT 'p-' || pt.code, pt.id, pt.code, pt.name, pt.altitude,
+               coalesce(pt.level, 'mid'),
                NULL, NULL, pt.city, pt.country, pt.province,
                1, coalesce(pt.track_up, 0), coalesce(pt.track_km, 0),
                ST_Y(pt.geom), ST_X(pt.geom),
@@ -2148,7 +2154,11 @@ def list_summits(limit: int = 100):
     for r in rows:
         d = dict(r)
         d["series"] = series_of(d.get("code"))
-        out.append(SummitItem(**d))
+        try:
+            out.append(SummitItem(**d))
+        except Exception as exc:      # 诊断：线上 500 要能指出是哪一行、哪个字段
+            err(500, "SUMMITS_ROW_INVALID",
+                f"row {len(out)} code={d.get('code')} {type(exc).__name__}: {exc}"[:400])
     return out
 
 class WantIn(BaseModel):
