@@ -1454,7 +1454,7 @@
         mountainsBoardHTML(activeMountainMetric(), { page: 'places', limit: 6 }) +
         '<div class="sec-head" id="page-peaks" style="margin-top:4px"><h3>山头</h3>' +
         '<span class="more">' + (pq || pf !== 'all' || pd !== 'all'
-          ? board.length + ' 个结果' : '按海拔 ›') + '</span></div>' +
+          ? board.length + ' 个结果' : H.peaks.length + ' 个 · 按海拔 ›') + '</span></div>' +
         (board.length ? pageSlice(board, 'peaks', PAGE_SIZE).map(function (p, i) {
           return locCard({
             href: '#/peaks/' + p.id,
