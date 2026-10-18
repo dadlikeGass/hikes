@@ -36,6 +36,13 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
+
+# Vercel 的 @vercel/python 入口可能直接加载 server/app/main.py（模块名 main），
+# 此时 `app.*` 需要 server/ 在 sys.path 上；本地作为 app.main 导入时这段是无操作。
+_SERVER_ROOT = pathlib.Path(__file__).resolve().parents[1]
+if (_SERVER_ROOT / "app" / "main.py").is_file():
+    sys.path.insert(0, str(_SERVER_ROOT))
+
 from app.checkins import (record_visit, CHECKIN_RADIUS_PEAK_M,
                           CHECKIN_RADIUS_OTHER_M, MAX_ACCURACY_M)
 from app.efforts import reconcile_efforts

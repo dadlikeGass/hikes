@@ -23,8 +23,12 @@
       "dest": "server/app/main.py"
     },
     {
-      "src": "/(terrain|media|tracks)/(.*)",
-      "dest": "app/$1/$2"
+      "src": "/media/(.*)",
+      "dest": "server/app/main.py"
+    },
+    {
+      "src": "/terrain/(.*)",
+      "dest": "app/web/terrain/$1"
     },
     {
       "handle": "filesystem"
