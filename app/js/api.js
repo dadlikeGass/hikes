@@ -366,14 +366,22 @@
     /* 消息页要的三份数据：我的山头（维护人 / 山大王）、我关注的山头、留言提醒。
        任何一份拿不到都当空数组——消息页显示空态，不能让整页报"后端没连上"，
        也不会因为没开 dev 登录就白屏。 */
-    return Promise.all([
-      ja('/api/me/summits').catch(function () { return []; }),
-      ja('/api/me/follows').catch(function () { return []; }),
-      ja('/api/me/notifications').catch(function () { return []; })
-    ]).then(function (r) {
-      H.mySummits = r[0] || [];
-      H.followPeaks = r[1] || [];
-      H.notif = r[2] || [];
+    return authToken().then(function (tk) {
+      if (!tk) {
+        H.mySummits = [];
+        H.followPeaks = [];
+        H.notif = [];
+        return;
+      }
+      return Promise.all([
+        ja('/api/me/summits').catch(function () { return []; }),
+        ja('/api/me/follows').catch(function () { return []; }),
+        ja('/api/me/notifications').catch(function () { return []; })
+      ]).then(function (r) {
+        H.mySummits = r[0] || [];
+        H.followPeaks = r[1] || [];
+        H.notif = r[2] || [];
+      });
     });
   }).then(function () {
     /* 广告流：只有过审且在有效期内的会返回。拿不到就当没有，
