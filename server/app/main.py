@@ -55,7 +55,7 @@ JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-change-me")
 JWT_ALG = "HS256"
 PUBLIC_BASE = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/")
 # 部署验收用：/health 里能直接看出跑的是哪一版，避免"推了但没上线"时误判。
-BUILD_REVISION = "2026-10-18.1"
+BUILD_REVISION = "2026-10-18.2"
 _engine_options = {"pool_pre_ping": True}
 if "supabase.co" in DATABASE_URL or "pooler.supabase.com" in DATABASE_URL:
     # Supabase 的 Vercel 连接应使用 transaction pooler，且 psycopg 不能依赖预处理语句。
@@ -193,6 +193,7 @@ class HealthOut(BaseModel):
     postgis: str
     db: str
     revision: str = ""
+    terrainManifestEntries: int = 0
     routes: int
     segments: int
     peaks: int
@@ -773,7 +774,9 @@ def health():
             "数据库暂时不可用，请检查 DATABASE_URL、Supabase 迁移和网络区域（%s）"
             % exc.__class__.__name__)
     return HealthOut(ok=True, postgis=row["pgis"], db=row["db"],
-                     revision=BUILD_REVISION, **dict(counts))
+                     revision=BUILD_REVISION,
+                     terrainManifestEntries=len(_TERRAIN_MANIFEST),
+                     **dict(counts))
 
 
 # ==================== 路书 ====================
