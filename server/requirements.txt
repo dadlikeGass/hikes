@@ -11,3 +11,4 @@ qrcode==8.0
 argon2-cffi>=23.1,<26
 Pillow==11.0.0
 python-multipart==0.0.20
+Pillow>=10.0.0

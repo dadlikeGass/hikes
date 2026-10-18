@@ -1,9 +1,38 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
   "functions": {
-    "main.py": {
+    "server/app/main.py": {
       "maxDuration": 60,
       "memory": 1024
     }
-  }
+  },
+  "builds": [
+    {
+      "src": "server/app/main.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "app/**",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "server/app/main.py"
+    },
+    {
+      "src": "/(terrain|media|tracks)/(.*)",
+      "dest": "app/$1/$2"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "app/index.html"
+    }
+  ]
 }
+
