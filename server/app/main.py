@@ -55,20 +55,19 @@ JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-change-me")
 JWT_ALG = "HS256"
 PUBLIC_BASE = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/")
 # 部署验收用：/health 里能直接看出跑的是哪一版，避免"推了但没上线"时误判。
-BUILD_REVISION = "2026-10-18.3"
+BUILD_REVISION = "2026-10-18.4"
 _engine_options = {"pool_pre_ping": True}
 if "supabase.co" in DATABASE_URL or "pooler.supabase.com" in DATABASE_URL:
     # Supabase 的 Vercel 连接应使用 transaction pooler，且 psycopg 不能依赖预处理语句。
     # 每个 warm instance 留几个连接：线路列表页会同时请求 6 条线路详情，
-    # 单连接会把几十次查询排成一队，跨区访问时很容易把前端的 15 秒超时耗尽。
-    # pool_pre_ping 在这里关掉：每次 checkout 都多一次 SELECT 1，跨区往返直接翻倍；
-    # 连接失效由 pool_recycle 与 SQLAlchemy 的断连重试兜底。
+    # 单连接会把几十次查询排成一队，很容易把前端的 15 秒超时耗尽。
+    # 函数已与 Supabase 同区（sin1），pool_pre_ping 的 SELECT 1 只有毫秒级，
+    # 保留它能挡住 pooler 回收连接后偶发的 500。
     _engine_options.update(
         pool_size=4,
         max_overflow=2,
         pool_timeout=10,
         pool_recycle=300,
-        pool_pre_ping=False,
         connect_args={"prepare_threshold": None, "sslmode": "require",
                       "connect_timeout": 10},
     )
@@ -2156,9 +2155,10 @@ def list_summits(limit: int = 100):
         d["series"] = series_of(d.get("code"))
         try:
             out.append(SummitItem(**d))
-        except Exception as exc:      # 诊断：线上 500 要能指出是哪一行、哪个字段
-            err(500, "SUMMITS_ROW_INVALID",
-                f"row {len(out)} code={d.get('code')} {type(exc).__name__}: {exc}"[:400])
+        except Exception:
+            # 不把内部字段暴露给公开接口，但日志里要能定位是哪一行。
+            logging.exception("summits row invalid: code=%s", d.get("code"))
+            raise
     return out
 
 class WantIn(BaseModel):
