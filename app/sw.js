@@ -1,9 +1,10 @@
 /* Offline shell for already visited pages. Private API responses are never cached. */
-const SHELL_CACHE = 'hikes-shell-v7-1';
-const PUBLIC_CACHE = 'hikes-public-v7-1';
+const SHELL_CACHE = 'hikes-shell-v9-1';
+const PUBLIC_CACHE = 'hikes-public-v9-1';
 const SHELL = ['./', './index.html', './css/app.css', './css/redesign.css',
   './js/data.js', './js/ui.js', './js/track.js', './js/api.js',
-  './js/offline-store.js', './js/king-applications.js', './js/app.js', './js/admin.js'];
+  './js/offline-store.js', './js/king-applications.js', './js/vendor/jsqr.js',
+  './js/app.js', './js/admin.js'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(SHELL_CACHE).then(cache => cache.addAll(SHELL)));

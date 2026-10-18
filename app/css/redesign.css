@@ -68,6 +68,13 @@ html,body,#app{background:var(--bg)}.topbar{background:#e4f5fd;border-color:#d9e
 /* Homepage: keep the supplied anime landscape, hiker cutout and real controls together. */
 .scan-art-card{width:100%;aspect-ratio:2.75/1;margin:16px 0 20px;overflow:hidden;border-radius:20px;background:#8bcffa}
 .scan-art-card img{display:block;width:100%;height:100%;object-fit:cover;object-position:center}
+.scanbox video{position:absolute;inset:0;z-index:1;display:none;width:100%;height:100%;
+  object-fit:cover;background:#101814}
+.scanbox.live video{display:block}
+.scanbox .frame,.scanbox .laser,.scanbox .tip{z-index:2}
+.scan-actions{display:flex;gap:8px;margin:-4px 0 10px}
+.scan-actions .btn{flex:1;min-width:0}
+.scan-state{min-height:36px;margin:0 2px 12px;color:var(--ui-ink2);font-size:12.5px;line-height:1.55}
 @media(max-width:699px){.scan-art-card{aspect-ratio:1.8/1;border-radius:18px}.scan-art-card img{object-position:68% center}}
 #app.home-image .topbar{display:none!important}
 #app.home-image .tabbar{display:flex!important}

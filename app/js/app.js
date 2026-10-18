@@ -3231,12 +3231,115 @@
   }
 
   /* ==================== 扫码 ==================== */
+  var scanStream = null, scanTimer = null, scanDetector = null, scanBusy = false;
+
+  function stopScanCamera() {
+    if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
+    if (scanStream) {
+      scanStream.getTracks().forEach(function (track) { track.stop(); });
+      scanStream = null;
+    }
+    scanDetector = null;
+    scanBusy = false;
+    var box = document.getElementById('scanbox');
+    if (box) box.classList.remove('live');
+    var video = document.getElementById('scanVideo');
+    if (video) video.srcObject = null;
+  }
+
+  function scannedCode(raw) {
+    var text = String(raw || '').trim();
+    var match = text.match(/\/p\/([A-Za-z0-9_-]+)/i);
+    if (match) return match[1].toUpperCase();
+    match = text.match(/[?&]code=([A-Za-z0-9_-]+)/i);
+    if (match) return match[1].toUpperCase();
+    if (/^[A-Za-z0-9_-]{3,40}$/.test(text)) return text.toUpperCase();
+    return '';
+  }
+
+  function startScanCamera() {
+    var state = document.getElementById('scanState');
+    var box = document.getElementById('scanbox');
+    var video = document.getElementById('scanVideo');
+    if (!video || !box) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      if (state) state.textContent = '这个浏览器不支持相机取景。请用手机浏览器或手动输入编号。';
+      return;
+    }
+    if (scanStream) return;
+    if (state) state.textContent = '正在请求相机权限…';
+    var constraints = { video: { facingMode: { ideal: 'environment' } }, audio: false };
+    navigator.mediaDevices.getUserMedia(constraints)
+      .catch(function () { return navigator.mediaDevices.getUserMedia({ video: true, audio: false }); })
+      .then(function (stream) {
+        scanStream = stream;
+        box.classList.add('live');
+        video.srcObject = stream;
+        return video.play();
+      })
+      .then(function () {
+        if (state) state.textContent = '相机已打开，对准标牌上的二维码。';
+        var nativeDetector = 'BarcodeDetector' in window
+          ? Promise.resolve().then(function () {
+              return new window.BarcodeDetector({ formats: ['qr_code'] });
+            }).catch(function () { return null; })
+          : Promise.resolve(null);
+        return nativeDetector.then(function (detector) {
+          scanDetector = detector;
+          if (!detector && !window.jsQR) {
+            if (state) state.textContent = '相机已打开。当前浏览器不支持自动识别，请手动输入编号。';
+            return;
+          }
+          var canvas = document.createElement('canvas');
+          var context = canvas.getContext('2d', { willReadFrequently: true });
+          scanTimer = setInterval(function () {
+            if (scanBusy || !video.videoWidth) return;
+            scanBusy = true;
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            var result;
+            if (scanDetector) {
+              result = scanDetector.detect(canvas).then(function (codes) {
+                return codes && codes.length ? codes[0].rawValue : '';
+              });
+            } else {
+              var image = context.getImageData(0, 0, canvas.width, canvas.height);
+              var found = window.jsQR(image.data, canvas.width, canvas.height,
+                                      { inversionAttempts: 'dontInvert' });
+              result = Promise.resolve(found ? found.data : '');
+            }
+            result.then(function (raw) {
+              var code = scannedCode(raw);
+              if (code) {
+                stopScanCamera();
+                if (state) state.textContent = '已识别：' + code;
+                location.hash = '#/arrive/p-' + encodeURIComponent(code);
+              }
+            }).catch(function () { /* 下一帧继续识别 */ })
+              .then(function () { scanBusy = false; });
+          }, 420);
+        });
+      })
+      .catch(function (error) {
+        stopScanCamera();
+        if (state) {
+          state.textContent = error && error.name === 'NotAllowedError'
+            ? '相机权限被拒绝。请在地址栏权限设置中允许相机，或手动输入编号。'
+            : '相机打不开。请检查摄像头是否被占用，或手动输入编号。';
+        }
+      });
+  }
+
   function scanView() {
     var pts = [{ id: 'dongling', t: 'peak', n: '东灵山主峰 · 山顶打卡点', c: 'DLS-100' },
       { id: 'haohanpo', t: 'junction', n: '好汉坡 · 岔口扫码点位', c: 'HHP-02' },
       { id: 'dajuesi', t: 'junction', n: '大觉寺 · 起点标牌', c: 'DJS-01' }];
-    return '<div class="scanbox"><div class="frame"></div><div class="laser"></div>' +
+    return '<div class="scanbox" id="scanbox"><video id="scanVideo" playsinline muted autoplay aria-label="扫码相机预览"></video><div class="frame"></div><div class="laser"></div>' +
       '<div class="tip">把取景框对准标牌上的二维码</div></div>' +
+      '<div class="scan-actions"><button class="btn coral" data-act="scan-camera">打开相机扫码</button>' +
+      '<button class="btn ghost" data-act="scan-stop">关闭相机</button></div>' +
+      '<div class="scan-state" id="scanState" role="status" aria-live="polite">需要 HTTPS 或 localhost，并允许浏览器使用相机。</div>' +
       '<div class="scan-art-card"><img src="images/home/scan-hikers.png" alt="山友沿着山路结伴徒步，远处是群山与湖泊" loading="lazy"></div>' +
       '<div class="hint" style="text-align:center;margin-top:-6px">这是演示版：点下面的按钮模拟扫到一块标牌。</div>' +
       pts.map(function (p) {
@@ -3518,6 +3621,7 @@
 
   function render() {
     var r = parse();
+    if (r.name !== 'scan') stopScanCamera();
     if (r.name === 'places' && r.parts[1] === 'junction') seg = 'junction';
     document.getElementById('app').classList.toggle('home-image', r.name === 'home');
     document.getElementById('app').dataset.page = r.name;
@@ -3697,6 +3801,13 @@
     if (window.KING_APP && window.KING_APP.handleAction &&
         window.KING_APP.handleAction(act, t, { id: id, type: type, val: val })) return;
     if (act === 'retry-boot') { location.reload(); return; }
+    if (act === 'scan-camera') { startScanCamera(); return; }
+    if (act === 'scan-stop') {
+      stopScanCamera();
+      var scanState = document.getElementById('scanState');
+      if (scanState) scanState.textContent = '相机已关闭。可以重新打开，或手动输入编号。';
+      return;
+    }
     if (act === 'home-retry') { homeData = null; loadHomeData(); return; }
     if (act === 'receipts-retry') { myReceipts = null; myReceiptsError = false; loadMyReceipts(); return; }
     if (act === 'applications-retry') {
