@@ -3265,6 +3265,10 @@
     var box = document.getElementById('scanbox');
     var video = document.getElementById('scanVideo');
     if (!video || !box) return;
+    if (!window.isSecureContext) {
+      if (state) state.textContent = '当前页面不是 HTTPS 安全连接，浏览器不会开放摄像头；请使用线上 https 地址或手动输入编号。';
+      return;
+    }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       if (state) state.textContent = '这个浏览器不支持相机取景。请用手机浏览器或手动输入编号。';
       return;
@@ -3327,9 +3331,14 @@
       .catch(function (error) {
         stopScanCamera();
         if (state) {
-          state.textContent = error && error.name === 'NotAllowedError'
-            ? '相机权限被拒绝。请在地址栏权限设置中允许相机，或手动输入编号。'
-            : '相机打不开。请检查摄像头是否被占用，或手动输入编号。';
+          var name = error && error.name;
+          state.textContent = name === 'NotAllowedError'
+            ? '相机权限被拒绝。请点地址栏左侧的权限图标允许相机，然后重新打开；也可以手动输入编号。'
+            : name === 'NotFoundError'
+              ? '没有检测到摄像头。请连接摄像头后重试，或手动输入编号。'
+              : name === 'NotReadableError'
+                ? '摄像头正被其他应用占用。请关闭会议/相机应用后重试，或手动输入编号。'
+                : '相机打不开（' + (name || '未知错误') + '）。请检查系统相机权限，或手动输入编号。';
         }
       });
   }

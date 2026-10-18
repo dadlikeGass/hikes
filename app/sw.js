@@ -1,6 +1,6 @@
 /* Offline shell for already visited pages. Private API responses are never cached. */
-const SHELL_CACHE = 'hikes-shell-v10-2';
-const PUBLIC_CACHE = 'hikes-public-v10-2';
+const SHELL_CACHE = 'hikes-shell-v10-3';
+const PUBLIC_CACHE = 'hikes-public-v10-3';
 const SHELL = ['./', './index.html', './css/app.css', './css/redesign.css',
   './js/data.js', './js/ui.js', './js/track.js', './js/api.js',
   './js/offline-store.js', './js/king-applications.js', './js/vendor/jsqr.js',

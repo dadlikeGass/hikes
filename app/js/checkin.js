@@ -286,21 +286,37 @@
     summary: summary,
     nextAttemptAt: nextAttemptAt,
     position: function () {
-      return new Promise(function (resolve, reject) {
-        if (!g.navigator.geolocation) {
-          reject(new Error('这个浏览器拿不到位置，请改用扫码打卡'));
-          return;
-        }
-        g.navigator.geolocation.getCurrentPosition(function (position) {
-          resolve({ lat: position.coords.latitude, lng: position.coords.longitude,
-                    accuracyM: Math.ceil(position.coords.accuracy) });
-        }, function (error) {
-          var message = error && error.code === 1
-            ? '没有定位权限：请在浏览器设置里允许定位，或改用扫码打卡'
-            : '定位超时或不可用，请站到开阔处重试，或改用扫码打卡';
-          reject(new Error(message));
-        }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
-      });
+      if (!g.isSecureContext) {
+        return Promise.reject(new Error('定位需要 HTTPS 安全连接，请改用扫码或手动输入编号'));
+      }
+      if (!g.navigator.geolocation) {
+        return Promise.reject(new Error('这个浏览器拿不到位置，请改用扫码打卡'));
+      }
+      function locate(options) {
+        return new Promise(function (resolve, reject) {
+          g.navigator.geolocation.getCurrentPosition(function (position) {
+            resolve({ lat: position.coords.latitude, lng: position.coords.longitude,
+                      accuracyM: Math.ceil(position.coords.accuracy) });
+          }, reject, options);
+        });
+      }
+      /* 室内电脑的 GPS 经常在第一次高精度请求时超时。权限被拒就立即说清楚；
+         超时/暂不可用再试一次不要求高精度的系统定位。精度仍由服务端把关，
+         不会拿 Wi-Fi 粗定位冒充“已经到点位”。 */
+      return locate({ enableHighAccuracy: true, timeout: 12000, maximumAge: 0 })
+        .catch(function (first) {
+          if (first && first.code === 1) {
+            throw new Error('没有定位权限：请允许本站使用定位，或改用扫码打卡');
+          }
+          return locate({ enableHighAccuracy: false, timeout: 8000, maximumAge: 30000 })
+            .catch(function (second) {
+              var code = (second && second.code) || (first && first.code);
+              if (code === 2) {
+                throw new Error('系统定位服务不可用：请在 macOS/Windows 设置中打开定位，并允许浏览器定位；也可以改用扫码');
+              }
+              throw new Error('定位超时：室内信号弱时可到窗边或户外重试，或改用扫码打卡');
+            });
+        });
     }
   };
 })(window);
