@@ -239,6 +239,30 @@ def load_routes(sources):
     return routes
 
 
+def write_manifest():
+    """把地形边界/等高线元数据汇总进后端，供 Vercel 函数读取。
+
+    函数包里只有 server/，静态的 app/web/terrain/*.json 不在其中；
+    没有这份清单，线上就会把 terrain_url 判成 None，轨迹图只剩底纹。
+    """
+    manifest = {}
+    for path in sorted(OUT.glob("*.json")):
+        try:
+            meta = json.loads(path.read_text(encoding="utf-8"))
+            manifest[path.stem] = {
+                "west": meta["west"], "south": meta["south"],
+                "east": meta["east"], "north": meta["north"],
+                "contour_origin_m": meta.get("contour_origin_m"),
+                "contour_steps_m": meta.get("contour_steps_m")
+                    or meta.get("contour_interval_m"),
+            }
+        except (KeyError, ValueError):
+            continue
+    target = ROOT / "server" / "app" / "terrain_manifest.json"
+    target.write_text(json.dumps(manifest, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+    print(f"✓ 地形清单：{len(manifest)} 条 → {target.relative_to(ROOT)}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -257,6 +281,7 @@ def main():
         chosen = {s: r for s, r in chosen.items() if not (OUT / f"{s}.png").exists()}
     if not chosen:
         print("没有需要生成的底图")
+        write_manifest()
         return
 
     by_source = {}
@@ -276,6 +301,7 @@ def main():
     print(f"\n✓ 本次生成 {done}/{len(chosen)} 张；app/web/terrain 现有 {have} 张底图")
     if fails:
         print("失败清单：" + "；".join(f"{s}（{w}）" for s, w in fails[:10]))
+    write_manifest()
 
 
 if __name__ == "__main__":

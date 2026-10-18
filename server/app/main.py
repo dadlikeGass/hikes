@@ -74,6 +74,14 @@ if "supabase.co" in DATABASE_URL or "pooler.supabase.com" in DATABASE_URL:
     )
 engine = create_engine(DATABASE_URL, **_engine_options)
 
+# 地形底图的边界清单（pipeline/build_terrain.py 生成）。线上函数读不到
+# 静态目录里的 sidecar JSON，这份随 server/ 一起打包的清单是兜底。
+_TERRAIN_MANIFEST_PATH = pathlib.Path(__file__).with_name("terrain_manifest.json")
+try:
+    _TERRAIN_MANIFEST = json.loads(_TERRAIN_MANIFEST_PATH.read_text(encoding="utf-8"))
+except (OSError, ValueError):
+    _TERRAIN_MANIFEST = {}
+
 app = FastAPI(title="到此一游 API", version="1.0",
               description="契约见仓库 docs/API.md。错误响应统一为 "
                           "error.code / error.message。")
@@ -870,21 +878,31 @@ def get_route(slug: str, authorization: str | None = Header(default=None)):
     # 地形图在仓库里是 app/web/terrain/。线上静态资源由 Vercel 直接从 app/ 提供，
     # 所以必须走 /app/web/terrain/…；旧的 /terrain/… 只在本机静态根挂载时成立，
     # 部署后会 404，轨迹图就没有地形底图了。
-    terrain_url = (f"/app/web/terrain/{slug}.png"
-                   if (terrain_dir / f"{slug}.png").is_file() else None)
+    terrain_url = None
     terrain_bounds = None
     terrain_contour = None
-    bounds_file = terrain_dir / f"{slug}.json"
-    if terrain_url and bounds_file.is_file():
-        terrain_meta = json.loads(bounds_file.read_text(encoding="utf-8"))
-        terrain_bounds = {k: terrain_meta[k] for k in ("west", "south", "east", "north")}
-        # 底图 sidecar 里等高距的键历史上有两种写法，两个都认（新产物写 contour_steps_m）。
-        terrain_contour = {}
-        for src, dst in (("contour_origin_m", "contour_origin_m"),
-                         ("contour_steps_m", "contour_steps_m"),
-                         ("contour_interval_m", "contour_steps_m")):
-            if src in terrain_meta and dst not in terrain_contour:
-                terrain_contour[dst] = terrain_meta[src]
+    if (terrain_dir / f"{slug}.png").is_file():
+        terrain_url = f"/app/web/terrain/{slug}.png"
+        bounds_file = terrain_dir / f"{slug}.json"
+        if bounds_file.is_file():
+            terrain_meta = json.loads(bounds_file.read_text(encoding="utf-8"))
+            terrain_bounds = {k: terrain_meta[k] for k in ("west", "south", "east", "north")}
+            # 底图 sidecar 里等高距的键历史上有两种写法，两个都认（新产物写 contour_steps_m）。
+            terrain_contour = {}
+            for src, dst in (("contour_origin_m", "contour_origin_m"),
+                             ("contour_steps_m", "contour_steps_m"),
+                             ("contour_interval_m", "contour_steps_m")):
+                if src in terrain_meta and dst not in terrain_contour:
+                    terrain_contour[dst] = terrain_meta[src]
+    else:
+        # Vercel 的函数包里没有静态的 app/，读不到 PNG/JSON；用随代码一起部署的
+        # 清单恢复同一条线路的地形底图与边界（清单由 pipeline/build_terrain.py 生成）。
+        meta = _TERRAIN_MANIFEST.get(slug)
+        if meta:
+            terrain_url = f"/app/web/terrain/{slug}.png"
+            terrain_bounds = {k: meta[k] for k in ("west", "south", "east", "north")}
+            terrain_contour = {k: meta[k] for k in ("contour_origin_m", "contour_steps_m")
+                               if meta.get(k) is not None}
     keys = ("id", "slug", "name", "sub", "city", "km", "up", "down", "hardest_level", "kind", "hours",
             "kcal", "est", "peak_count", "path", "profile")
     elevation_m = d.get("elevation_m") or []

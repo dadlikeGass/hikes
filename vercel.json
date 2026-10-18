@@ -5,8 +5,7 @@
   "functions": {
     "main.py": {
       "maxDuration": 60,
-      "memory": 1024,
-      "includeFiles": "app/web/terrain/*.json"
+      "memory": 1024
     }
   }
 }
