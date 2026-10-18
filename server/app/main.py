@@ -1155,9 +1155,14 @@ def review_trailhead(point_id: int, body: TrailheadReviewIn,
     if point["status"] != "draft":
         err(409, "TRAILHEAD_ALREADY_REVIEWED", "这个山脚点已经处理过了")
     curator = _is_place_curator(uid)
-    target_mountain = body.mountainId or point["mountain_id"]
-    if not curator and not (target_mountain and _is_mountain_owner(target_mountain, uid)):
-        err(403, "TRAILHEAD_REVIEW_FORBIDDEN", "只有该山头负责人或平台地理审核员可以核验")
+    if not curator:
+        owned = point["mountain_id"] and _is_mountain_owner(point["mountain_id"], uid)
+        if not owned:
+            err(403, "TRAILHEAD_REVIEW_FORBIDDEN", "只有该山头负责人或平台地理审核员可以核验")
+        if body.mountainId and body.mountainId != point["mountain_id"]:
+            err(403, "TRAILHEAD_MOUNTAIN_FORBIDDEN", "只有平台地理审核员可以改所属山头")
+    target_mountain = (body.mountainId if curator and body.mountainId
+                       else point["mountain_id"])
 
     if body.decision == "reject":
         marker = {"trailhead_review": "rejected",

@@ -106,6 +106,16 @@ class TrailheadDrill(unittest.TestCase):
         self.assertEqual(403, denied.status_code)
         self.assertEqual("TRAILHEAD_REVIEW_FORBIDDEN", V.error_code(denied))
 
+    def test_05_owner_cannot_move_candidate_to_another_mountain(self):
+        point = self.candidate(lat=LAT + 0.04)
+        denied = self.review(self.owner, point, name="挪去别的山",
+                             mountainId=self.other_mountain)
+        self.assertEqual(403, denied.status_code)
+        self.assertEqual("TRAILHEAD_MOUNTAIN_FORBIDDEN", V.error_code(denied))
+        self.assertEqual(str(self.mountain),
+                         V.psql("SELECT mountain_id FROM points WHERE id=%d"
+                                % point["id"]).strip())
+
 
 if __name__ == "__main__":
     unittest.main()
