@@ -57,9 +57,11 @@ class GpsDrill(unittest.TestCase):
 
     def test_01_nearby_lists_only_usable_points_by_distance(self):
         anchor = self.point()
-        near = self.point(lat=LAT + north(120))
+        near = self.point(lat=LAT + north(60))
+        outside_peak = self.point(lat=LAT + north(120))
         far = self.point(lat=LAT + north(5000))
-        near150 = self.point(kind="trailhead", lat=LAT + north(200), lng=LNG + 0.02)
+        # 120 m：超过山顶 100 m 半径，但在山脚 / 岔路 150 m 半径内
+        near150 = self.point(kind="trailhead", lat=LAT + north(120), lng=LNG + 0.0005)
         no_geom = self.point(lat=None, lng=None)      # 有编号但没有坐标的点位
         draft = self.point(status="draft")
         body = {"lat": LAT, "lng": LNG, "accuracyM": 8}
@@ -67,14 +69,17 @@ class GpsDrill(unittest.TestCase):
         codes = [row["code"] for row in rows]
         self.assertIn(anchor["code"], codes)
         self.assertIn(near["code"], codes)
-        self.assertNotIn(far["code"], codes, "2 公里外的点位不该出现")
+        self.assertNotIn(outside_peak["code"], codes, "山顶 100 米外不该出现")
+        self.assertNotIn(far["code"], codes, "5 公里外的点位不该出现")
         self.assertNotIn(no_geom["code"], codes, "没有坐标的点位不能出现在附近列表")
         self.assertNotIn(draft["code"], codes, "未发布的点位不能出现在附近列表")
         distances = [row["distanceM"] for row in rows]
         self.assertEqual(distances, sorted(distances), "按距离排序")
         self.assertLessEqual(len(rows), 20)
         for row in rows:
-            self.assertEqual({"code", "name", "kind", "distanceM", "checkinRadiusM"},
+            self.assertEqual({"pointId", "code", "name", "kind", "routeId", "routeName",
+                              "mountainId", "mountainName", "distanceM",
+                              "checkinRadiusM", "canCheckIn"},
                              set(row), "公开响应只给展示所需字段，不带精确坐标")
             self.assertIn(row["kind"], ("peak", "junction", "trailhead"))
         radii = {row["code"]: row["checkinRadiusM"] for row in rows}

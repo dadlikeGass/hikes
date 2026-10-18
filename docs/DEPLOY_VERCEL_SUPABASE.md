@@ -87,10 +87,20 @@ docker compose -f server/docker-compose.yml run --rm \
 docker compose -f server/docker-compose.yml run --rm \
   -e DATABASE_URL="$MIGRATE_DATABASE_URL" \
   api python /srv/seeds/backfill_peak_points.py
+
+# 从线路轨迹起点生成山脚打卡候选（只写草稿，不自动公开）
+docker compose -f server/docker-compose.yml run --rm \
+  -e DATABASE_URL="$MIGRATE_DATABASE_URL" \
+  api python /srv/seeds/prepare_trailhead_candidates.py --apply
 ```
 
 完成后检查 `/api/routes?limit=1`、`/api/points?limit=1` 和 `/health` 的数字，
 不要只看迁移返回 0。
+
+`prepare_trailhead_candidates.py` 是幂等的：只处理还没有坐标的 `trailhead` 点位。
+轨迹起点只是候选，写入后是 `status=draft`，不会出现在附近打卡里。负责人到
+「维护台 → 山脚候选待核验」现场核对名称与坐标后发布；没有关联山头的 7 条线路
+需要平台地理审核员先选择山头。先不加 `--apply` 跑一次是 dry-run，只会打印数量。
 
 ## 3. 在 Vercel 配置环境变量
 

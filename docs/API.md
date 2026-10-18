@@ -503,11 +503,35 @@ v1 **只收纯文本，最多 200 字**，图片走 v1.1。
 ```json
 // 请求（POST：坐标不进 URL）
 { "lat": 39.99, "lng": 116.17, "accuracyM": 12 }
-// 响应 200：最多 20 个、2 公里内、已发布且有点位坐标的点位，按距离升序
-[ { "code": "CNP-003", "name": "香山", "kind": "peak", "distanceM": 84, "checkinRadiusM": 100 } ]
+// 响应 200：最多 20 个、只在**真实可打卡半径**内、已发布且有点位坐标的点位，按距离升序
+[ { "pointId": 12, "code": "CNP-003", "name": "香山", "kind": "peak",
+    "routeId": 3, "routeName": "香八拉", "mountainId": 8, "mountainName": "香山",
+    "distanceM": 84, "checkinRadiusM": 100, "canCheckIn": true, "siblingCount": 1 } ]
 ```
 
 - 公开接口，按 IP 限流；**不记录到访**。响应里没有精确坐标。
+- 山顶半径 100 米，山脚 / 岔路 150 米；列表与 `source=nearby` 打卡用同一套半径，
+  因此列表里出现的点一定能打卡，不会出现"看得到、打不上"。
+- 同一山头、同一类型在半径内只返回最近的一个（`siblingCount` 是同组候选数），
+  避免同一起点上的多条赛事线路把列表挤满。
+
+### 山脚候选核验（维护台）
+
+`GET /api/me/trailhead-candidates`：返回当前用户有权处理的山脚候选（`status=draft`）。
+山头负责人只看到自己山头的候选；平台地理审核员（`place_curator`）能处理全部。
+候选来自线路轨迹起点，字段含 `id / code / name / routeName / mountainName / lat / lng /
+needsMountain / canReview`。
+
+`POST /api/points/{id}/trailhead-review`：
+
+```json
+{ "decision": "publish", "name": "大觉寺山脚", "lat": 40.0514, "lng": 116.1006,
+  "mountainId": 70, "note": "现场核对" }
+```
+
+- `decision=publish`：必须有名称为 2 字以上、坐标和所属山头，发布后才会进入附近打卡。
+- `decision=reject`：标为不是山脚，不再出现在待核验队列，保持草稿状态。
+- 权限：该山头负责人或平台地理审核员；无山头归属的候选只有平台审核员能处理。
 
 ### GET /api/mountains/{mountain_id}/courses
 

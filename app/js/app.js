@@ -3838,7 +3838,11 @@
 
     if (act === 'nearby') {
       t.disabled = true;
-      currentPosition().then(function (pos) { return window.API.nearbyPoints(pos); })
+      var here = null;      /* 定位结果要在下一个 then 里显示精度，作用域提到外层 */
+      currentPosition().then(function (pos) {
+        here = pos;
+        return window.API.nearbyPoints(pos);
+      })
         .then(function (rows) {
           var labels = { peak: '山顶', trailhead: '山脚', junction: '岔路' };
           var body = rows.length ? '<div class="hint" style="margin:0 0 10px">只显示已进入可打卡范围的点位。</div>' +
@@ -3857,7 +3861,7 @@
             '<div class="mini-actions"><button class="pill-btn acc" data-act="nearby">重新定位</button>' +
             '<a class="pill-btn" href="#/scan">扫码或输入编号</a></div></div>';
           U.openSheet('<h3>你到了哪一处？</h3><div class="sh-sub">定位精度 ±' +
-            esc(pos.accuracyM) + ' 米 · 确认后再进入到访记录</div>' + body);
+            esc(here && here.accuracyM) + ' 米 · 确认后再进入到访记录</div>' + body);
         }).catch(function (error) { U.toast(error.message); })
         .then(function () { t.disabled = false; });
       return;

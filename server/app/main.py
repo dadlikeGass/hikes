@@ -160,6 +160,7 @@ async def _service_error_handler(request: Request, exc: ServiceError):
 
 
 ERR_401 = {401: {"description": "未登录 / token 无效"}}
+ERR_403 = {403: {"description": "没有这个操作的权限"}}
 ERR_404 = {404: {"description": "资源不存在"}}
 
 
@@ -1023,12 +1024,29 @@ def list_points(limit: int = 200):
     return [PointBrief(**dict(r)) for r in rows]
 
 
+@app.get("/api/mountains", response_model=list[dict], tags=["点位"],
+         summary="山头清单：给点位关联与维护选择用")
+def list_mountains(keyword: str | None = None, limit: int = 400):
+    limit = min(max(limit, 1), 1000)
+    rows = q("""SELECT m.id, m.name, m.region,
+                       (SELECT count(*) FROM points p WHERE p.mountain_id = m.id)
+                         AS "pointCount"
+                  FROM mountains m
+                 WHERE m.name IS NOT NULL AND m.name <> ''
+                   AND (CAST(:kw AS text) IS NULL OR m.name ILIKE :like)
+                 ORDER BY m.name, m.id LIMIT :limit""",
+             kw=keyword, like=f"%{keyword}%" if keyword else None, limit=limit)
+    return [dict(row) for row in rows]
+
+
 class PointPatch(BaseModel):
     name: str | None = None
     level: Literal["easy", "mid", "hard", "hidden"] | None = None
     altitude: int | None = None
     guide: dict[str, Any] | None = Field(default=None, description="{arrow,title,desc,next}")
     status: Literal["draft", "published"] | None = None
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lng: float | None = Field(default=None, ge=-180, le=180)
 
 
 @app.patch("/api/points/{point_id}", response_model=PointDetail, tags=["点位"],
@@ -1040,23 +1058,154 @@ def patch_point(point_id: int, body: PointPatch, uid: int = Depends(require_user
         err(404, "POINT_NOT_FOUND", "点位不存在")
     if not _is_maintainer_of(point, uid):
         err(403, "NOT_MAINTAINER", "只能修改自己维护的点位")
+    changed = body.model_dump(exclude_none=True)
+    lat, lng = changed.pop("lat", None), changed.pop("lng", None)
+    if (lat is None) != (lng is None):
+        err(400, "LOCATION_INCOMPLETE", "经纬度必须同时提供")
     sets, params = [], {"id": point_id}
-    for k, v in body.model_dump(exclude_none=True).items():
+    for k, v in changed.items():
         if k == "guide":
             sets.append("guide = CAST(:guide AS jsonb)")
             params["guide"] = json.dumps(v, ensure_ascii=False)
         else:
             sets.append(f"{k} = :{k}")
             params[k] = v
+    if lat is not None:
+        sets.append("geom = ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)")
+        params.update(lat=lat, lng=lng)
+        changed.update(lat=lat, lng=lng)
     if not sets:
         err(400, "NOTHING_TO_UPDATE", "没有要改的字段")
     with engine.begin() as conn:
         conn.execute(text(f"UPDATE points SET {', '.join(sets)}, version = version + 1 "
                           f"WHERE id = :id"), params)
-        changed = body.model_dump(exclude_none=True)
         _audit(conn, uid, "point.update", "point", point_id,
-               {k: point[k] for k in changed}, changed, point_id=point_id)
+               {k: point[k] for k in changed if k in point}, changed, point_id=point_id)
     return get_point(q1("SELECT code FROM points WHERE id=:i", i=point_id)["code"])
+
+
+class TrailheadCandidateOut(BaseModel):
+    id: int
+    code: str
+    name: str | None = None
+    routeId: int | None = None
+    routeName: str | None = None
+    mountainId: int | None = None
+    mountainName: str | None = None
+    lat: float
+    lng: float
+    needsMountain: bool = False
+    canReview: bool = False
+
+
+@app.get("/api/me/trailhead-candidates", response_model=list[TrailheadCandidateOut],
+         tags=["点位"], responses=ERR_401,
+         summary="待核验的山脚候选：轨迹起点只是候选，维护人确认后才可打卡")
+def my_trailhead_candidates(uid: int = Depends(require_user)):
+    """只返回当前用户有权处理的山脚候选。
+
+    山头负责人处理自己山头的候选；平台地理审核员（place_curator）能处理全部，
+    包括轨迹里没有识别出山顶、暂时无法归属山头的候选。
+    """
+    curator = _is_place_curator(uid)
+    rows = q("""SELECT p.id, p.code, p.name, p.route_id AS "routeId",
+                       r.name AS "routeName", p.mountain_id AS "mountainId",
+                       m.name AS "mountainName",
+                       ST_Y(p.geom) AS lat, ST_X(p.geom) AS lng,
+                       coalesce((p.guide->>'needs_mountain')::boolean, false)
+                         AS "needsMountain"
+                  FROM points p
+                  LEFT JOIN routes r ON r.id = p.route_id
+                  LEFT JOIN mountains m ON m.id = p.mountain_id
+                 WHERE p.type = 'trailhead' AND p.status = 'draft'
+                   AND p.geom IS NOT NULL
+                   AND p.guide->>'candidate_source' = 'route_start'
+                   AND coalesce(p.guide->>'trailhead_review', 'draft') = 'draft'
+                   AND (:curator OR EXISTS (
+                         SELECT 1 FROM mountain_members mm
+                          WHERE mm.mountain_id = p.mountain_id
+                            AND mm.user_id = :uid AND mm.status = 'active'
+                            AND mm.role = 'owner'))
+                 ORDER BY (p.mountain_id IS NULL) DESC, m.name NULLS LAST, p.name, p.id
+                 LIMIT 300""", uid=uid, curator=curator)
+    return [TrailheadCandidateOut(**dict(row), canReview=True) for row in rows]
+
+
+class TrailheadReviewIn(BaseModel):
+    decision: Literal["publish", "reject"]
+    name: str | None = Field(default=None, max_length=120)
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lng: float | None = Field(default=None, ge=-180, le=180)
+    mountainId: int | None = None
+    note: str | None = Field(default=None, max_length=500)
+
+
+@app.post("/api/points/{point_id}/trailhead-review", response_model=dict,
+          tags=["点位"], responses={**ERR_401, **ERR_403, **ERR_404},
+          summary="核验山脚候选：确认名称与坐标后发布，或标记不是山脚")
+def review_trailhead(point_id: int, body: TrailheadReviewIn,
+                     uid: int = Depends(require_user)):
+    point = q1("""SELECT id, code, name, mountain_id, status,
+                         ST_Y(geom) AS lat, ST_X(geom) AS lng, guide
+                    FROM points
+                   WHERE id = :id AND type = 'trailhead'
+                     AND guide->>'candidate_source' = 'route_start'""", id=point_id)
+    if not point:
+        err(404, "TRAILHEAD_CANDIDATE_NOT_FOUND", "没有这个山脚候选")
+    if point["status"] != "draft":
+        err(409, "TRAILHEAD_ALREADY_REVIEWED", "这个山脚点已经处理过了")
+    curator = _is_place_curator(uid)
+    target_mountain = body.mountainId or point["mountain_id"]
+    if not curator and not (target_mountain and _is_mountain_owner(target_mountain, uid)):
+        err(403, "TRAILHEAD_REVIEW_FORBIDDEN", "只有该山头负责人或平台地理审核员可以核验")
+
+    if body.decision == "reject":
+        marker = {"trailhead_review": "rejected",
+                  "review_note": (body.note or "").strip() or None,
+                  "reviewed_by": uid}
+        with engine.begin() as conn:
+            conn.execute(text("""UPDATE points
+                SET guide = coalesce(guide, '{}'::jsonb) || CAST(:marker AS jsonb),
+                    version = version + 1
+                WHERE id = :id"""),
+                {"id": point_id, "marker": json.dumps(marker, ensure_ascii=False)})
+            _audit(conn, uid, "trailhead.reject", "point", point_id,
+                   {"status": point["status"]}, marker, body.note, point_id=point_id)
+        return {"ok": True, "status": "draft", "review": "rejected"}
+
+    name = (body.name if body.name is not None else (point["name"] or "")).strip()
+    if len(name) < 2:
+        err(422, "TRAILHEAD_NAME_REQUIRED", "发布前请填写山脚名称")
+    lat = body.lat if body.lat is not None else point["lat"]
+    lng = body.lng if body.lng is not None else point["lng"]
+    if lat is None or lng is None:
+        err(422, "TRAILHEAD_LOCATION_REQUIRED", "发布前请确认山脚坐标")
+    if not target_mountain:
+        err(422, "TRAILHEAD_MOUNTAIN_REQUIRED", "请先关联这座山脚所属的山头")
+
+    marker = {"trailhead_review": "published",
+              "review_note": (body.note or "").strip() or None,
+              "reviewed_by": uid}
+    with engine.begin() as conn:
+        conn.execute(text("""UPDATE points
+            SET name = :name,
+                mountain_id = :mid,
+                geom = ST_SetSRID(ST_MakePoint(:lng, :lat), 4326),
+                status = 'published',
+                guide = coalesce(guide, '{}'::jsonb) || CAST(:marker AS jsonb),
+                version = version + 1
+            WHERE id = :id"""),
+            {"id": point_id, "name": name, "mid": target_mountain,
+             "lat": lat, "lng": lng,
+             "marker": json.dumps(marker, ensure_ascii=False)})
+        _audit(conn, uid, "trailhead.publish", "point", point_id,
+               {"name": point["name"], "lat": point["lat"], "lng": point["lng"],
+                "mountainId": point["mountain_id"], "status": point["status"]},
+               {"name": name, "lat": lat, "lng": lng,
+                "mountainId": target_mountain, "status": "published"},
+               body.note, point_id=point_id)
+    return {"ok": True, "status": "published", "name": name,
+            "mountainId": target_mountain}
 
 
 @app.get("/api/peaks", response_model=list[PeakItem], tags=["点位"],
@@ -1111,21 +1260,21 @@ def nearby_points(body: NearbyRequest, request: Request):
         err(422, "LOCATION_INACCURATE",
             "定位精度不足（需不超过 50 米），请到开阔处重试或扫码")
     rows = q("""SELECT p.id AS "pointId", p.code, p.name, p.type AS kind,
-        p.route_id AS "routeId", r.name AS "routeName",
-        p.mountain_id AS "mountainId", m.name AS "mountainName",
-        round(ST_Distance(p.geom::geography,
-          ST_SetSRID(ST_MakePoint(:lng,:lat),4326)::geography))::int AS "distanceM",
-        CASE WHEN p.type='peak' THEN :peak_radius ELSE :other_radius END
-          AS "checkinRadiusM",
-        TRUE AS "canCheckIn"
-        FROM points p
-        LEFT JOIN routes r ON r.id = p.route_id
-        LEFT JOIN mountains m ON m.id = p.mountain_id
-        WHERE p.status='published' AND p.geom IS NOT NULL
-          AND ST_DWithin(p.geom::geography,
-            ST_SetSRID(ST_MakePoint(:lng,:lat),4326)::geography,
-            CASE WHEN p.type='peak' THEN :peak_radius ELSE :other_radius END)
-        ORDER BY "distanceM", p.id LIMIT 20""",
+          p.route_id AS "routeId", r.name AS "routeName",
+          p.mountain_id AS "mountainId", m.name AS "mountainName",
+          round(ST_Distance(p.geom::geography,
+            ST_SetSRID(ST_MakePoint(:lng,:lat),4326)::geography))::int AS "distanceM",
+          CASE WHEN p.type='peak' THEN :peak_radius ELSE :other_radius END
+            AS "checkinRadiusM",
+          TRUE AS "canCheckIn"
+          FROM points p
+          LEFT JOIN routes r ON r.id = p.route_id
+          LEFT JOIN mountains m ON m.id = p.mountain_id
+         WHERE p.status='published' AND p.geom IS NOT NULL
+           AND ST_DWithin(p.geom::geography,
+             ST_SetSRID(ST_MakePoint(:lng,:lat),4326)::geography,
+             CASE WHEN p.type='peak' THEN :peak_radius ELSE :other_radius END)
+         ORDER BY "distanceM", p.id LIMIT 20""",
         lat=body.lat, lng=body.lng, peak_radius=CHECKIN_RADIUS_PEAK_M,
         other_radius=CHECKIN_RADIUS_OTHER_M)
     _rate_hit(keys)
@@ -2775,6 +2924,19 @@ def _is_maintainer_of(point_row, uid: int | None) -> bool:
         WHERE pt.id = :pid AND mm.user_id = :uid
           AND mm.status = 'active' AND mm.role = 'owner'
         LIMIT 1""", pid=point_id, uid=uid))
+
+
+def _is_mountain_owner(mountain_id: int, uid: int) -> bool:
+    return bool(q1("""SELECT 1 AS ok FROM mountain_members
+        WHERE mountain_id = :mid AND user_id = :uid
+          AND status = 'active' AND role = 'owner'
+        LIMIT 1""", mid=mountain_id, uid=uid))
+
+
+def _is_place_curator(uid: int) -> bool:
+    return bool(q1("""SELECT 1 AS ok FROM system_roles
+        WHERE user_id = :uid AND role = 'place_curator'
+        LIMIT 1""", uid=uid))
 
 
 def _is_board_collaborator(point_id: int, uid: int) -> bool:

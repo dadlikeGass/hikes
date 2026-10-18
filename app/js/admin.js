@@ -270,6 +270,60 @@
     }).catch(function () { box.innerHTML = ''; });
   }
 
+  /* ---------- 山脚候选待核验 ----------
+     轨迹起点只是算法给出的候选，不直接公开。负责人到现场核对名称与坐标后
+     才能发布；发布后才会出现在「附近打卡」里。 */
+  function fillTrailheadQueue() {
+    var box = document.getElementById('trailheadQueue');
+    if (!box) return;
+    window.API.ja('/api/me/trailhead-candidates').then(function (items) {
+      if (!items.length) { box.innerHTML = ''; return; }
+      box.innerHTML = '<div class="sec-head"><h3>山脚候选待核验</h3>' +
+        '<span class="more">' + items.length + ' 个 · 轨迹起点推算</span></div>' +
+        '<div class="hint" style="margin:0 0 10px">候选不会自动公开。到现场核对名称和位置后再发布，' +
+        '发布后才会进入附近打卡；不是山脚的直接标掉。</div>' +
+        items.slice(0, 12).map(function (c) {
+          var title = c.name || c.routeName || c.code;
+          var place = [c.routeName, c.mountainName].filter(Boolean).join(' · ');
+          var coord = Number(c.lat).toFixed(5) + ', ' + Number(c.lng).toFixed(5);
+          return '<div class="card"><b>' + esc(title) + '</b>' +
+            '<div class="hint">' + esc(place || '未关联山头') + ' · ' + esc(c.code) + '</div>' +
+            '<div class="hint">候选坐标 ' + coord +
+            (c.needsMountain ? ' · <b style="color:#a55326">需先关联山头</b>' : '') + '</div>' +
+            (c.needsMountain
+              ? '<div class="field"><label>关联山头</label><select id="thMountain-' + c.id +
+                '"><option value="">选择山头…</option></select></div>'
+              : '') +
+            '<div class="mini-actions">' +
+            '<button class="pill-btn acc" data-act="trailhead-publish" data-id="' + c.id +
+            '" data-code="' + esc(c.code) + '" data-name="' + esc(title) + '">按此坐标发布</button>' +
+            '<button class="pill-btn ign" data-act="trailhead-locate" data-id="' + c.id +
+            '" data-code="' + esc(c.code) + '" data-name="' + esc(title) + '">用我的位置修正</button>' +
+            '<button class="pill-btn" data-act="trailhead-reject" data-id="' + c.id +
+            '">不是这里</button></div></div>';
+        }).join('') +
+        (items.length > 12
+          ? '<div class="hint">先列最近要处理的 12 个；发布或标掉后会继续显示。</div>'
+          : '');
+      fillMountainPickers(items.filter(function (c) { return c.needsMountain; }));
+    }).catch(function () { box.innerHTML = ''; });
+  }
+
+  function fillMountainPickers(rows) {
+    if (!rows.length) return;
+    window.API.ja('/api/mountains?limit=1000').then(function (mountains) {
+      rows.forEach(function (c) {
+        var sel = document.getElementById('thMountain-' + c.id);
+        if (!sel) return;
+        sel.innerHTML = '<option value="">选择山头…</option>' + mountains.map(function (m) {
+          return '<option value="' + m.id + '">' + esc(m.name) +
+            (m.region ? ' · ' + esc(m.region) : '') + '</option>';
+        }).join('');
+        if (c.mountainId) sel.value = String(c.mountainId);
+      });
+    }).catch(function () {});
+  }
+
   /* ---------- 单个点位 ---------- */
   function pointView(r) {
     var p = rec(r.id);
@@ -373,9 +427,11 @@
       fillClanQueue();
       fillCoverQueue();
       fillCommentAppeals();
+      fillTrailheadQueue();
     }, 0);
     return '<div class="pad"><div class="sec-head"><h3>我维护的山头</h3></div>' +
       '<div id="maintenanceList" class="card tight"><div class="empty">正在读取…</div></div>' +
+      '<div id="trailheadQueue"></div>' +
       '<div id="adqueue"></div><div id="masterQueue"></div><div id="clanQueue"></div>' +
       '<div id="coverQueue"></div><div id="collaborationQueue"></div>' +
       '<div id="commentAppeals"></div></div>';
@@ -436,6 +492,65 @@
   g.EXTRA_VIEWS = { admin: liveListView, 'admin-p': livePointView };
   g.EXTRA_TITLES = { admin: '维护台', 'admin-p': '管理点位' };
   g.EXTRA_ACTIONS = {
+    'trailhead-publish': function (t, o) {
+      var name = window.prompt('山脚的正式名称（会显示在附近打卡里）：',
+        t.getAttribute('data-name') || '');
+      if (name === null) return;
+      name = name.trim();
+      if (name.length < 2) { U.toast('请填写至少 2 个字的山脚名称'); return; }
+      var body = { decision: 'publish', name: name };
+      var picker = document.getElementById('thMountain-' + o.id);
+      if (picker) {
+        if (!picker.value) { U.toast('请先选择这个山脚所属的山头'); return; }
+        body.mountainId = Number(picker.value);
+      }
+      t.disabled = true;
+      window.API.ja('/api/points/' + o.id + '/trailhead-review', {
+        method: 'POST', body: JSON.stringify(body)
+      }).then(function () { U.toast('已发布，附近打卡现在能找到它'); fillTrailheadQueue(); })
+        .catch(function (e) { U.toast(e.message || '发布失败'); t.disabled = false; });
+    },
+    'trailhead-locate': function (t, o) {
+      if (!navigator.geolocation) { U.toast('这个浏览器拿不到定位'); return; }
+      t.disabled = true;
+      U.toast('正在取你的位置…');
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        var acc = Math.round(pos.coords.accuracy || 0);
+        if (acc > 50) {
+          U.toast('定位精度 ±' + acc + ' 米，太粗了；到开阔处再试，或直接按候选坐标发布');
+          t.disabled = false;
+          return;
+        }
+        var name = window.prompt('确认山脚名称（会用到你当前的位置，精度 ±' + acc + ' 米）：',
+          t.getAttribute('data-name') || '');
+        if (name === null) { t.disabled = false; return; }
+        name = name.trim();
+        if (name.length < 2) { U.toast('请填写至少 2 个字的山脚名称'); t.disabled = false; return; }
+        var body = { decision: 'publish', name: name,
+          lat: pos.coords.latitude, lng: pos.coords.longitude };
+        var picker = document.getElementById('thMountain-' + o.id);
+        if (picker) {
+          if (!picker.value) { U.toast('请先选择这个山脚所属的山头'); t.disabled = false; return; }
+          body.mountainId = Number(picker.value);
+        }
+        window.API.ja('/api/points/' + o.id + '/trailhead-review', {
+          method: 'POST', body: JSON.stringify(body)
+        }).then(function () { U.toast('已按你的位置发布'); fillTrailheadQueue(); })
+          .catch(function (e) { U.toast(e.message || '发布失败'); t.disabled = false; });
+      }, function (e) {
+        U.toast(e.code === 1 ? '没有定位权限；可在浏览器设置里允许' : '定位失败，请重试');
+        t.disabled = false;
+      }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    },
+    'trailhead-reject': function (t, o) {
+      var note = window.prompt('为什么它不是山脚？（选填，维护人自己能看见）', '');
+      if (note === null) return;
+      t.disabled = true;
+      window.API.ja('/api/points/' + o.id + '/trailhead-review', {
+        method: 'POST', body: JSON.stringify({ decision: 'reject', note: note })
+      }).then(function () { U.toast('已标记，不再出现在待核验里'); fillTrailheadQueue(); })
+        .catch(function (e) { U.toast(e.message || '操作失败'); t.disabled = false; });
+    },
     'appeal-restore': function (t, o) {
       var note = prompt('恢复依据（至少 8 字）');
       if (note === null) return;
