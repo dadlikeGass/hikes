@@ -793,47 +793,68 @@ def list_routes(level: str | None = None, limit: int = 20):
 
 @app.get("/api/routes/{slug}", response_model=RouteDetail, tags=["路书"], responses=ERR_404)
 def get_route(slug: str, authorization: str | None = Header(default=None)):
-    r = q1("SELECT *, ST_AsGeoJSON(geom) AS route_geojson FROM routes WHERE slug = :slug", slug=slug)
+    # 详情页要的五块数据一次取回。线上函数与 Supabase 不同区时，每次往返都要
+    # 几百毫秒到一秒；拆成 5 个查询会把一条线路拖到 7–8 秒，列表一次请求 6 条
+    # 详情就必然撞上前端 15 秒超时。这里用相关子查询聚合，只走一次数据库。
+    r = q1("""SELECT r.*, ST_AsGeoJSON(r.geom) AS route_geojson,
+        (SELECT coalesce(jsonb_agg(to_jsonb(s) ORDER BY s.no), '[]'::jsonb)
+           FROM (
+             SELECT rs.id, rs.no, rs.from_km, rs.to_km, rs.km, rs.rise, rs.pct,
+                    CASE WHEN rs.pct >= -3 AND (rs.max_rise_m >= 200 OR rs.pct > 3)
+                         THEN rs.level ELSE NULL END AS level,
+                    rs.kind, rs.source, rs.confirmed,
+                    (rs.pct >= -3 AND (rs.max_rise_m >= 200 OR rs.pct > 3))
+                      AS difficulty_applicable,
+                    CASE WHEN rs.pct < -3 THEN 'descent'
+                         WHEN rs.max_rise_m < 200 AND rs.pct <= 3 THEN 'gentle' END
+                      AS not_applicable,
+                    rs.up_m, rs.down_m, rs.max_rise_m, rs.max_drop_m,
+                    link.trail_segment_id, b.id AS board_id
+               FROM route_segments rs
+               LEFT JOIN route_segment_links link ON link.route_id = rs.route_id
+                 AND link.route_segment_no = rs.no
+                 AND link.direction = CASE rs.kind WHEN 'climb' THEN 'ascending'
+                     WHEN 'desc' THEN 'descending' ELSE 'traverse' END
+               LEFT JOIN boards b ON b.trail_segment_id = link.trail_segment_id
+                 AND b.board_type = 'segment'
+              WHERE rs.route_id = r.id ORDER BY rs.no
+           ) s) AS segments_json,
+        (SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.idx), '[]'::jsonb)
+           FROM (
+             SELECT rp.idx, rp.km, coalesce(rp.elevation_m, rp.altitude) AS altitude,
+                    coalesce(rp.elevation_m, rp.altitude) AS elevation_m,
+                    rp.rise, rp.near_cp, rp.near_cp_m,
+                    coalesce(rp.name, m.name) AS name,
+                    CASE WHEN rp.name IS NOT NULL THEN 'confirmed'
+                         ELSE coalesce(m.name_status, rp.name_status) END AS name_status,
+                    cand.id AS candidate_id, cand.candidate_name
+               FROM route_peaks rp LEFT JOIN mountains m ON m.id = rp.mountain_id
+               LEFT JOIN LATERAL (SELECT id, candidate_name FROM route_peak_candidates
+                   WHERE route_peak_id = rp.id AND status = 'pending'
+                   ORDER BY created_at DESC LIMIT 1) cand ON true
+              WHERE rp.route_id = r.id ORDER BY rp.idx
+           ) p) AS peaks_json,
+        (SELECT coalesce(jsonb_agg(to_jsonb(c) ORDER BY c.km, c.no), '[]'::jsonb)
+           FROM (
+             SELECT id, no, name, km, altitude, lat, lng, off_track_m,
+                    supply_type, notes, source
+               FROM route_checkpoints WHERE route_id = r.id ORDER BY km, no
+           ) c) AS checkpoints_json,
+        (SELECT to_jsonb(cv) FROM (
+             SELECT storage_key, thumbnail_key, photographer, caption
+               FROM route_cover_submissions
+              WHERE route_id = r.id AND status = 'approved'
+              ORDER BY reviewed_at DESC LIMIT 1
+           ) cv) AS cover_json
+        FROM routes r WHERE r.slug = :slug""", slug=slug)
     if not r:
         err(404, "ROUTE_NOT_FOUND", "线路不存在")
     # 段难度规则只在这里、pipeline/build.py 和 migration 0008 三处出现，必须一致：
     # 定级看段内最大连续爬升（max_rise_m ≥ 200 m）与净坡度（> 3%）；净下坡（< −3%）不定级。
-    segs = q("""SELECT rs.id, rs.no, rs.from_km, rs.to_km, rs.km, rs.rise, rs.pct,
-                       CASE WHEN rs.pct >= -3 AND (rs.max_rise_m >= 200 OR rs.pct > 3)
-                            THEN rs.level ELSE NULL END AS level,
-                       rs.kind, rs.source, rs.confirmed,
-                       (rs.pct >= -3 AND (rs.max_rise_m >= 200 OR rs.pct > 3)) AS difficulty_applicable,
-                       CASE WHEN rs.pct < -3 THEN 'descent'
-                            WHEN rs.max_rise_m < 200 AND rs.pct <= 3 THEN 'gentle' END AS not_applicable,
-                       rs.up_m, rs.down_m, rs.max_rise_m, rs.max_drop_m,
-                       link.trail_segment_id, b.id AS board_id
-                FROM route_segments rs
-                LEFT JOIN route_segment_links link ON link.route_id = rs.route_id
-                    AND link.route_segment_no = rs.no
-                    AND link.direction = CASE rs.kind WHEN 'climb' THEN 'ascending'
-                        WHEN 'desc' THEN 'descending' ELSE 'traverse' END
-                LEFT JOIN boards b ON b.trail_segment_id = link.trail_segment_id
-                    AND b.board_type = 'segment'
-                WHERE rs.route_id = :id ORDER BY rs.no""", id=r["id"])
-    peaks = q("""SELECT rp.idx, rp.km, coalesce(rp.elevation_m, rp.altitude) AS altitude,
-                       coalesce(rp.elevation_m, rp.altitude) AS elevation_m, rp.rise, rp.near_cp, rp.near_cp_m,
-                       coalesce(rp.name, m.name) AS name,
-                       CASE WHEN rp.name IS NOT NULL THEN 'confirmed'
-                            ELSE coalesce(m.name_status, rp.name_status) END AS name_status,
-                       cand.id AS candidate_id,
-                       cand.candidate_name
-                 FROM route_peaks rp LEFT JOIN mountains m ON m.id = rp.mountain_id
-                 LEFT JOIN LATERAL (SELECT id, candidate_name FROM route_peak_candidates
-                     WHERE route_peak_id = rp.id AND status = 'pending'
-                     ORDER BY created_at DESC LIMIT 1) cand ON true
-                 WHERE rp.route_id = :id ORDER BY rp.idx""", id=r["id"])
-    cps = q("""SELECT id, no, name, km, altitude, lat, lng, off_track_m,
-                      supply_type, notes, source
-               FROM route_checkpoints WHERE route_id = :id ORDER BY km, no""", id=r["id"])
-    cover = q1("""SELECT storage_key, thumbnail_key, photographer, caption
-                    FROM route_cover_submissions
-                   WHERE route_id=:id AND status='approved'
-                   ORDER BY reviewed_at DESC LIMIT 1""", id=r["id"])
+    segs = r["segments_json"] or []
+    peaks = r["peaks_json"] or []
+    cps = r["checkpoints_json"] or []
+    cover = r["cover_json"]
     d = dict(r)
     coordinates = []
     if d.get("route_geojson"):
