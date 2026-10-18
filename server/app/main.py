@@ -74,14 +74,6 @@ if "supabase.co" in DATABASE_URL or "pooler.supabase.com" in DATABASE_URL:
     )
 engine = create_engine(DATABASE_URL, **_engine_options)
 
-# 地形底图的边界清单（pipeline/build_terrain.py 生成）。线上函数读不到
-# 静态目录里的 sidecar JSON，这份随 server/ 一起打包的清单是兜底。
-_TERRAIN_MANIFEST_PATH = pathlib.Path(__file__).with_name("terrain_manifest.json")
-try:
-    _TERRAIN_MANIFEST = json.loads(_TERRAIN_MANIFEST_PATH.read_text(encoding="utf-8"))
-except (OSError, ValueError):
-    _TERRAIN_MANIFEST = {}
-
 app = FastAPI(title="到此一游 API", version="1.0",
               description="契约见仓库 docs/API.md。错误响应统一为 "
                           "error.code / error.message。")
@@ -193,7 +185,6 @@ class HealthOut(BaseModel):
     postgis: str
     db: str
     revision: str = ""
-    terrainManifestEntries: int = 0
     routes: int
     segments: int
     peaks: int
@@ -774,9 +765,7 @@ def health():
             "数据库暂时不可用，请检查 DATABASE_URL、Supabase 迁移和网络区域（%s）"
             % exc.__class__.__name__)
     return HealthOut(ok=True, postgis=row["pgis"], db=row["db"],
-                     revision=BUILD_REVISION,
-                     terrainManifestEntries=len(_TERRAIN_MANIFEST),
-                     **dict(counts))
+                     revision=BUILD_REVISION, **dict(counts))
 
 
 # ==================== 路书 ====================
@@ -804,6 +793,44 @@ def list_routes(level: str | None = None, limit: int = 20):
     sql += " ORDER BY km LIMIT :limit"
     return RouteListOut(items=[dict(r) for r in q(sql, level=level, limit=limit)],
                         nextCursor=None)
+
+
+def _terrain_bounds_from_coords(coords):
+    """按 pipeline/build_terrain.py 的 dem_crop 算法复算底图边界。
+
+    Vercel 的函数包里没有静态目录的 sidecar JSON；用同一套 Web Mercator
+    窗口（12 级、12% 余量、760×420）算出来的边界与 PNG 完全一致，
+    这样线上不用额外打包清单也能把轨迹和地形对齐。
+    """
+    if not coords or len(coords) < 2:
+        return None
+    n = 256 * 2 ** 12
+
+    def merc(lat, lon):
+        lat = max(-85.0, min(85.0, lat))
+        return ((lon + 180.0) / 360.0 * n,
+                (1.0 - math.log(math.tan(math.radians(lat)) + 1 / math.cos(math.radians(lat)))
+                 / math.pi) / 2.0 * n)
+
+    def inv(x, y):
+        return (math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * y / n)))),
+                x / n * 360.0 - 180.0)
+
+    xs, ys = zip(*(merc(lat, lon) for lat, lon in coords))
+    w, h = max(xs) - min(xs), max(ys) - min(ys)
+    pad_x, pad_y = max(w * .12, 60.0), max(h * .12, 60.0)
+    cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+    w, h = w + pad_x * 2, h + pad_y * 2
+    target = 760 / 420
+    if w / h < target:
+        w = h * target
+    else:
+        h = w / target
+    x0, y0 = round(cx - w / 2), round(cy - h / 2)
+    x1, y1 = x0 + round(w), y0 + round(h)
+    nw, se = inv(x0, y0), inv(x1, y1)
+    return {"west": round(nw[1], 7), "north": round(nw[0], 7),
+            "east": round(se[1], 7), "south": round(se[0], 7)}
 
 
 @app.get("/api/routes/{slug}", response_model=RouteDetail, tags=["路书"], responses=ERR_404)
@@ -881,11 +908,10 @@ def get_route(slug: str, authorization: str | None = Header(default=None)):
     # 地形图在仓库里是 app/web/terrain/。线上静态资源由 Vercel 直接从 app/ 提供，
     # 所以必须走 /app/web/terrain/…；旧的 /terrain/… 只在本机静态根挂载时成立，
     # 部署后会 404，轨迹图就没有地形底图了。
-    terrain_url = None
-    terrain_bounds = None
+    terrain_url = f"/app/web/terrain/{slug}.png"
+    terrain_bounds = _terrain_bounds_from_coords(coordinates)
     terrain_contour = None
     if (terrain_dir / f"{slug}.png").is_file():
-        terrain_url = f"/app/web/terrain/{slug}.png"
         bounds_file = terrain_dir / f"{slug}.json"
         if bounds_file.is_file():
             terrain_meta = json.loads(bounds_file.read_text(encoding="utf-8"))
@@ -897,15 +923,6 @@ def get_route(slug: str, authorization: str | None = Header(default=None)):
                              ("contour_interval_m", "contour_steps_m")):
                 if src in terrain_meta and dst not in terrain_contour:
                     terrain_contour[dst] = terrain_meta[src]
-    else:
-        # Vercel 的函数包里没有静态的 app/，读不到 PNG/JSON；用随代码一起部署的
-        # 清单恢复同一条线路的地形底图与边界（清单由 pipeline/build_terrain.py 生成）。
-        meta = _TERRAIN_MANIFEST.get(slug)
-        if meta:
-            terrain_url = f"/app/web/terrain/{slug}.png"
-            terrain_bounds = {k: meta[k] for k in ("west", "south", "east", "north")}
-            terrain_contour = {k: meta[k] for k in ("contour_origin_m", "contour_steps_m")
-                               if meta.get(k) is not None}
     keys = ("id", "slug", "name", "sub", "city", "km", "up", "down", "hardest_level", "kind", "hours",
             "kcal", "est", "peak_count", "path", "profile")
     elevation_m = d.get("elevation_m") or []
