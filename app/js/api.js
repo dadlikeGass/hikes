@@ -40,6 +40,69 @@
   g.API.token = authToken;
   g.API.timedFetch = timedFetch;
   g.API.setToken = function (token) { _tk = token; };
+  g.API.account = null;
+  g.API.accountState = 'checking';
+  g.API.accountError = null;
+
+  var ACCOUNT_CACHE_KEY = 'hikes.auth.profile';
+  function cachedAccount() {
+    try {
+      var row = JSON.parse(localStorage.getItem(ACCOUNT_CACHE_KEY) || 'null');
+      return row && row.userId && row.username ? row : null;
+    } catch (e) { return null; }
+  }
+  function saveAccount(account) {
+    g.API.account = account;
+    g.API.accountState = 'authenticated';
+    g.API.accountError = null;
+    try {
+      localStorage.setItem(ACCOUNT_CACHE_KEY, JSON.stringify(account));
+      localStorage.setItem('hikes.auth.userId', String(account.userId));
+    } catch (e) { /* Storage unavailable; the current page still knows the account. */ }
+  }
+  g.API.setAccount = saveAccount;
+  g.API.clearSession = function () {
+    g.API.setToken(null);
+    g.API.account = null;
+    g.API.accountState = 'guest';
+    g.API.accountError = null;
+    try {
+      localStorage.removeItem('hikes.auth.token');
+      localStorage.removeItem('hikes.auth.userId');
+      localStorage.removeItem(ACCOUNT_CACHE_KEY);
+    } catch (e) { /* Storage unavailable. */ }
+  };
+  g.API.loadAccount = function () {
+    g.API.accountState = 'checking';
+    return authToken().then(function (tk) {
+      if (!tk) {
+        g.API.account = null;
+        g.API.accountState = 'guest';
+        try { localStorage.removeItem(ACCOUNT_CACHE_KEY); } catch (e) { /* ignore */ }
+        return null;
+      }
+      return timedFetch('/api/me/account', {
+        headers: { Authorization: 'Bearer ' + tk }
+      }).then(function (r) {
+        if (r.status === 401) {
+          g.API.clearSession();
+          g.API.accountState = 'expired';
+          return null;
+        }
+        if (!r.ok) throw new Error('/api/me/account → HTTP ' + r.status);
+        return r.json().then(function (account) {
+          saveAccount(account);
+          return account;
+        });
+      }).catch(function (error) {
+        var cached = cachedAccount();
+        g.API.account = cached;
+        g.API.accountState = 'offline';
+        g.API.accountError = error;
+        return cached;
+      });
+    });
+  };
 
   /* ---------- 游客身份：不登录也能打卡 ---------- */
   /* 令牌存 localStorage，丢了就换一个新身份（游客本来就不是账号，这是可接受的）。

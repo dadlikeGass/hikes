@@ -613,7 +613,7 @@ input,textarea,select{font:inherit;color:inherit}
 .sheet .sh-sub{font-size:13px;color:var(--ink2);margin-bottom:16px}
 .field{margin-bottom:14px}
 .field label{display:block;font-size:12.5px;font-weight:700;color:var(--ink2);margin-bottom:7px}
-.field input[type=text],.field input[type=date],.field select{width:100%;background:#fff;border:1.5px solid var(--line);
+.field input[type=text],.field input[type=password],.field input[type=date],.field select{width:100%;background:#fff;border:1.5px solid var(--line);
   border-radius:13px;padding:12px 14px;font-size:14.5px;outline:none}
 .field input:focus,.field select:focus{border-color:var(--blue)}
 .tags-pick{display:flex;gap:8px;flex-wrap:wrap}

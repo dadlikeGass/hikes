@@ -1655,6 +1655,183 @@
     );
   }
 
+  function accountName(account) {
+    return account && (account.nickname || account.username) || '山友';
+  }
+
+  function syncMeIdentity(account) {
+    if (account) {
+      H.me.name = accountName(account);
+      H.me.av = H.me.name.slice(0, 1);
+      H.me.account = account;
+    } else {
+      H.me.name = '游客';
+      H.me.av = '客';
+      H.me.account = null;
+    }
+  }
+
+  function authNext() {
+    try {
+      var raw = (location.hash || '').replace(/^#/, '');
+      var at = raw.indexOf('?');
+      var next = at >= 0 ? new URLSearchParams(raw.slice(at + 1)).get('next') : '';
+      if (next && /^#\/[^#]*$/.test(next)) return next;
+    } catch (e) { /* Ignore malformed links. */ }
+    return '#/me';
+  }
+
+  function requestAuth(mode, username, password, nickname) {
+    var body = { username: username, password: password };
+    if (mode === 'register' && nickname) body.nickname = nickname;
+    return window.API.guestToken().then(function (guestToken) {
+      return window.API.timedFetch('/api/auth/' + mode, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Guest-Token': guestToken || '' },
+        body: JSON.stringify(body)
+      });
+    }).then(function (response) {
+      return response.json().catch(function () { return {}; }).then(function (data) {
+        if (response.ok) return data;
+        var error = data && (data.error || (data.detail && data.detail.error));
+        var failure = new Error((error && error.message) ||
+          (response.status === 401 ? '用户名或密码错误' : '注册或登录失败'));
+        failure.status = response.status;
+        failure.code = error && error.code;
+        throw failure;
+      });
+    });
+  }
+
+  function commitAuthSession(data, mode, oldGuestToken, username, nickname) {
+    if (!oldGuestToken) {
+      try { oldGuestToken = localStorage.getItem('hikes.guest.token'); } catch (e) { /* ignore */ }
+    }
+    localStorage.setItem('hikes.auth.token', data.token);
+    localStorage.setItem('hikes.auth.userId', String(data.userId));
+    window.API.setToken(data.token);
+    window.API.setAccount({
+      userId: data.userId,
+      username: username,
+      nickname: nickname || username
+    });
+    syncMeIdentity(window.API.account);
+
+    var queueRebind = mode === 'register'
+      ? window.HIKES_CHECKIN.rebind('g:' + (oldGuestToken || ''), 'u:' + data.userId)
+      : Promise.resolve(0);
+    queueRebind.then(function () { return window.HIKES_CHECKIN.route(); });
+
+    var draftResults = [];
+    return window.API.loadAccount().then(function (account) {
+      if (account) syncMeIdentity(account);
+      return moveGuestDraftsToAccount(oldGuestToken, data.userId);
+    }).then(function (results) {
+      draftResults = results || [];
+      localStorage.removeItem('hikes.guest.token');
+      window.API.resetGuest();
+      return window.API.ja('/api/me/summits').catch(function () { return []; });
+    }).then(function (items) {
+      H.mySummits = items || [];
+      _hiddenCommentsLoaded = false;
+      return {
+        draftSyncFailed: draftResults.some(function (ok) { return !ok; }),
+        mergedVisits: data.mergedVisits || 0,
+        mergedDrafts: data.mergedDrafts || 0
+      };
+    });
+  }
+
+  function authView(mode) {
+    var account = window.API.account;
+    if (account) {
+      return '<div class="auth-page"><div class="card account-card">' +
+        '<div class="profile"><div class="big">' + esc(accountName(account).slice(0, 1)) + '</div>' +
+        '<div><b>' + esc(accountName(account)) + '</b><span>@' + esc(account.username) + ' · 已登录</span></div></div>' +
+        '<a class="btn coral" href="#/me">返回「我」</a>' +
+        '<button class="btn ghost" style="margin-top:9px" data-act="logout">退出登录</button>' +
+        '</div></div>';
+    }
+    var register = mode === 'register';
+    var expired = window.API.accountState === 'expired';
+    return '<div class="auth-page">' +
+      '<header class="auth-head"><span class="group-label">ACCOUNT</span>' +
+      '<h1>' + (register ? '创建账号' : '登录') + '</h1>' +
+      '<p>登录后可跨设备保存到访记录，并参与留言、申请和共同维护。</p></header>' +
+      '<div class="seg auth-switch" role="tablist" aria-label="登录或注册">' +
+      '<button type="button" role="tab" aria-selected="' + (!register) + '" class="' + (!register ? 'on' : '') +
+      '" data-act="auth-mode" data-val="login">登录</button>' +
+      '<button type="button" role="tab" aria-selected="' + register + '" class="' + (register ? 'on' : '') +
+      '" data-act="auth-mode" data-val="register">注册</button></div>' +
+      (expired ? '<div class="auth-note" role="status">登录已过期，请重新登录。</div>' : '') +
+      '<form id="authForm" class="card auth-form" data-mode="' + (register ? 'register' : 'login') + '" novalidate>' +
+      '<div class="field"><label for="authUser">用户名</label>' +
+      '<input id="authUser" name="username" type="text" autocomplete="username" maxlength="32" ' +
+      'aria-describedby="authUserHelp" required>' +
+      '<div class="auth-help" id="authUserHelp">3–32 位英文字母、数字或下划线</div></div>' +
+      (register ? '<div class="field"><label for="authNickname">昵称 <small>可选</small></label>' +
+        '<input id="authNickname" name="nickname" type="text" autocomplete="nickname" maxlength="32">' +
+        '<div class="auth-help">不填时显示用户名</div></div>' : '') +
+      '<div class="field"><label for="authPassword">密码</label>' +
+      '<input id="authPassword" name="password" type="password" autocomplete="' +
+      (register ? 'new-password' : 'current-password') + '" maxlength="128" required></div>' +
+      (register ? '<div class="field"><label for="authPassword2">确认密码</label>' +
+        '<input id="authPassword2" name="password2" type="password" autocomplete="new-password" maxlength="128" required></div>' : '') +
+      (register ? '<div class="auth-help" style="margin-top:-5px">密码至少 12 位</div>' : '') +
+      '<div id="authError" class="auth-note" role="alert" aria-live="polite"></div>' +
+      '<button class="btn coral" id="authSubmit" type="submit">' +
+      (register ? '创建账号' : '登录') + '</button>' +
+      '<div class="auth-legal">' + (register
+        ? '注册即表示你同意 <a href="/terms.html" target="_blank">《用户协议》</a>和<a href="/privacy.html" target="_blank">《隐私政策》</a>。'
+        : '还没有账号？<button type="button" class="auth-link" data-act="auth-mode" data-val="register">立即注册</button>') +
+      '</div></form></div>';
+  }
+
+  function submitAuthPage(form) {
+    var mode = form.getAttribute('data-mode') === 'register' ? 'register' : 'login';
+    var username = (document.getElementById('authUser') || {}).value || '';
+    var password = (document.getElementById('authPassword') || {}).value || '';
+    var nickname = (document.getElementById('authNickname') || {}).value || '';
+    var password2 = (document.getElementById('authPassword2') || {}).value || '';
+    var errorEl = document.getElementById('authError');
+    var submit = document.getElementById('authSubmit');
+    function fail(message) {
+      if (errorEl) errorEl.textContent = message;
+      if (submit) submit.disabled = false;
+    }
+    if (!/^[A-Za-z0-9_]{3,32}$/.test(username.trim())) {
+      fail('用户名需为 3–32 位英文字母、数字或下划线。');
+      return;
+    }
+    if (!password) { fail('请填写密码。'); return; }
+    if (mode === 'register' && password.length < 12) {
+      fail('密码至少需要 12 位。'); return;
+    }
+    if (mode === 'register' && password !== password2) {
+      fail('两次输入的密码不一致。'); return;
+    }
+    if (errorEl) errorEl.textContent = '';
+    if (submit) {
+      submit.disabled = true;
+      submit.textContent = mode === 'register' ? '正在创建…' : '正在登录…';
+    }
+    var oldGuestToken = null;
+    try { oldGuestToken = localStorage.getItem('hikes.guest.token'); } catch (e) { /* ignore */ }
+    requestAuth(mode, username.trim(), password, nickname.trim())
+      .then(function (data) {
+        return commitAuthSession(data, mode, oldGuestToken, username.trim(), nickname.trim());
+      })
+      .then(function (result) {
+        U.closeSheet();
+        U.toast(result.draftSyncFailed ? '已登录；草稿保存在本机，联网后可重试' :
+          '已登录，到访与草稿已保存');
+        location.hash = authNext();
+      })
+      .catch(function (error) {
+        fail(error && error.message || '注册或登录失败，请稍后重试');
+      });
+  }
+
   function arrivalCode() {
     var r = parse(), p = peak(r.id);
     return p && p.code;
@@ -2967,12 +3144,32 @@
       '<button class="btn ghost" style="margin-top:9px" data-act="close">收起</button>');
   }
 
+  function accountCardView() {
+    var account = window.API.account;
+    var state = window.API.accountState;
+    if (account) {
+      return '<div class="card account-card"><div class="profile"><div class="big">' +
+        esc(accountName(account).slice(0, 1)) + '</div><div><b>' + esc(accountName(account)) +
+        '</b><span>@' + esc(account.username) + (state === 'offline' ? ' · 暂时离线' : ' · 已登录') +
+        '</span></div></div>' +
+        '<button class="btn ghost" data-act="logout">退出登录</button></div>';
+    }
+    if (state === 'checking') {
+      return '<div class="card account-card"><div class="profile"><div class="big">客</div>' +
+        '<div><b>正在恢复账号…</b><span>稍候片刻</span></div></div></div>';
+    }
+    return '<div class="card account-card"><div class="profile"><div class="big">客</div>' +
+      '<div><b>游客</b><span>记录只保存在这台浏览器</span></div></div>' +
+      '<p class="account-copy">' + (state === 'expired'
+        ? '登录已过期。重新登录后，会继续读取账号里的到访与草稿。'
+        : '登录后可跨设备保存到访、草稿和申请进度。浏览路书和扫码打卡仍可直接使用。') + '</p>' +
+      '<a class="btn coral" href="#/login">登录或注册</a></div>';
+  }
+
   function meView() {
-    var visitedCount = S.visited.length;
     return '<h1 class="sr">我的山野记录</h1>' +
       pageQuoteHero('me', '每一次出发，都是把自己带回山野。') +
-      '<div class="profile"><div class="big">我</div>' +
-      '<div><b>' + esc(H.me.name) + '</b><span>到过 ' + visitedCount + ' 个点位 · 认领 1 座山头 · 连续 ' + H.me.streak + ' 周上山</span></div></div>' +
+      accountCardView() +
 
       recordCard() +
       '<div class="card">' + puzzleBlock(true) + '</div>' +
@@ -3610,6 +3807,12 @@
         else { r.name = 'king-applications'; }
         break;
       case 'scan': r.name = 'scan'; break;
+      case 'login':
+        r.name = 'auth'; r.mode = 'login'; r.title = '登录'; r.tab = 'me'; r.parent = '#/me';
+        break;
+      case 'register':
+        r.name = 'auth'; r.mode = 'register'; r.title = '注册'; r.tab = 'me'; r.parent = '#/me';
+        break;
       case 'arrive': r.name = 'arrive'; r.id = parts[1] || ''; r.parent = '#/scan'; break;
       case 'admin':
         r.name = parts[1] === 'p' ? 'admin-p' : 'admin';
@@ -3623,6 +3826,7 @@
 
   var TITLES = {
     scan: '扫一扫', arrive: '到达页', trail: '线路详情', peak: '山头', junction: '岔路',
+    login: '登录', register: '注册',
     'me-visited': '我去过的地方', 'me-want': '我想去的地方', 'me-peak': '我的山头',
     'me-records': '我的纪录', 'me-applications': '我的维护申请', 'me-letters': '山间信箱',
     'me-activity': '发起活动', 'me-managed': '我管理的留言版',
@@ -3693,6 +3897,7 @@
         html = (window.KING_APP && window.KING_APP.view) ? window.KING_APP.view(r) : '<div class="empty">管理模块加载中…</div>';
         break;
       case 'scan': html = scanView(); break;
+      case 'auth': html = authView(r.mode); break;
       case 'arrive': html = arrivalView(r.id); break;
       default: html = (window.EXTRA_VIEWS && window.EXTRA_VIEWS[r.name]) ? window.EXTRA_VIEWS[r.name](r) : notFound();
     }
@@ -3794,6 +3999,11 @@
     if (e.target.id === 'board-peak-filter') { boardPeakFilter = e.target.value; render(); }
     if (e.target.matches('[data-act="board-sort"]')) { boardSort = e.target.value; render(); }
   });
+  document.addEventListener('submit', function (e) {
+    if (e.target.id !== 'authForm') return;
+    e.preventDefault();
+    submitAuthPage(e.target);
+  });
   document.addEventListener('input', function (e) {
     if (e.target.id === 'masterSearch') {
       var list = document.getElementById('masterCandidates');
@@ -3829,6 +4039,16 @@
     if (window.KING_APP && window.KING_APP.handleAction &&
         window.KING_APP.handleAction(act, t, { id: id, type: type, val: val })) return;
     if (act === 'retry-boot') { location.reload(); return; }
+    if (act === 'auth-mode') {
+      U.go('#/' + (val === 'register' ? 'register' : 'login'));
+      return;
+    }
+    if (act === 'logout') {
+      window.API.clearSession();
+      syncMeIdentity(null);
+      location.reload();
+      return;
+    }
     if (act === 'scan-camera') { startScanCamera(); return; }
     if (act === 'scan-stop') {
       stopScanCamera();
@@ -4109,52 +4329,25 @@
       var username = (document.getElementById('arrivalUser') || {}).value || '';
       var password = (document.getElementById('arrivalPassword') || {}).value || '';
       var authError = document.getElementById('arrivalAuthError');
-      var draftSyncFailed = false;
+      var authMode = t.getAttribute('data-mode') === 'register' ? 'register' : 'login';
       if (!username.trim() || !password) { authError.textContent = '请填写用户名和密码。'; return; }
       t.disabled = true;
-      window.API.guestToken().then(function (guestToken) {
-        return window.API.timedFetch('/api/auth/' + t.getAttribute('data-mode'), {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Guest-Token': guestToken || '' },
-          body: JSON.stringify({ username: username, password: password })
-        });
-      }).then(function (r) {
-        return r.json().then(function (d) {
-          if (!r.ok) throw new Error(d.message || d.detail && d.detail.message || '注册或登录失败');
-          return d;
-        });
-      }).then(function (d) {
-        var oldGuestToken = localStorage.getItem('hikes.guest.token');
-        localStorage.setItem('hikes.auth.token', d.token);
-        localStorage.setItem('hikes.auth.userId', String(d.userId));
-        window.API.setToken(d.token);
-        // 注册时服务端已把这个游客并进新账号：本机队列里属于它的动作也要跟着改归，
-        // 否则那几条永远传不上去（登录别人的账号不在此列，见计划 T4）。
-        var queueRebind = t.getAttribute('data-mode') === 'register'
-          ? window.HIKES_CHECKIN.rebind('g:' + (oldGuestToken || ''), 'u:' + d.userId)
-          : Promise.resolve(0);
-        queueRebind.then(function () { return window.HIKES_CHECKIN.route(); });
-        return moveGuestDraftsToAccount(oldGuestToken, d.userId).then(function (results) {
-          localStorage.removeItem('hikes.guest.token');
-          window.API.resetGuest();
-          return results;
-        }).then(function (results) {
-          draftSyncFailed = results.some(function (ok) { return !ok; });
-          return window.API.ja('/api/me/summits');
-        }).then(function (items) {
-          H.mySummits = items;
-        }).catch(function () { H.mySummits = []; }).then(function () {
-          _hiddenCommentsLoaded = false;
-          U.closeSheet();
-          U.toast(draftSyncFailed ? '已登录；草稿保存在本机，联网后可重试' :
-            '已登录，到访与草稿已保存');
-          render();
-          if (_collaborationAfterAuth) {
-            var code = _collaborationAfterAuth;
-            _collaborationAfterAuth = null;
-            var button = document.querySelector('[data-act="collaboration-open"][data-code="' + code + '"]');
-            if (button) button.click();
-          }
-        });
+      var oldGuestToken = null;
+      try { oldGuestToken = localStorage.getItem('hikes.guest.token'); } catch (e) { /* ignore */ }
+      requestAuth(authMode, username.trim(), password, '')
+      .then(function (data) {
+        return commitAuthSession(data, authMode, oldGuestToken, username.trim(), '');
+      }).then(function (result) {
+        U.closeSheet();
+        U.toast(result.draftSyncFailed ? '已登录；草稿保存在本机，联网后可重试' :
+          '已登录，到访与草稿已保存');
+        render();
+        if (_collaborationAfterAuth) {
+          var code = _collaborationAfterAuth;
+          _collaborationAfterAuth = null;
+          var button = document.querySelector('[data-act="collaboration-open"][data-code="' + code + '"]');
+          if (button) button.click();
+        }
       }).catch(function (e) {
         if (authError && authError.isConnected) authError.textContent =
           e.name === 'AbortError' ? '网络未确认结果。新账号可尝试登录；到访和草稿仍在本机。' : e.message;
@@ -4871,15 +5064,19 @@
 
   /* 等后端数据灌进 HIKES 之后再渲染（见 js/api.js） */
   function boot() {
-    var p = (window.API && window.API.ready) ? window.API.ready : Promise.resolve();
-    p.then(function () {
+    var ready = (window.API && window.API.ready) ? window.API.ready : Promise.resolve();
+    var account = (window.API && window.API.loadAccount) ? window.API.loadAccount() : Promise.resolve(null);
+    Promise.all([ready, account]).then(function () {
+      syncMeIdentity(window.API && window.API.account);
       if (window.API && window.API.error) {
         /* 首页只依赖"我的摘要/凭证/待同步"这三块（各自独立加载），
            线路/热榜/社区请求挂了不该让首页变成一张错误页——先渲染首页，
            把重试入口放在顶部提示里（计划 T6：某块失败不让首页白屏）。 */
-        if (parse().name === 'home') {
+        if (parse().name === 'home' || parse().name === 'auth' || parse().name === 'me') {
           render();
-          U.toast('线路数据暂时没加载出来，首页可以照常用；稍后重试即可');
+          if (parse().name === 'home') {
+            U.toast('线路数据暂时没加载出来，首页可以照常用；稍后重试即可');
+          }
           return;
         }
         document.getElementById('view').innerHTML =

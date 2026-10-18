@@ -55,7 +55,7 @@ JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-change-me")
 JWT_ALG = "HS256"
 PUBLIC_BASE = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/")
 # 部署验收用：/health 里能直接看出跑的是哪一版，避免"推了但没上线"时误判。
-BUILD_REVISION = "2026-10-18.4"
+BUILD_REVISION = "2026-10-18.5"
 _engine_options = {"pool_pre_ping": True}
 if "supabase.co" in DATABASE_URL or "pooler.supabase.com" in DATABASE_URL:
     # Supabase 的 Vercel 连接应使用 transaction pooler，且 psycopg 不能依赖预处理语句。
@@ -377,6 +377,13 @@ class TokenOut(BaseModel):
     userId: int
     mergedVisits: int = 0
     mergedDrafts: int = 0
+
+
+class AccountOut(BaseModel):
+    userId: int
+    username: str
+    nickname: str | None = None
+    createdAt: datetime
 
 
 class QrTargetOut(BaseModel):
@@ -735,6 +742,17 @@ def login(body: LoginIn, request: Request,
         conn.execute(text("DELETE FROM auth_rate_limits WHERE bucket_key = :k"), {"k": user_key})
         merged = _merge_guest_records(conn, x_guest_token, user["id"])
     return TokenOut(token=make_token(user["id"]), userId=user["id"], **merged)
+
+
+@app.get("/api/me/account", response_model=AccountOut, tags=["认证"], responses=ERR_401,
+         summary="当前登录账号的基本资料")
+def my_account(uid: int = Depends(require_user)):
+    row = q1("""SELECT id, username, nickname, created_at
+                  FROM users WHERE id = :uid AND deleted_at IS NULL""", uid=uid)
+    if not row:
+        err(404, "ACCOUNT_NOT_FOUND", "账号不存在")
+    return AccountOut(userId=row["id"], username=row["username"],
+                      nickname=row["nickname"], createdAt=row["created_at"])
 
 
 # ==================== 健康检查 ====================

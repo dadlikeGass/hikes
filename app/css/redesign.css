@@ -1051,6 +1051,7 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{
     background:var(--ui-surface-2);border-color:var(--ui-line)
   }
   .searchbar,.ka-search,.ka-field input,.ka-field select,.ka-field textarea,
+  .field input,.field select,
   .fld input,.fld select,.fld textarea,.board-mountains input,.board-mountains select,
   .board-sort select,.board-follow button,.sheet,.tracewrap,.iconbtn,.back{
     background:var(--ui-paper);color:var(--ui-ink);border-color:var(--ui-line)
@@ -1077,4 +1078,23 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{
   html:not(.force-motion) .btn,
   html:not(.force-motion) .tabbar a{transition:none}
 }
+
+/* 最简账号页与「我」页账号卡 */
+.auth-page{width:min(100%,460px);margin:8px auto 0}
+.auth-head{margin:12px 4px 18px}
+.auth-head h1{margin:4px 0 8px;color:var(--ink);font-size:30px;line-height:1.15;letter-spacing:-.04em}
+.auth-head p{margin:0;color:var(--ink2);font-size:14px;line-height:1.65}
+.auth-switch{margin-bottom:14px}
+.auth-form{padding:20px}
+.auth-help{margin-top:6px;color:var(--ink3);font-size:11.5px;line-height:1.45}
+.auth-help small{font-weight:500}
+.auth-note{min-height:20px;margin:2px 0 10px;color:#b42318;font-size:12.5px;line-height:1.55}
+.auth-note:empty{display:none}
+.auth-legal{margin-top:12px;color:var(--ink3);font-size:11.5px;line-height:1.65;text-align:center}
+.auth-legal a,.auth-link{color:var(--blue-deep);font-weight:700}
+.auth-link{border:0;background:none;padding:0;font:inherit;cursor:pointer}
+.account-card{padding:18px}
+.account-card .profile{margin:0 0 14px}
+.account-copy{margin:0 0 14px;color:var(--ink2);font-size:13px;line-height:1.65}
+.account-card>.btn{width:100%}
 
