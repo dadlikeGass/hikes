@@ -3840,11 +3840,24 @@
       t.disabled = true;
       currentPosition().then(function (pos) { return window.API.nearbyPoints(pos); })
         .then(function (rows) {
-          U.openSheet('<h3>附近的打卡点</h3>' + (rows.length ? rows.map(function (p) {
-            return '<button class="rowlink" style="width:100%;text-align:left" data-act="nearby-point" data-code="' +
-              esc(p.code) + '"><span class="tx"><b>' + esc(p.name) + '</b><small>' +
-              p.distanceM + ' 米 · ' + esc(p.kind) + '</small></span><span class="ar">›</span></button>';
-          }).join('') : '<p>附近暂无已开放定位的点位。</p>'));
+          var labels = { peak: '山顶', trailhead: '山脚', junction: '岔路' };
+          var body = rows.length ? '<div class="hint" style="margin:0 0 10px">只显示已进入可打卡范围的点位。</div>' +
+            rows.map(function (p) {
+              var place = p.name || p.code;
+              var context = p.mountainName ? p.mountainName :
+                (p.routeName ? p.routeName : '');
+              return '<button class="nearby-choice" data-act="nearby-point" data-code="' +
+                esc(p.code) + '"><span class="nearby-choice-type">' +
+                esc(labels[p.kind] || '点位') + '</span><span class="nearby-choice-main"><b>' +
+                esc(place) + '</b><small>' + esc(context) + '</small></span><span class="nearby-choice-distance">' +
+                p.distanceM + ' 米<i>可打卡</i></span></button>';
+            }).join('') +
+            '<button class="btn ghost" style="margin-top:12px" data-act="nearby">不是这里，重新定位</button>' :
+            '<div class="empty" style="padding:18px 8px"><b>附近没有可打卡点位</b><p>当前只显示 100 米内的山顶、150 米内的山脚或岔路。请靠近点位，或改用扫码。</p>' +
+            '<div class="mini-actions"><button class="pill-btn acc" data-act="nearby">重新定位</button>' +
+            '<a class="pill-btn" href="#/scan">扫码或输入编号</a></div></div>';
+          U.openSheet('<h3>你到了哪一处？</h3><div class="sh-sub">定位精度 ±' +
+            esc(pos.accuracyM) + ' 米 · 确认后再进入到访记录</div>' + body);
         }).catch(function (error) { U.toast(error.message); })
         .then(function () { t.disabled = false; });
       return;

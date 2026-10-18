@@ -75,6 +75,17 @@ html,body,#app{background:var(--bg)}.topbar{background:#e4f5fd;border-color:#d9e
 .scan-actions{display:flex;gap:8px;margin:-4px 0 10px}
 .scan-actions .btn{flex:1;min-width:0}
 .scan-state{min-height:36px;margin:0 2px 12px;color:var(--ui-ink2);font-size:12.5px;line-height:1.55}
+.nearby-choice{display:flex;align-items:center;gap:10px;width:100%;padding:12px 10px;
+  border:1px solid var(--ui-line);border-radius:14px;background:var(--ui-paper);
+  color:var(--ui-ink);text-align:left;font:inherit;margin-bottom:8px}
+.nearby-choice-type{flex:0 0 auto;padding:4px 7px;border-radius:8px;background:var(--ui-accent-soft);
+  color:var(--ui-accent);font-size:10.5px;font-weight:750}
+.nearby-choice-main{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.nearby-choice-main b{font-size:13.5px;color:var(--ui-ink)}
+.nearby-choice-main small{font-size:11.5px;color:var(--ui-ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nearby-choice-distance{display:flex;flex-direction:column;align-items:flex-end;gap:2px;
+  color:var(--ui-ink2);font-size:11.5px;white-space:nowrap}
+.nearby-choice-distance i{font-style:normal;color:var(--ui-accent);font-size:10px;font-weight:750}
 @media(max-width:699px){.scan-art-card{aspect-ratio:1.8/1;border-radius:18px}.scan-art-card img{object-position:68% center}}
 #app.home-image .topbar{display:none!important}
 #app.home-image .tabbar{display:flex!important}

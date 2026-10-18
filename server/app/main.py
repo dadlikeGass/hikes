@@ -36,7 +36,8 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
-from app.checkins import record_visit
+from app.checkins import (record_visit, CHECKIN_RADIUS_PEAK_M,
+                          CHECKIN_RADIUS_OTHER_M, MAX_ACCURACY_M)
 from app.efforts import reconcile_efforts
 from app.letters import public_letter, letter_is_unlocked
 from app.king_routes import build_king_router
@@ -1106,14 +1107,27 @@ class NearbyRequest(BaseModel):
 @app.post("/api/points/nearby", tags=["点位"])
 def nearby_points(body: NearbyRequest, request: Request):
     keys = _rate_check(request, "visit", "nearby")
-    rows = q("""SELECT code, name, type AS kind,
-        round(ST_Distance(geom::geography,
+    if body.accuracyM > MAX_ACCURACY_M:
+        err(422, "LOCATION_INACCURATE",
+            "定位精度不足（需不超过 50 米），请到开阔处重试或扫码")
+    rows = q("""SELECT p.id AS "pointId", p.code, p.name, p.type AS kind,
+        p.route_id AS "routeId", r.name AS "routeName",
+        p.mountain_id AS "mountainId", m.name AS "mountainName",
+        round(ST_Distance(p.geom::geography,
           ST_SetSRID(ST_MakePoint(:lng,:lat),4326)::geography))::int AS "distanceM",
-        CASE WHEN type='peak' THEN 100 ELSE 150 END AS "checkinRadiusM"
-        FROM points WHERE status='published' AND geom IS NOT NULL
-          AND ST_DWithin(geom::geography,
-            ST_SetSRID(ST_MakePoint(:lng,:lat),4326)::geography, 2000)
-        ORDER BY "distanceM", id LIMIT 20""", lat=body.lat, lng=body.lng)
+        CASE WHEN p.type='peak' THEN :peak_radius ELSE :other_radius END
+          AS "checkinRadiusM",
+        TRUE AS "canCheckIn"
+        FROM points p
+        LEFT JOIN routes r ON r.id = p.route_id
+        LEFT JOIN mountains m ON m.id = p.mountain_id
+        WHERE p.status='published' AND p.geom IS NOT NULL
+          AND ST_DWithin(p.geom::geography,
+            ST_SetSRID(ST_MakePoint(:lng,:lat),4326)::geography,
+            CASE WHEN p.type='peak' THEN :peak_radius ELSE :other_radius END)
+        ORDER BY "distanceM", p.id LIMIT 20""",
+        lat=body.lat, lng=body.lng, peak_radius=CHECKIN_RADIUS_PEAK_M,
+        other_radius=CHECKIN_RADIUS_OTHER_M)
     _rate_hit(keys)
     return [dict(row) for row in rows]
 

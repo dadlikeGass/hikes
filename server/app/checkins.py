@@ -11,6 +11,9 @@ from fastapi import HTTPException
 from sqlalchemy import text
 
 BUSINESS_ZONE = ZoneInfo("Asia/Shanghai")
+CHECKIN_RADIUS_PEAK_M = 100
+CHECKIN_RADIUS_OTHER_M = 150
+MAX_ACCURACY_M = 50
 
 
 def _reject(status: int, code: str, message: str) -> None:
@@ -72,14 +75,16 @@ def record_visit(conn, *, identity_type: str, identity_id: int, point_id: int,
             _reject(422, "GPS_NOT_ENABLED", "该点位尚未开放定位打卡")
         if lat is None or lng is None or accuracy_m is None:
             _reject(422, "LOCATION_REQUIRED", "定位打卡需要位置和精度")
-        if not (-90 <= lat <= 90 and -180 <= lng <= 180 and 0 <= accuracy_m <= 50):
+        if not (-90 <= lat <= 90 and -180 <= lng <= 180 and
+                0 <= accuracy_m <= MAX_ACCURACY_M):
             _reject(422, "LOCATION_INACCURATE", "定位精度不足，请重试或扫码")
         if not point["has_geom"]:
             _reject(422, "POINT_LOCATION_MISSING", "该点位还未开放定位打卡")
         distance = conn.execute(text("""SELECT ST_Distance(
             geom::geography, ST_SetSRID(ST_MakePoint(:lng,:lat),4326)::geography)
             FROM points WHERE id=:id"""), {"id": point_id, "lat": lat, "lng": lng}).scalar_one()
-        radius = 100 if point["type"] == "peak" else 150
+        radius = (CHECKIN_RADIUS_PEAK_M if point["type"] == "peak"
+                  else CHECKIN_RADIUS_OTHER_M)
         if distance > radius:
             _reject(422, "OUTSIDE_CHECKIN_RADIUS", "距离点位较远，请靠近后重试或扫码")
         evidence = "gps_close"
