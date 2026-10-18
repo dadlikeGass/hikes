@@ -49,12 +49,17 @@ JWT_ALG = "HS256"
 PUBLIC_BASE = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/")
 _engine_options = {"pool_pre_ping": True}
 if "supabase.co" in DATABASE_URL or "pooler.supabase.com" in DATABASE_URL:
-    # Supabase 的 Vercel 连接应使用 transaction pooler：
-    # 每个 warm instance 只保留一个连接，且 psycopg 不能依赖预处理语句。
+    # Supabase 的 Vercel 连接应使用 transaction pooler，且 psycopg 不能依赖预处理语句。
+    # 每个 warm instance 留几个连接：线路列表页会同时请求 6 条线路详情，
+    # 单连接会把几十次查询排成一队，跨区访问时很容易把前端的 15 秒超时耗尽。
+    # pool_pre_ping 在这里关掉：每次 checkout 都多一次 SELECT 1，跨区往返直接翻倍；
+    # 连接失效由 pool_recycle 与 SQLAlchemy 的断连重试兜底。
     _engine_options.update(
-        pool_size=1,
-        max_overflow=0,
+        pool_size=4,
+        max_overflow=2,
+        pool_timeout=10,
         pool_recycle=300,
+        pool_pre_ping=False,
         connect_args={"prepare_threshold": None, "sslmode": "require",
                       "connect_timeout": 10},
     )
@@ -174,6 +179,9 @@ class HealthOut(BaseModel):
     segments: int
     peaks: int
     points: int
+    routesMissingGeom: int = 0
+    routesMissingPath: int = 0
+    routesMissingProfile: int = 0
 
 
 class RouteBrief(BaseModel):
@@ -730,7 +738,17 @@ def health():
             (SELECT count(*) FROM routes)          AS routes,
             (SELECT count(*) FROM route_segments)  AS segments,
             (SELECT count(*) FROM route_peaks)     AS peaks,
-            (SELECT count(*) FROM points)          AS points""")
+            (SELECT count(*) FROM points)          AS points,
+            (SELECT count(*) FROM routes
+              WHERE status='published' AND geom IS NULL) AS "routesMissingGeom",
+            (SELECT count(*) FROM routes
+              WHERE status='published'
+                AND (path IS NULL OR jsonb_array_length(path) < 2)) AS "routesMissingPath",
+            (SELECT count(*) FROM routes
+              WHERE status='published'
+                AND (profile IS NULL OR jsonb_array_length(profile) < 2))
+              AS "routesMissingProfile"
+        """)
     except Exception as exc:
         # 不在响应里暴露连接串；只告诉部署者问题发生在 DB 连接/迁移层。
         err(503, "DB_UNAVAILABLE",
@@ -817,7 +835,11 @@ def get_route(slug: str, authorization: str | None = Header(default=None)):
     if not web_dir.is_dir():
         web_dir = pathlib.Path(__file__).resolve().parents[2] / "app" / "web"
     terrain_dir = web_dir / "terrain"
-    terrain_url = f"/terrain/{slug}.png" if (terrain_dir / f"{slug}.png").is_file() else None
+    # 地形图在仓库里是 app/web/terrain/。线上静态资源由 Vercel 直接从 app/ 提供，
+    # 所以必须走 /app/web/terrain/…；旧的 /terrain/… 只在本机静态根挂载时成立，
+    # 部署后会 404，轨迹图就没有地形底图了。
+    terrain_url = (f"/app/web/terrain/{slug}.png"
+                   if (terrain_dir / f"{slug}.png").is_file() else None)
     terrain_bounds = None
     terrain_contour = None
     bounds_file = terrain_dir / f"{slug}.json"

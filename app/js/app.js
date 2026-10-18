@@ -166,7 +166,9 @@
       '<span class="tc-name">' + esc(t.name) + '</span>' +
       '<button class="favbtn flat" data-act="want" data-id="' + t.id + '" data-on="♥" data-off="♡">' +
       (isWant(t.id) ? '♥' : '♡') + '</button></div>' +
-      '<div class="tc-mid">' + apiTrackSVG(t, true) +
+      '<div class="tc-mid">' + (t.detailError
+        ? '<span class="trk trk-tc trk-unavailable">轨迹暂不可用</span>'
+        : apiTrackSVG(t, true)) +
       '<div class="tc-stats">' +
       '<div class="tcs"><span>长度</span><b>' + t.km + ' km</b></div>' +
       '<div class="tcs"><span>累计爬升</span><b class="hi">' + t.up + ' m</b></div>' +
@@ -715,7 +717,8 @@
 
       '<div class="sec-head"><h3>坡度图</h3>' +
       '<span class="more">海拔 · 里程 · 山顶 / CP</span></div>' +
-      '<div class="profilebox">' + apiProfileSVG(t) +
+      '<div class="profilebox">' + (apiProfileSVG(t) ||
+        '<div class="trace-empty">这条线路还没有坡度剖面数据。<button class="btn ghost mini" data-act="reload">重新加载</button></div>') +
       '<div style="display:flex;gap:12px;padding:4px 0 2px;font-size:10.5px;color:var(--ink3)">' +
       '<span style="color:#52B44A">● ≤15% 缓</span><span style="color:#2563EB">● 15–25% 中</span>' +
       '<span style="color:#9E1B1B">● &gt;25% 陡</span><span style="color:#778396">● 底色透明，地形透过来</span></div>' +
@@ -858,7 +861,7 @@
     var path = t.path || [];
     if (path.length < 2) return compact
       ? '<span class="trk trk-tc" style="display:grid;place-items:center;background:#edf5f2;color:#718096;font-size:10px">读取地形…</span>'
-      : '';
+      : '<div class="trace-empty">这条线路还没有可用的轨迹数据。<button class="btn ghost mini" data-act="reload">重新加载</button></div>';
     var W = compact ? 200 : 380, H = compact ? 120 : 210, pad = compact ? 14 : 26, xs = [], ys = [];
     path.forEach(function (p) { xs.push(p[0]); ys.push(p[1]); });
     var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
@@ -3653,7 +3656,9 @@
               if (parse().name === 'trail' && parse().id === r.id) render();
             });
           }
-          html = '<div class="empty">' + (currentTrail.detailError ? '路书加载失败，请刷新重试' : '正在加载路书…') + '</div>';
+          html = '<div class="empty">' + (currentTrail.detailError
+            ? '路书加载失败，请重试<br><button class="btn ghost" data-act="reload" style="margin-top:12px">重新加载</button>'
+            : '正在加载路书…') + '</div>';
         } else {
           html = trailDetailView(r.id);
         }
@@ -3697,7 +3702,21 @@
       if (window.API && window.API.loadRouteDetail) {
         var ordered = H.trails.slice().sort(function (a, b) { return b.visits7 - a.visits7; });
         var hotSlice = ordered.slice((pages.trailHot || 0) * CAROUSEL_PAGE, ((pages.trailHot || 0) + 1) * CAROUSEL_PAGE);
-        Promise.all(hotSlice.map(function (item) { return window.API.loadRouteDetail(item.id).catch(function () { return item; }); }))
+        /* 详情接口一次画 6 条会同时打几十个查询；Supabase 跨区时容易把 15 秒超时
+           全部耗在排队上。这里最多并发 3 条，失败也标出来，不让卡片永远停在"读取地形…"。 */
+        var detailQueue = hotSlice.slice();
+        var loadNext = function () {
+          var item = detailQueue.shift();
+          if (!item) return Promise.resolve();
+          return window.API.loadRouteDetail(item.id).catch(function () {
+            item.detailError = true;
+          }).then(function () {
+            return loadNext();
+          });
+        };
+        var workers = [];
+        for (var wi = 0; wi < Math.min(3, hotSlice.length); wi++) workers.push(loadNext());
+        Promise.all(workers)
           .then(function () {
             var current = parse(), carousel = document.getElementById('trailHotCarousel');
             if (current.name === 'trails' && carousel) carousel.innerHTML = hotSlice.map(trailCard).join('');
