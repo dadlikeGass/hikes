@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 63893)
-Total output lines: 4886
-
 """到此一游 · API v1
 
 实现在 docs/API.md 里定义的契约。全部返回体声明 response_model，错误响应也列出，
@@ -1957,7 +1954,1043 @@ def effort_leaderboard(courseId: int, window: Literal["week", "month", "year", "
     mine = next((r for r in scores if r["user_id"] == uid), None)
     enough = course["ranking_enabled"] and len(scores) >= 8
     def rank(row):
-      …13893 tokens truncated…               conn.execute(text("UPDATE comments SET status = 'hidden' WHERE id = :i"),
+        return 1 + sum(other["duration_s"] < row["duration_s"] for other in scores)
+    def public_row(row, ranked):
+        return {"nickname": row["nickname"], "durationS": row["duration_s"],
+                "date": row["local_end"].date().isoformat(),
+                "rank": rank(row) if ranked else None}
+    leaders = [public_row(r, True) for r in scores if rank(r) <= 3] if enough else []
+    my_row = public_row(mine, enough) if mine else None
+    if my_row is not None:
+        my_row["percentile"] = round(100 * sum(r["duration_s"] > mine["duration_s"] for r in scores) / len(scores)) if enough else None
+    return {"courseId": courseId, "window": window, "sampleSize": len(scores),
+            "rankingAvailable": enough, "leaders": leaders, "myBest": my_row}
+
+
+@app.get("/api/me/leaderboard-settings", response_model=dict, tags=["我"])
+def get_leaderboard_settings(uid: int = Depends(require_user)):
+    row = q1("SELECT leaderboard_enabled FROM users WHERE id=:uid", uid=uid)
+    return {"enabled": row["leaderboard_enabled"]}
+
+
+class LeaderboardSettingsIn(BaseModel):
+    enabled: bool
+
+
+@app.patch("/api/me/leaderboard-settings", response_model=dict, tags=["我"])
+def set_leaderboard_settings(body: LeaderboardSettingsIn,
+                             uid: int = Depends(require_user)):
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE users SET leaderboard_enabled=:value WHERE id=:uid"),
+                     {"value": body.enabled, "uid": uid})
+    return {"enabled": body.enabled}
+
+
+def _receipts(identity_type: str, identity_id: int, limit: int, cursor: int | None = None):
+    """凭证列表。游标用"上一页最后一条的 visitId"：按 (occurred_at, id) 取更早的，
+    这样翻页不会因为同一秒多条而漏掉或重复（计划 4 节的 cursor/limit≤50）。"""
+    col = "user_id" if identity_type == "user" else "guest_id"
+    rows = q("""SELECT v.id AS "visitId", p.code, p.name, p.type AS kind,
+        v.seq, v.occurred_at AS "visitedAt", v.recorded_at AS "recordedAt",
+        e.duration_s AS "durationS", e.excluded_reason AS "effortReason"
+        FROM visits v JOIN points p ON p.id=v.point_id
+        LEFT JOIN segment_efforts e ON e.end_visit_id=v.id
+        WHERE v.""" + col + """=:identity
+          AND (CAST(:cursor AS bigint) IS NULL OR (v.occurred_at, v.id) <
+               (SELECT occurred_at, id FROM visits WHERE id=CAST(:cursor AS bigint)))
+        ORDER BY v.occurred_at DESC, v.id DESC LIMIT :limit""",
+        identity=identity_id, limit=limit, cursor=cursor)
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/me/visit-receipts", response_model=list[dict], tags=["我"])
+def my_visit_receipts(limit: int = 20, cursor: int | None = None,
+                      uid: int = Depends(require_user)):
+    return _receipts("user", uid, min(max(limit, 1), 50), cursor)
+
+
+@app.get("/api/guest/visit-receipts", response_model=list[dict], tags=["游客"])
+def guest_visit_receipts(limit: int = 20, cursor: int | None = None,
+                         x_guest_token: str | None = Header(default=None)):
+    guest = _guest_of(x_guest_token)
+    if not guest or guest["merged_user_id"]:
+        err(401, "GUEST_TOKEN_REQUIRED", "游客身份无效")
+    return _receipts("guest", guest["id"], min(max(limit, 1), 50), cursor)
+
+
+def _mountain_summary(identity_type: str, identity_id: int, limit: int):
+    col = "user_id" if identity_type == "user" else "guest_id"
+    rows = q(f"""SELECT p.mountain_id AS "mountainId", m.name,
+        max(v.occurred_at) AS "myLastVisitedAt",
+        (SELECT count(DISTINCT CASE WHEN allv.user_id IS NOT NULL
+            THEN 'u:' || allv.user_id::text ELSE 'g:' || allv.guest_id::text END)
+         FROM visits allv JOIN points allp ON allp.id=allv.point_id
+         WHERE allp.mountain_id=p.mountain_id) AS "visitorCount"
+        FROM visits v JOIN points p ON p.id=v.point_id
+        JOIN mountains m ON m.id=p.mountain_id
+        WHERE v.{col}=:identity GROUP BY p.mountain_id,m.name
+        ORDER BY "myLastVisitedAt" DESC LIMIT :limit""",
+        identity=identity_id, limit=limit)
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/me/mountain-summary", response_model=list[dict], tags=["我"])
+def my_mountain_summary(limit: int = 3, uid: int = Depends(require_user)):
+    return _mountain_summary("user", uid, min(max(limit, 1), 50))
+
+
+@app.get("/api/guest/mountain-summary", response_model=list[dict], tags=["游客"])
+def guest_mountain_summary(limit: int = 3,
+                           x_guest_token: str | None = Header(default=None)):
+    guest = _guest_of(x_guest_token)
+    if not guest or guest["merged_user_id"]:
+        err(401, "GUEST_TOKEN_REQUIRED", "游客身份无效")
+    return _mountain_summary("guest", guest["id"], min(max(limit, 1), 50))
+
+
+class PrivateLetterIn(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+    mode: Literal["date", "checkin", "open"]
+    years: Literal[1, 3, 5] | None = None
+    pointId: int | None = None
+
+
+@app.get("/api/me/letters", response_model=list[dict], tags=["我"])
+def my_private_letters(uid: int = Depends(require_user)):
+    with engine.begin() as conn:
+        rows = conn.execute(text("""SELECT * FROM letters WHERE user_id=:uid
+            AND status<>'deleted' ORDER BY created_at DESC"""), {"uid": uid}).mappings().all()
+        return [public_letter(conn, row, include_text=True) for row in rows]
+
+
+@app.post("/api/me/letters", response_model=dict, tags=["我"])
+def write_private_letter(body: PrivateLetterIn, uid: int = Depends(require_user)):
+    # 先去掉首尾空白再判空：全是空格的信在 pydantic 眼里长度合法，
+    # 但存下来就是一封空信（封存之后用户连"写错了"都看不出来）。
+    if not body.text.strip():
+        err(422, "LETTER_EMPTY", "信里还没有内容")
+    if body.mode == "date" and body.years is None:
+        err(422, "LETTER_YEARS_REQUIRED", "请选择一、三或五年")
+    if body.mode == "checkin" and body.pointId is None:
+        err(422, "LETTER_POINT_REQUIRED", "请选择现场打卡地点")
+    if body.mode != "date" and body.years is not None:
+        err(422, "LETTER_MODE_CONFLICT", "这种解锁方式无需年限")
+    if body.mode != "checkin" and body.pointId is not None:
+        err(422, "LETTER_MODE_CONFLICT", "这种解锁方式无需目标点位")
+    target = None
+    if body.mode == "date":
+        local = datetime.now(ZoneInfo("Asia/Shanghai"))
+        try:
+            target = local.replace(year=local.year + body.years)
+        except ValueError:
+            target = local.replace(year=local.year + body.years, day=28)
+        target = target.replace(hour=0, minute=0, second=0, microsecond=0)
+    with engine.begin() as conn:
+        if body.pointId is not None and not conn.execute(text(
+            "SELECT 1 FROM points WHERE id=:id"), {"id": body.pointId}).scalar_one_or_none():
+            err(404, "POINT_NOT_FOUND", "目标点位不存在")
+        row = conn.execute(text("""INSERT INTO letters
+            (user_id, point_id, text, unlock_at, unlock_mode)
+            VALUES (:uid,:point,:body,:target,:mode) RETURNING *"""),
+            {"uid": uid, "point": body.pointId, "body": body.text.strip(),
+             "target": target, "mode": body.mode}).mappings().one()
+        return public_letter(conn, row, include_text=True)
+
+
+@app.get("/api/me/letters/{letter_id}", response_model=dict, tags=["我"])
+def read_private_letter(letter_id: int, uid: int = Depends(require_user)):
+    with engine.begin() as conn:
+        row = conn.execute(text("""SELECT * FROM letters WHERE id=:id AND user_id=:uid
+            AND status<>'deleted' FOR UPDATE"""), {"id": letter_id, "uid": uid}).mappings().first()
+        if not row:
+            err(404, "LETTER_NOT_FOUND", "信不存在")
+        unlocked = letter_is_unlocked(conn, row)
+        if unlocked:
+            conn.execute(text("UPDATE letters SET read_at=coalesce(read_at,now()) WHERE id=:id"),
+                         {"id": letter_id})
+        return public_letter(conn, row, include_text=True)
+
+
+@app.delete("/api/me/letters/{letter_id}", response_model=dict, tags=["我"])
+def delete_private_letter(letter_id: int, uid: int = Depends(require_user)):
+    with engine.begin() as conn:
+        result = conn.execute(text("DELETE FROM letters WHERE id=:id AND user_id=:uid"),
+                              {"id": letter_id, "uid": uid})
+    if not result.rowcount:
+        err(404, "LETTER_NOT_FOUND", "信不存在")
+    return {"deleted": True}
+
+
+@app.get("/api/points/{code}", response_model=PointDetail, tags=["点位"], responses=ERR_404)
+def get_point(code: str):
+    p = q1("""SELECT pt.*, r.slug AS route_slug, r.name AS route_name,
+                     r.hardest_level AS route_hardest_level,
+                     coalesce(u.nickname, owner.nickname, cl.nickname) AS maintainer_name,
+                     coalesce(pt.maintainer_id, cl.user_id) AS responsible_id
+              FROM points pt LEFT JOIN routes r ON r.id = pt.route_id
+              LEFT JOIN users u ON u.id = pt.maintainer_id
+              LEFT JOIN LATERAL (SELECT user_id, nickname FROM claims
+                WHERE code = pt.code AND status = 'active' ORDER BY id DESC LIMIT 1) cl ON true
+              LEFT JOIN users owner ON owner.id = cl.user_id
+              WHERE pt.code = :code""", code=code)
+    if not p:
+        err(404, "POINT_NOT_FOUND", "点位不存在")
+    point_ids = _board_point_ids(p["id"])
+    board = q1("SELECT id FROM boards WHERE board_type = 'summit' AND mountain_id = :m",
+               m=p["mountain_id"]) if p["mountain_id"] else None
+    codes = q("SELECT code FROM points WHERE id = ANY(:ids) ORDER BY code", ids=point_ids)
+    responsible = q1("""SELECT coalesce(pt.maintainer_id, cl.user_id) AS uid,
+                            coalesce(u.nickname, owner.nickname, cl.nickname) AS nickname
+        FROM points pt LEFT JOIN users u ON u.id = pt.maintainer_id
+        LEFT JOIN LATERAL (SELECT user_id, nickname FROM claims
+          WHERE code = pt.code AND status = 'active' ORDER BY id DESC LIMIT 1) cl ON true
+        LEFT JOIN users owner ON owner.id = cl.user_id
+        WHERE pt.id = ANY(:ids) AND coalesce(pt.maintainer_id, cl.user_id) IS NOT NULL
+        ORDER BY pt.id LIMIT 1""", ids=point_ids)
+    top = q1("""SELECT c.id, c.text, c.like_count, c.bad_count, c.status, c.created_at,
+                       u.nickname, coalesce(:uid = c.user_id, false) AS is_maintainer
+                FROM comments c
+                JOIN users u   ON u.id = c.user_id
+                WHERE c.point_id = ANY(:ids) AND c.status <> 'hidden'
+                ORDER BY is_maintainer DESC, (c.like_count - c.bad_count) DESC, c.created_at DESC
+                LIMIT 1""", ids=point_ids, uid=responsible["uid"] if responsible else None)
+    n = q1("""SELECT count(DISTINCT (coalesce(user_id, -guest_id), visit_date)) AS n
+              FROM visits WHERE point_id = ANY(:ids)""", ids=point_ids)
+    pending = q1("SELECT count(*) AS n FROM comments WHERE point_id = ANY(:ids) AND status = 'flagged'", ids=point_ids)
+    contribution = q1("""SELECT c.text FROM comments c
+        WHERE c.point_id = ANY(:ids) AND c.user_id = :uid AND c.status <> 'hidden'
+        ORDER BY c.created_at DESC LIMIT 1""", ids=point_ids,
+        uid=responsible["uid"] if responsible else None)
+    d = dict(p)
+    if d.get("level") is None:
+        d["level"] = d.get("route_hardest_level") or "mid"
+    keys = ("id", "code", "type", "name", "route_id", "route_slug", "route_name", "index_in_route",
+            "total_in_route", "level", "altitude", "guide", "status", "version")
+    return PointDetail(**{k: d.get(k) for k in keys}, visitCount=n["n"],
+                       maintainerName=responsible["nickname"] if responsible else None,
+                       recentContribution=contribution["text"] if contribution else None,
+                       pendingCount=pending["n"],
+                       mountainId=p["mountain_id"], boardId=board["id"] if board else None,
+                       boardPointCodes=[r["code"] for r in codes],
+                       topComment=CommentOut(**dict(top)) if top else None)
+
+
+class MountainLinkIn(BaseModel):
+    sourceCode: str
+    targetCode: str
+    evidence: str = Field(min_length=8, max_length=1000)
+
+
+@app.post("/api/admin/mountains/link", tags=["山峰"],
+          responses={**ERR_401, **ERR_404, 403: {"description": "无地理资料审核权限"},
+                     409: {"description": "维护关系冲突或山峰归属变化，需重新核对"}},
+          summary="人工核实两组扫码入口属于同一山峰后，合并稳定身份与留言板")
+def link_mountain_identity(body: MountainLinkIn,
+                           uid: int = Depends(require_place_curator)):
+    if len(body.evidence.strip()) < 8:
+        err(400, "EVIDENCE_REQUIRED", "请填写可核查的同山依据")
+    source_code, target_code = body.sourceCode.strip().upper(), body.targetCode.strip().upper()
+    source = q1("SELECT id, mountain_id, type FROM points WHERE code = :c", c=source_code)
+    target = q1("SELECT id, mountain_id, type FROM points WHERE code = :c", c=target_code)
+    if not source or not target or source["type"] != "peak" or target["type"] != "peak":
+        err(404, "SUMMIT_POINT_NOT_FOUND", "请提供两个已存在的山顶编号")
+    source_id, target_id = source["mountain_id"], target["mountain_id"]
+    if not source_id or not target_id or source_id == target_id:
+        err(409, "MOUNTAIN_ALREADY_LINKED", "两处入口已属同一座山，或尚无稳定身份")
+    with engine.begin() as conn:
+        conn.execute(text("SELECT id FROM mountains WHERE id IN (:a, :b) ORDER BY id FOR UPDATE"),
+                     {"a": source_id, "b": target_id})
+        current = conn.execute(text("""SELECT code, mountain_id FROM points
+            WHERE id IN (:source, :target)"""),
+            {"source": source["id"], "target": target["id"]}).mappings().all()
+        if {r["code"]: r["mountain_id"] for r in current} != {
+                source_code: source_id, target_code: target_id}:
+            err(409, "MOUNTAIN_CHANGED", "山峰归属刚被更新，请重新核对后提交")
+        owners = conn.execute(text("""SELECT DISTINCT coalesce(p.maintainer_id, cl.user_id) AS uid
+            FROM points p LEFT JOIN claims cl ON cl.code = p.code AND cl.status = 'active'
+            WHERE p.mountain_id IN (:a, :b)
+              AND coalesce(p.maintainer_id, cl.user_id) IS NOT NULL"""),
+            {"a": source_id, "b": target_id}).scalars().all()
+        if len(owners) > 1:
+            err(409, "MAINTAINER_CONFLICT", "两块山顶板有不同维护人，先完成交接")
+        conn.execute(text("UPDATE points SET mountain_id = :target WHERE mountain_id = :source"),
+                     {"target": target_id, "source": source_id})
+        conn.execute(text("UPDATE route_peaks SET mountain_id = :target WHERE mountain_id = :source"),
+                     {"target": target_id, "source": source_id})
+        conn.execute(text("""INSERT INTO mountain_identity_links
+            (source_mountain_id, target_mountain_id, reviewed_by, evidence)
+            VALUES (:source, :target, :uid, :e)"""),
+            {"source": source_id, "target": target_id, "uid": uid, "e": body.evidence.strip()})
+        board_id = conn.execute(text("""SELECT id FROM boards
+            WHERE board_type = 'summit' AND mountain_id = :m"""), {"m": target_id}).scalar_one()
+        codes = conn.execute(text("SELECT code FROM points WHERE mountain_id = :m ORDER BY code"),
+                             {"m": target_id}).scalars().all()
+    return {"boardId": board_id, "mountainId": target_id, "pointCodes": codes}
+
+
+# ==================== 热门登顶榜 ====================
+
+# 一条线路的「主峰」= 最难的那条爬升段所通向的那个顶。
+# 这是全站的核心模型：卡片的标题是它，二维码贴在它身上，留言板挂在它下面。
+# 线路名（三峰连穿）只是"这条线怎么走"，不是山头的名字。
+HARD_SEG = """
+    SELECT DISTINCT ON (route_id) route_id, to_km, rise, km, level, pct
+    FROM route_segments
+    ORDER BY route_id,
+             -- 优先挑爬升段；但**不能只要爬升段**——全平或全下坡的线路
+             -- （或者海拔数据坏掉、全被判成"平缓"的轨迹）会一段都挑不出来，
+             -- 那条线路就会从山头榜里静默消失（曾漏掉 5 条）。
+             (kind = 'climb') DESC,
+             CASE level WHEN 'hidden' THEN 3 WHEN 'hard' THEN 2
+                        WHEN 'mid' THEN 1 ELSE 0 END DESC,
+             abs(pct) DESC
+"""
+MAIN_PEAK = f"""
+    -- idx 要 +1 才对得上 points.index_in_route：那边山脚是 0、第 N 个顶是 N
+    SELECT DISTINCT ON (rp.route_id) rp.route_id, rp.idx + 1 AS idx, rp.altitude,
+           rp.name AS peak_name,
+           rp.lat, rp.lng
+    FROM route_peaks rp JOIN ({HARD_SEG}) h ON h.route_id = rp.route_id
+    ORDER BY rp.route_id, abs(rp.km - h.to_km)
+"""
+
+
+class SummitItem(BaseModel):
+    id: str = Field(description="前端 key，等同 p-{code}")
+    pointId: int
+    code: str = Field(description="这个山顶自己的编号，二维码印的就是它")
+    name: str | None = Field(default=None, description="主峰真名；空 = 名称待定")
+    altitude: int
+    level: Literal["easy", "mid", "hard", "hidden"] = "mid"
+    routeSlug: str | None = Field(default=None, description="自建山头没有归属线路")
+    routeName: str | None = Field(default=None,
+                                  description="归属线路；卡片上用 @线路名 小字注出来")
+    city: str | None = None
+    province: str | None = Field(default=None, description="省级行政区，山头页「本省」筛选用")
+    country: str | None = Field(default=None, description="国家/地区，「本国 / 海外」筛选用")
+    peakCount: int = 1
+    segRise: int = Field(default=0, description="最难那条爬升段的爬升")
+    segKm: float = Field(default=0, description="那一段有多长")
+    lat: float | None = None
+    lng: float | None = None
+    visits30: int = Field(default=0, description="本周热度：这个顶近 7 天被扫了几次")
+    fastest: str | None = None
+    holder: str | None = None
+    origin: Literal["route", "user"] = "route"
+    series: str | None = Field(default=None, description="所属系列：世界前 10 / 七大洲 / 中国名山 / 各国名山")
+
+
+# 系列 = 这批山头的来历。编号前缀就是系列，不用额外加字段。
+SERIES = {"W10": "世界前 10 高峰", "7S": "七大洲最高峰",
+          "CN": "中国名山", "WM": "各国名山"}
+
+
+def series_of(code: str | None) -> str | None:
+    return SERIES.get((code or "").split("-")[0])
+
+
+@app.get("/api/summits", response_model=list[SummitItem], tags=["点位"],
+         summary="山头列表：一条线路一张卡，卡是它的主峰")
+def list_summits(limit: int = 100):
+    rows = q(f"""
+        SELECT 'p-' || pt.code        AS id, pt.id AS "pointId", pt.code,
+               pt.name, mp.altitude, coalesce(pt.level, r.hardest_level, 'mid') AS level,
+               r.slug                 AS "routeSlug", r.name AS "routeName",
+               coalesce(pt.city, r.city) AS city, pt.country, pt.province,
+               r.peak_count           AS "peakCount",
+               h.rise                 AS "segRise", round(h.km, 2) AS "segKm",
+               mp.lat, mp.lng,
+               (SELECT count(*) FROM visits v WHERE v.point_id = pt.id
+                  AND v.created_at > now() - interval '7 days') AS "visits30",
+               (SELECT to_char(make_interval(secs => min(v.duration_sec)), 'HH24:MI')
+                  FROM visits v WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL) AS fastest,
+               (SELECT u.nickname FROM visits v JOIN users u ON u.id = v.user_id
+                  WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL
+                  ORDER BY v.duration_sec LIMIT 1) AS holder,
+               'route' AS origin
+        FROM routes r
+        JOIN ({HARD_SEG}) h ON h.route_id = r.id
+        JOIN ({MAIN_PEAK}) mp ON mp.route_id = r.id
+        JOIN points pt ON pt.route_id = r.id AND pt.index_in_route = mp.idx
+        UNION ALL
+        SELECT 'p-' || pt.code, pt.id, pt.code, pt.name, pt.altitude,
+               coalesce(pt.level, 'mid'),
+               NULL, NULL, pt.city, pt.country, pt.province,
+               1, coalesce(pt.track_up, 0), coalesce(pt.track_km, 0),
+               ST_Y(pt.geom), ST_X(pt.geom),
+               (SELECT count(*) FROM visits v WHERE v.point_id = pt.id
+                  AND v.created_at > now() - interval '7 days'),
+               (SELECT to_char(make_interval(secs => min(v.duration_sec)), 'HH24:MI')
+                  FROM visits v WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL),
+               (SELECT u.nickname FROM visits v JOIN users u ON u.id = v.user_id
+                  WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL
+                  ORDER BY v.duration_sec LIMIT 1),
+               'user'
+        FROM points pt
+        WHERE pt.type = 'peak' AND pt.status = 'published'
+          AND pt.route_id IS NULL AND pt.altitude IS NOT NULL
+        ORDER BY "visits30" DESC, altitude DESC
+        LIMIT :limit""", limit=limit)
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["series"] = series_of(d.get("code"))
+        try:
+            out.append(SummitItem(**d))
+        except Exception:
+            # 不把内部字段暴露给公开接口，但日志里要能定位是哪一行。
+            logging.exception("summits row invalid: code=%s", d.get("code"))
+            raise
+    return out
+
+class WantIn(BaseModel):
+    kind: Literal["peak", "trail", "junction"]
+    target_key: str = Field(description="前端 key：线路 = slug，山顶 = slug-idx，自建点位 = p-{code}")
+
+
+class HotPeak(BaseModel):
+    rank: int
+    target_key: str = Field(description="点进去用：p-{code}（山头自己那个点位）")
+    kind: Literal["trail", "peak"]
+    name: str | None = Field(default=None, description="主峰真名；空 = 名称待定")
+    route_slug: str | None = None
+    route_name: str | None = Field(default=None, description="归属线路，卡片上 @ 出来")
+    code: str | None = None
+    city: str | None = None
+    province: str | None = Field(default=None, description="省级行政区，山头页「本省」筛选用")
+    country: str | None = Field(default=None, description="国家/地区，「本国 / 海外」筛选用")
+    level: Literal["easy", "mid", "hard", "hidden"] | None = Field(
+        default=None, description="通向它的那一段的难度，「登顶难度」筛选用")
+    altitude: int
+    peak_count: int = 1
+    seg_rise: int = Field(default=0, description="单段爬升：全线最难那一段上升了多少米")
+    seg_km: float = Field(default=0, description="单段距离：那一趟多长")
+    heat7: int = Field(description="本周打卡次数")
+    heat30: int = Field(description="近 30 天打卡次数")
+    visitors: int = Field(description="近 30 天去重人数")
+    wants: int = Field(description="关注度：想去 / 收藏过它的人")
+    fastest_time: str | None = Field(default=None, description="登顶最快用时；没人记过则为 null")
+    fastest_holder: str | None = Field(default=None, description="记录保持者")
+    score: int
+
+
+@app.get("/api/peaks/hot", response_model=list[HotPeak], tags=["点位"],
+         summary="热门登顶排行榜（本周打卡热度 + 用户关注度）")
+def hot_peaks(limit: int = 10):
+    """一座**山头**一行。
+
+    这里的"山头"是**主峰**，不是线路：一条线路挑出最难那条爬升段通向的顶，
+    它的名字（没采到就是"名称待定"）、它的海拔、它自己的扫码热度。
+    线路名只在卡片上做一行小字注（@三峰连穿），点进去才是整条线路的路书。
+
+    score = 本周打卡 × 3 + 近 30 天打卡 + 关注 × 2
+    本周权重最高——榜要反映"现在热不热"，不是"历史上攒了多少"。
+    """
+    rows = q(f"""
+        SELECT * FROM (
+          SELECT 'p-' || pt.code  AS target_key, 'peak' AS kind,
+                 pt.name, pt.code, r.slug AS route_slug, r.name AS route_name,
+                 coalesce(pt.city, r.city) AS city, pt.province, pt.country,
+                 mp.altitude, r.peak_count,
+                 h.rise AS seg_rise, round(h.km, 2) AS seg_km,
+                 h.level,
+                 (SELECT count(*) FROM visits v WHERE v.point_id = pt.id
+                    AND v.created_at > now() - interval '7 days')  AS heat7,
+                 (SELECT count(*) FROM visits v WHERE v.point_id = pt.id
+                    AND v.created_at > now() - interval '30 days') AS heat30,
+                 (SELECT count(DISTINCT v.user_id) FROM visits v WHERE v.point_id = pt.id
+                    AND v.created_at > now() - interval '30 days') AS visitors,
+                 (SELECT count(*) FROM wants w WHERE w.target_key = 'p-' || pt.code
+                    OR w.target_key = r.slug OR w.target_key LIKE r.slug || '-%') AS wants,
+                 (SELECT to_char(make_interval(secs => min(v.duration_sec)), 'HH24:MI')
+                    FROM visits v WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL)
+                    AS fastest_time,
+                 (SELECT u.nickname FROM visits v JOIN users u ON u.id = v.user_id
+                    WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL
+                    ORDER BY v.duration_sec LIMIT 1) AS fastest_holder
+          FROM routes r
+          JOIN ({HARD_SEG}) h ON h.route_id = r.id
+          JOIN ({MAIN_PEAK}) mp ON mp.route_id = r.id
+          JOIN points pt ON pt.route_id = r.id AND pt.index_in_route = mp.idx
+          UNION ALL
+          -- 列必须和上面那条分支严格对齐（UNION ALL 按位置合并）
+          SELECT 'p-' || pt.code, 'peak', pt.name, pt.code, NULL, NULL, pt.city,
+                 pt.province, pt.country,
+                 pt.altitude, 1, coalesce(pt.track_up, 0), coalesce(pt.track_km, 0),
+                 pt.level,
+                 (SELECT count(*) FROM visits v WHERE v.point_id = pt.id
+                    AND v.created_at > now() - interval '7 days'),
+                 (SELECT count(*) FROM visits v WHERE v.point_id = pt.id
+                    AND v.created_at > now() - interval '30 days'),
+                 (SELECT count(DISTINCT v.user_id) FROM visits v WHERE v.point_id = pt.id
+                    AND v.created_at > now() - interval '30 days'),
+                 (SELECT count(*) FROM wants w WHERE w.target_key = 'p-' || pt.code),
+                 (SELECT to_char(make_interval(secs => min(v.duration_sec)), 'HH24:MI')
+                    FROM visits v WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL),
+                 (SELECT u.nickname FROM visits v JOIN users u ON u.id = v.user_id
+                    WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL
+                    ORDER BY v.duration_sec LIMIT 1)
+          FROM points pt
+          WHERE pt.type = 'peak' AND pt.status = 'published'
+            AND pt.route_id IS NULL AND pt.altitude IS NOT NULL
+        ) t
+        WHERE altitude IS NOT NULL
+        ORDER BY (heat7 * 3 + heat30 + wants * 2) DESC, altitude DESC
+        LIMIT :limit""", limit=limit)
+    out = []
+    for i, r in enumerate(rows):
+        d = dict(r)
+        d["score"] = d["heat7"] * 3 + d["heat30"] + d["wants"] * 2
+        d["rank"] = i + 1
+        out.append(HotPeak(**d))
+    return out
+
+
+@app.post("/api/wants", status_code=204, tags=["关注"],
+          responses=ERR_401, summary="关注 / 想去（重复调用不报错）")
+def add_want(body: WantIn, uid: int = Depends(require_user)):
+    # q() 只用于 SELECT（它要 .mappings()），写操作走 engine.begin()
+    with engine.begin() as conn:
+        conn.execute(text("""INSERT INTO wants (user_id, kind, target_key)
+            VALUES (:uid, :k, :t)
+            ON CONFLICT (user_id, kind, target_key) DO NOTHING"""),
+            {"uid": uid, "k": body.kind, "t": body.target_key})
+
+
+@app.delete("/api/wants", status_code=204, tags=["关注"],
+            responses=ERR_401, summary="取消关注")
+def drop_want(kind: Literal["peak", "trail", "junction"], target_key: str,
+              uid: int = Depends(require_user)):
+    with engine.begin() as conn:
+        conn.execute(text("""DELETE FROM wants
+            WHERE user_id = :uid AND kind = :k AND target_key = :t"""),
+            {"uid": uid, "k": kind, "t": target_key})
+
+
+@app.get("/api/me/wants", tags=["关注"], responses=ERR_401, summary="我关注 / 想去的东西")
+def my_wants(uid: int = Depends(require_user)):
+    rows = q("""SELECT kind, target_key, created_at FROM wants
+                WHERE user_id = :uid ORDER BY created_at DESC""", uid=uid)
+    return [{"kind": r["kind"], "targetKey": r["target_key"],
+             "at": r["created_at"].isoformat()} for r in rows]
+
+
+# ==================== 消息页：我的山头 / 关注 / 留言提醒 ====================
+
+class MySummit(BaseModel):
+    id: int
+    pointId: int
+    code: str
+    name: str | None = None
+    altitude: int | None = None
+    level: str = "mid"
+    city: str | None = None
+    routeSlug: str | None = None
+    type: Literal["peak", "junction", "trailhead"] = Field(
+        default="peak", description="peak=山头（山大王）；junction=岔路口（NPC指路人）")
+    role: Literal["maintainer", "owner", "collaborator"] = Field(description="maintainer=版主；owner=山大王；collaborator=本板协作者")
+    commentCount: int = 0
+    unread: int = 0
+    heat7: int = 0
+    lastCommentAt: str | None = None
+    boardId: int | None = None
+    boardPointCodes: list[str] = Field(default_factory=list)
+
+
+@app.get("/api/me/summits", response_model=list[MySummit], tags=["消息"],
+         responses=ERR_401, summary="我的山头：我维护的 + 我自己开的")
+def my_summits(uid: int = Depends(require_user)):
+    """Return one responsibility row per board, even when several QR points share it."""
+    rows = q("""
+        SELECT pt.id AS point_id, pt.code, pt.name, pt.altitude, pt.level, pt.mountain_id,
+               pt.type AS point_type, b.id AS board_id,
+               coalesce(pt.city, r.city) AS city, r.slug AS route_slug,
+               (mm.role = 'owner') AS is_maint,
+               (mm.role = 'member') AS is_collab
+          FROM points pt
+          JOIN mountain_members mm ON mm.mountain_id = pt.mountain_id
+          LEFT JOIN routes r ON r.id = pt.route_id
+          LEFT JOIN boards b ON b.mountain_id = pt.mountain_id AND b.board_type = 'summit'
+         WHERE mm.user_id = :uid AND mm.status = 'active'
+         ORDER BY pt.id""", uid=uid)
+    groups: dict[int, list] = {}
+    for row in rows:
+        groups.setdefault(row["mountain_id"] or -row["point_id"], []).append(row)
+    out = []
+    seen_at = q1("SELECT notif_seen_at FROM users WHERE id = :uid", uid=uid)["notif_seen_at"]
+    for group in groups.values():
+        lead = next((r for r in group if r["is_maint"]), group[0])
+        ids = [r["point_id"] for r in group]
+        activity = q1("""SELECT
+            (SELECT count(*) FROM comments WHERE point_id = ANY(:ids) AND status <> 'hidden') AS comments,
+            (SELECT count(*) FROM comments WHERE point_id = ANY(:ids) AND status <> 'hidden'
+              AND created_at > :seen) AS unread,
+            (SELECT count(DISTINCT (coalesce(user_id, -guest_id), visit_date)) FROM visits
+              WHERE point_id = ANY(:ids) AND created_at > now() - interval '7 days') AS heat,
+            (SELECT max(created_at) FROM comments WHERE point_id = ANY(:ids)) AS last_at""",
+                      ids=ids, seen=seen_at)
+        out.append(MySummit(id=lead["point_id"], pointId=lead["point_id"], code=lead["code"],
+                            name=lead["name"], altitude=lead["altitude"], level=lead["level"],
+                            type=lead["point_type"], city=lead["city"], routeSlug=lead["route_slug"],
+                            role="maintainer" if lead["is_maint"] else
+                                 "collaborator" if lead["is_collab"] else "owner",
+                            commentCount=activity["comments"], unread=activity["unread"],
+                            heat7=activity["heat"], boardId=lead["board_id"],
+                            boardPointCodes=[r["code"] for r in group],
+                            lastCommentAt=activity["last_at"].isoformat() if activity["last_at"] else None))
+    out.sort(key=lambda r: (r.lastCommentAt or "", r.heat7), reverse=True)
+    return out[:50]
+
+
+class FollowedSummit(BaseModel):
+    targetKey: str
+    pointId: int | None = None
+    code: str | None = None
+    name: str | None = None
+    altitude: int | None = None
+    city: str | None = None
+    routeSlug: str | None = None
+    commentCount: int = 0
+    unread: int = 0
+    at: str | None = None
+
+
+@app.get("/api/me/follows", response_model=list[FollowedSummit], tags=["消息"],
+         responses=ERR_401, summary="我关注的山头（含留言未读数）")
+def my_follows(uid: int = Depends(require_user)):
+    rows = q("""
+        SELECT w.target_key, w.created_at AS at,
+               pt.id AS point_id, pt.code, pt.name, pt.altitude, pt.mountain_id,
+               coalesce(pt.city, r.city) AS city, r.slug AS route_slug,
+               (SELECT count(*) FROM comments c JOIN points peer ON peer.id = c.point_id
+                  WHERE (peer.id = pt.id OR (pt.type = 'peak' AND peer.mountain_id = pt.mountain_id))
+                    AND c.status <> 'hidden') AS comment_count,
+               (SELECT count(*) FROM comments c JOIN points peer ON peer.id = c.point_id
+                  WHERE (peer.id = pt.id OR (pt.type = 'peak' AND peer.mountain_id = pt.mountain_id))
+                    AND c.status <> 'hidden'
+                    AND c.created_at > u.notif_seen_at) AS unread
+          FROM wants w
+          JOIN users u ON u.id = :uid
+          LEFT JOIN points pt ON pt.code = replace(w.target_key, 'p-', '')
+          LEFT JOIN routes r ON r.id = pt.route_id
+         WHERE w.user_id = :uid AND w.kind = 'peak'
+         ORDER BY unread DESC, comment_count DESC, w.created_at DESC
+         LIMIT 50""", uid=uid)
+    seen_boards = set()
+    unique_rows = []
+    for row in rows:
+        board_key = row["mountain_id"] if row["mountain_id"] is not None else row["target_key"]
+        if board_key not in seen_boards:
+            seen_boards.add(board_key)
+            unique_rows.append(row)
+    return [FollowedSummit(targetKey=r["target_key"], pointId=r["point_id"], code=r["code"],
+                           name=r["name"], altitude=r["altitude"], city=r["city"],
+                           routeSlug=r["route_slug"], commentCount=r["comment_count"],
+                           unread=r["unread"],
+                           at=r["at"].isoformat() if r["at"] else None) for r in unique_rows]
+
+
+class NotifItem(BaseModel):
+    commentId: int
+    pointId: int
+    code: str | None = None
+    peakName: str | None = None
+    who: str | None = None
+    text: str
+    at: str
+    unread: bool = False
+    reason: Literal["maintainer", "follow"] = Field(description="为什么提醒你：我维护的 / 我关注的")
+
+
+@app.get("/api/me/notifications", response_model=list[NotifItem], tags=["消息"],
+         responses=ERR_401, summary="留言提醒：我维护或关注的山头上的新留言")
+def my_notifications(limit: int = 30, uid: int = Depends(require_user)):
+    rows = q("""
+        SELECT c.id AS comment_id, c.point_id, c.text, c.created_at,
+               pt.code, pt.name AS peak_name, u2.nickname AS who,
+               EXISTS (SELECT 1 FROM points peer
+                        WHERE (peer.id = pt.id OR (pt.type = 'peak' AND peer.mountain_id = pt.mountain_id))
+                          AND (peer.maintainer_id = :uid OR peer.code IN
+                               (SELECT code FROM claims WHERE user_id = :uid AND code IS NOT NULL))) AS mine,
+               (c.created_at > u.notif_seen_at) AS unread
+          FROM comments c
+          JOIN points pt ON pt.id = c.point_id
+          JOIN users u ON u.id = :uid
+          LEFT JOIN users u2 ON u2.id = c.user_id
+         WHERE c.status <> 'hidden'
+           AND (EXISTS (SELECT 1 FROM points peer
+                         WHERE (peer.id = pt.id OR (pt.type = 'peak' AND peer.mountain_id = pt.mountain_id))
+                           AND (peer.maintainer_id = :uid OR peer.code IN
+                                (SELECT code FROM claims WHERE user_id = :uid AND code IS NOT NULL)))
+                OR EXISTS (SELECT 1 FROM wants w JOIN points followed
+                            ON followed.code = replace(w.target_key, 'p-', '')
+                            WHERE w.user_id = :uid AND w.kind = 'peak'
+                              AND (followed.id = pt.id OR (pt.type = 'peak' AND followed.mountain_id = pt.mountain_id))))
+         ORDER BY c.created_at DESC
+         LIMIT :limit""", uid=uid, limit=limit)
+    return [NotifItem(commentId=r["comment_id"], pointId=r["point_id"], code=r["code"],
+                      peakName=r["peak_name"], who=r["who"], text=r["text"],
+                      at=r["created_at"].isoformat(), unread=bool(r["unread"]),
+                      reason="maintainer" if r["mine"] else "follow") for r in rows]
+
+
+@app.post("/api/me/notifications/seen", status_code=204, tags=["消息"],
+          responses=ERR_401, summary="留言提醒全部标记已读")
+def seen_notifications(uid: int = Depends(require_user)):
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE users SET notif_seen_at = now() WHERE id = :u"), {"u": uid})
+
+
+class HideCommentIn(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
+
+
+@app.post("/api/comments/{comment_id}/hide", status_code=204, tags=["留言"],
+          responses={**ERR_401, **ERR_404, 403: {"description": "不是维护人，也不是作者"}},
+          summary="隐藏留言：维护人可以管自己山头下的任意一条")
+def hide_comment(comment_id: int, body: HideCommentIn | None = None,
+                 uid: int = Depends(require_user)):
+    """维护人的"更高权限"就体现在这里：别人山头下的留言他管不着，
+    自己山头下的可以隐藏（status=hidden，不物理删除，留痕）。"""
+    row = q1("""SELECT c.user_id, c.point_id, c.status, pt.maintainer_id, pt.code
+                  FROM comments c JOIN points pt ON pt.id = c.point_id
+                 WHERE c.id = :id""", id=comment_id)
+    if not row:
+        err(404, "COMMENT_NOT_FOUND", "留言不存在")
+    if row["user_id"] != uid and not _is_maintainer_of(row, uid) and not _is_board_collaborator(row["point_id"], uid):
+        err(403, "NOT_MAINTAINER", "只有维护人（或留言作者自己）能隐藏这条留言")
+    reason = body.reason.strip() if body and body.reason else None
+    if row["user_id"] != uid and (not reason or len(reason) < 8):
+        err(422, "MODERATION_REASON_REQUIRED", "隐藏他人留言须填写至少 8 字理由")
+    if row["status"] == "hidden":
+        return
+    with engine.begin() as conn:
+        changed = conn.execute(text("""UPDATE comments SET status = 'hidden',
+              hidden_reason = coalesce(:reason, hidden_reason)
+            WHERE id = :id AND status <> 'hidden' RETURNING id"""),
+            {"id": comment_id, "reason": reason}).first()
+        if changed:
+            _audit(conn, uid, "comment.hide", "comment", comment_id,
+                   {"status": row["status"]}, {"status": "hidden"},
+                   reason=reason, point_id=row["point_id"])
+
+
+class CommentAppealIn(BaseModel):
+    reason: str = Field(min_length=8, max_length=500)
+
+
+class CommentAppealReviewIn(BaseModel):
+    decision: Literal["restored", "rejected"]
+    note: str = Field(min_length=8, max_length=500)
+
+
+class CommentAppealOut(BaseModel):
+    id: int
+    commentId: int
+    status: Literal["pending", "restored", "rejected"]
+    reason: str
+    reviewNote: str | None = None
+    commentText: str | None = None
+    pointCode: str | None = None
+    pointName: str | None = None
+    authorName: str | None = None
+    hiddenReason: str | None = None
+
+
+def _appeal_out(row) -> CommentAppealOut:
+    return CommentAppealOut(id=row["id"], commentId=row["comment_id"],
+                            status=row["status"], reason=row["reason"],
+                            reviewNote=row["review_note"],
+                            commentText=row.get("comment_text"),
+                            pointCode=row.get("point_code"), pointName=row.get("point_name"),
+                            authorName=row.get("author_name"),
+                            hiddenReason=row.get("hidden_reason"))
+
+
+class HiddenCommentOut(BaseModel):
+    id: int
+    text: str
+    pointCode: str | None = None
+    pointName: str | None = None
+    appealable: bool
+    appeal: CommentAppealOut | None = None
+
+
+@app.get("/api/me/hidden-comments", response_model=list[HiddenCommentOut], tags=["留言申诉"])
+def my_hidden_comments(uid: int = Depends(require_user)):
+    rows = q("""SELECT c.id, c.text, pt.code AS point_code, pt.name AS point_name,
+            (c.status = 'hidden' AND (h.actor_id IS NULL OR h.actor_id <> :uid)) AS appealable,
+            ca.id AS appeal_id, ca.comment_id AS appeal_comment_id,
+            ca.status AS appeal_status, ca.reason AS appeal_reason,
+            ca.review_note AS appeal_review_note
+        FROM comments c JOIN points pt ON pt.id = c.point_id
+        LEFT JOIN LATERAL (SELECT id, actor_id FROM maintenance_audit_logs
+            WHERE action = 'comment.hide' AND target_type = 'comment' AND target_id = c.id
+            ORDER BY id DESC LIMIT 1) h ON true
+        LEFT JOIN comment_appeals ca ON ca.comment_id = c.id
+            AND ca.hide_event_id = coalesce(h.id, 0)
+        WHERE c.user_id = :uid AND (c.status = 'hidden' OR ca.status = 'restored')
+        ORDER BY c.created_at DESC LIMIT 100""", uid=uid)
+    return [HiddenCommentOut(id=r["id"], text=r["text"], pointCode=r["point_code"],
+                             pointName=r["point_name"], appealable=r["appealable"],
+                             appeal=CommentAppealOut(id=r["appeal_id"],
+                                commentId=r["appeal_comment_id"], status=r["appeal_status"],
+                                reason=r["appeal_reason"], reviewNote=r["appeal_review_note"])
+                             if r["appeal_id"] else None) for r in rows]
+
+
+@app.post("/api/comments/{comment_id}/appeals", response_model=CommentAppealOut,
+          tags=["留言申诉"], responses={**ERR_401, **ERR_404})
+def appeal_hidden_comment(comment_id: int, body: CommentAppealIn,
+                          uid: int = Depends(require_user)):
+    reason = body.reason.strip()
+    if len(reason) < 8:
+        err(422, "APPEAL_REASON_TOO_SHORT", "请至少写 8 字说明申诉理由")
+    with engine.begin() as conn:
+        row = conn.execute(text("""SELECT id, point_id, user_id, status FROM comments
+            WHERE id = :id FOR UPDATE"""), {"id": comment_id}).mappings().first()
+        if not row:
+            err(404, "COMMENT_NOT_FOUND", "留言不存在")
+        if row["user_id"] != uid:
+            err(403, "NOT_COMMENT_AUTHOR", "只有留言作者可以申诉")
+        if row["status"] != "hidden":
+            err(409, "COMMENT_NOT_HIDDEN", "这条留言目前未被隐藏")
+        hidden = conn.execute(text("""SELECT id, actor_id FROM maintenance_audit_logs
+            WHERE action = 'comment.hide' AND target_type = 'comment' AND target_id = :id
+            ORDER BY id DESC LIMIT 1"""), {"id": comment_id}).mappings().first()
+        if hidden and hidden["actor_id"] == uid:
+            err(409, "SELF_HIDDEN", "自己隐藏的留言不能申诉")
+        event_id = hidden["id"] if hidden else 0
+        existing = conn.execute(text("""SELECT * FROM comment_appeals
+            WHERE comment_id = :id AND hide_event_id = :event"""),
+            {"id": comment_id, "event": event_id}).mappings().first()
+        if existing:
+            return _appeal_out(existing)
+        appeal = conn.execute(text("""INSERT INTO comment_appeals
+            (comment_id, hide_event_id, author_id, reason)
+            VALUES (:id, :event, :uid, :reason) RETURNING *"""),
+            {"id": comment_id, "event": event_id, "uid": uid,
+             "reason": reason}).mappings().one()
+    return _appeal_out(appeal)
+
+
+@app.get("/api/admin/comment-appeals", response_model=list[CommentAppealOut], tags=["留言申诉"])
+def list_comment_appeals(status: Literal["pending", "restored", "rejected"] = "pending",
+                         uid: int = Depends(require_content_reviewer)):
+    rows = q("""SELECT ca.*, c.text AS comment_text, pt.code AS point_code,
+            pt.name AS point_name, u.nickname AS author_name,
+            h.reason AS hidden_reason
+        FROM comment_appeals ca JOIN comments c ON c.id = ca.comment_id
+        JOIN points pt ON pt.id = c.point_id
+        JOIN users u ON u.id = ca.author_id
+        LEFT JOIN maintenance_audit_logs h ON h.id = ca.hide_event_id
+        WHERE ca.status = :status ORDER BY ca.created_at LIMIT 100""", status=status)
+    return [_appeal_out(r) for r in rows]
+
+
+@app.post("/api/admin/comment-appeals/{appeal_id}/review", response_model=CommentAppealOut,
+          tags=["留言申诉"])
+def review_comment_appeal(appeal_id: int, body: CommentAppealReviewIn,
+                          uid: int = Depends(require_content_reviewer)):
+    note = body.note.strip()
+    if len(note) < 8:
+        err(422, "REVIEW_NOTE_TOO_SHORT", "请至少写 8 字复核依据")
+    with engine.begin() as conn:
+        row = conn.execute(text("""SELECT ca.*, c.point_id, c.status AS comment_status,
+                h.actor_id AS hidden_by, h.previous AS hide_previous
+            FROM comment_appeals ca JOIN comments c ON c.id = ca.comment_id
+            LEFT JOIN maintenance_audit_logs h ON h.id = ca.hide_event_id
+            WHERE ca.id = :id FOR UPDATE OF ca, c"""),
+            {"id": appeal_id}).mappings().first()
+        if not row:
+            err(404, "APPEAL_NOT_FOUND", "申诉不存在")
+        if row["status"] != "pending" or row["comment_status"] != "hidden":
+            err(409, "APPEAL_NOT_PENDING", "申诉或留言状态已改变")
+        if uid in (row["author_id"], row["hidden_by"]):
+            err(403, "REVIEW_CONFLICT", "作者或隐藏执行人不能复核这条申诉")
+        if body.decision == "restored":
+            original = (row["hide_previous"] or {}).get("status", "normal")
+            original = original if original in ("normal", "flagged") else "normal"
+            conn.execute(text("UPDATE comments SET status = :status WHERE id = :id"),
+                         {"status": original, "id": row["comment_id"]})
+            _audit(conn, uid, "comment.restore", "comment", row["comment_id"],
+                   {"status": "hidden"}, {"status": original}, reason=note,
+                   point_id=row["point_id"])
+        updated = conn.execute(text("""UPDATE comment_appeals SET status = :decision,
+            reviewer_id = :uid, review_note = :note, reviewed_at = now()
+            WHERE id = :id RETURNING *"""),
+            {"decision": body.decision, "uid": uid, "note": note,
+             "id": appeal_id}).mappings().one()
+        _audit(conn, uid, "comment.appeal_review", "comment_appeal", appeal_id,
+               {"status": "pending"}, {"status": body.decision},
+               reason=note, point_id=row["point_id"])
+    return _appeal_out(updated)
+
+
+# ==================== 举报与处置 ====================
+# 非公开输入：游客和账号都能举报一条留言（岔路情报就是岔路点位上的留言），
+# 但只有本人能看到自己提交的举报；处置由 content_reviewer 执行，
+# 不能处置自己提交的举报，通过并选择隐藏时复用 comment.hide 审计，
+# 于是原作者仍能走 023 的申诉通道。广告举报随广告一起冻结。
+
+class ReportIn(BaseModel):
+    targetType: Literal["comment"] = "comment"
+    targetId: int = Field(ge=1)
+    reason: Literal["spam", "abuse", "false_info", "privacy", "illegal", "other"]
+    detail: str | None = Field(default=None, max_length=200)
+
+
+class ReportOut(BaseModel):
+    id: int
+    targetType: str
+    targetId: int
+    reason: str
+    detail: str | None = None
+    status: Literal["pending", "accepted", "rejected"]
+    handleReason: str | None = None
+    actionTaken: str | None = None
+    createdAt: datetime
+    duplicate: bool = Field(default=False,
+                            description="同一身份对同一对象的重复举报：返回已存在的那条，不新建")
+
+
+class ReportQueueItem(BaseModel):
+    id: int
+    targetType: str
+    targetId: int
+    reason: str
+    detail: str | None = None
+    reporter: str = Field(description="举报人昵称；游客没有昵称时显示“游客”")
+    createdAt: datetime
+    comment: str | None = None
+    commentStatus: str | None = None
+    commentAuthor: str | None = None
+    pointCode: str | None = None
+    pointName: str | None = None
+    segmentId: int | None = None
+
+
+class ReportReviewIn(BaseModel):
+    decision: Literal["accepted", "rejected"]
+    reason: str = Field(min_length=8, max_length=500,
+                        description="处置理由，举报人和审计都要能看懂")
+    action: Literal["none", "hide"] = Field(
+        default="none", description="通过时是否顺带隐藏该留言；驳回时忽略")
+
+
+def _report_out(row, duplicate: bool = False) -> ReportOut:
+    return ReportOut(id=row["id"], targetType=row["target_type"], targetId=row["target_id"],
+                     reason=row["reason"], detail=row["detail"], status=row["status"],
+                     handleReason=row["handle_reason"], actionTaken=row["action_taken"],
+                     createdAt=row["created_at"], duplicate=duplicate)
+
+
+def _report_identity(uid: int | None, guest):
+    """举报必须能追溯到身份：账号优先，其次游客令牌。"""
+    if uid is not None:
+        return f"u:{uid}", uid, None
+    if guest is not None:
+        return f"g:{guest['id']}", None, guest["id"]
+    return err(401, "REPORT_IDENTITY_REQUIRED", "举报需要一个身份：先扫码获得游客身份或登录账号")
+
+
+_REPORT_QUEUE_SQL = """
+    SELECT r.*,
+           coalesce(ru.nickname, '游客') AS reporter_name,
+           c.text AS comment_text, c.status AS comment_status, c.segment_id,
+           cu.nickname AS comment_author,
+           pt.code AS point_code, pt.name AS point_name
+      FROM content_reports r
+      LEFT JOIN users ru ON ru.id = r.reporter_user_id
+      LEFT JOIN comments c ON r.target_type = 'comment' AND c.id = r.target_id
+      LEFT JOIN users cu ON cu.id = c.user_id
+      LEFT JOIN points pt ON pt.id = c.point_id
+"""
+
+
+@app.post("/api/reports", response_model=ReportOut, status_code=201, tags=["举报"],
+          responses={**ERR_401, **ERR_404,
+                     409: {"description": "对象不可举报，或举报自己的留言"},
+                     429: {"description": "提交过于频繁"}},
+          summary="提交非公开举报（游客或账号都可以）")
+def submit_report(body: ReportIn, request: Request, response: Response,
+                  authorization: str | None = Header(default=None),
+                  x_guest_token: str | None = Header(default=None)):
+    uid = None
+    if authorization and authorization.lower().startswith("bearer "):
+        uid = require_user(authorization)
+    identity_key, reporter_uid, reporter_gid = _report_identity(uid, _guest_of(x_guest_token))
+
+    comment = q1("SELECT id, user_id, status FROM comments WHERE id = :i", i=body.targetId)
+    if not comment:
+        err(404, "COMMENT_NOT_FOUND", "留言不存在")
+    if comment["status"] == "hidden":
+        err(409, "REPORT_TARGET_NOT_REPORTABLE", "这条留言已被隐藏，无需举报")
+    if reporter_uid is not None and comment["user_id"] == reporter_uid:
+        err(409, "REPORT_SELF", "不能举报自己的留言")
+
+    keys = _rate_check(request, "report", identity_key)
+
+    existing = q1("""SELECT * FROM content_reports
+        WHERE target_type = :t AND target_id = :i AND reporter_key = :k AND status = 'pending'""",
+                  t=body.targetType, i=body.targetId, k=identity_key)
+    if existing:
+        response.status_code = 200                 # 重复提交是幂等，不是新建
+        return _report_out(existing, duplicate=True)
+
+    detail = (body.detail or "").strip() or None
+    with engine.begin() as conn:
+        row = conn.execute(text("""INSERT INTO content_reports
+                (target_type, target_id, reason, detail,
+                 reporter_user_id, reporter_guest_id, reporter_key)
+            VALUES (:t, :i, :r, :d, :uid, :gid, :k) RETURNING *"""),
+            {"t": body.targetType, "i": body.targetId, "r": body.reason, "d": detail,
+             "uid": reporter_uid, "gid": reporter_gid, "k": identity_key}).mappings().one()
+    _rate_hit(keys)
+    return _report_out(row)
+
+
+@app.get("/api/admin/reports", response_model=list[ReportQueueItem], tags=["举报"],
+         responses={**ERR_401, 403: {"description": "不是内容审核员"}},
+         summary="举报队列（content_reviewer）")
+def admin_reports(status: Literal["pending", "accepted", "rejected"] = "pending",
+                  limit: int = 50, uid: int = Depends(require_content_reviewer)):
+    limit = max(1, min(limit, 200))
+    rows = q(_REPORT_QUEUE_SQL + " WHERE r.status = :s ORDER BY r.created_at ASC LIMIT :l",
+             s=status, l=limit)
+    return [ReportQueueItem(
+        id=r["id"], targetType=r["target_type"], targetId=r["target_id"],
+        reason=r["reason"], detail=r["detail"], reporter=r["reporter_name"],
+        createdAt=r["created_at"], comment=r["comment_text"],
+        commentStatus=r["comment_status"], commentAuthor=r["comment_author"],
+        pointCode=r["point_code"], pointName=r["point_name"], segmentId=r["segment_id"],
+    ) for r in rows]
+
+
+@app.post("/api/admin/reports/{report_id}/review", response_model=ReportOut, tags=["举报"],
+          responses={**ERR_401, **ERR_404,
+                     403: {"description": "不是内容审核员，或想处置自己提交的举报"},
+                     409: {"description": "这条举报已经处理过"}},
+          summary="处置举报：通过（可同时隐藏留言）或驳回，必须写理由")
+def review_report(report_id: int, body: ReportReviewIn,
+                  uid: int = Depends(require_content_reviewer)):
+    note = body.reason.strip()
+    with engine.begin() as conn:
+        row = conn.execute(text("SELECT * FROM content_reports WHERE id = :i FOR UPDATE"),
+                           {"i": report_id}).mappings().first()
+        if not row:
+            err(404, "REPORT_NOT_FOUND", "举报不存在")
+        if row["status"] != "pending":
+            err(409, "REPORT_ALREADY_HANDLED", "这条举报已经处理过了")
+        if row["reporter_user_id"] == uid:
+            err(403, "SELF_REVIEW_FORBIDDEN", "不能处置自己提交的举报")
+
+        action_taken = "none"
+        if body.decision == "accepted" and body.action == "hide":
+            comment = conn.execute(text("""SELECT id, point_id, status FROM comments
+                WHERE id = :i FOR UPDATE"""), {"i": row["target_id"]}).mappings().first()
+            if comment and comment["status"] != "hidden":
+                conn.execute(text("UPDATE comments SET status = 'hidden' WHERE id = :i"),
                              {"i": comment["id"]})
                 # 复用留言隐藏的审计动作：023 的申诉通道认这条记录，原作者可以申诉
                 _audit(conn, uid, "comment.hide", "comment", comment["id"],
