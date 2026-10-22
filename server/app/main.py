@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 from typing import Any, Literal
 
 import jwt
+import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Path
 from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -381,7 +382,7 @@ class TokenOut(BaseModel):
 
 class AccountOut(BaseModel):
     userId: int
-    username: str
+    username: str | None = None
     nickname: str | None = None
     createdAt: datetime
 
@@ -421,6 +422,10 @@ class RegisterIn(BaseModel):
 class LoginIn(BaseModel):
     username: str = Field(min_length=3, max_length=32)
     password: str = Field(min_length=1, max_length=128)
+
+
+class WechatLoginIn(BaseModel):
+    code: str = Field(min_length=1, max_length=256)
 
 
 def _auth_bucket_key(kind: str, value: str) -> str:
@@ -568,6 +573,10 @@ def _is_public_read(request: Request) -> bool:
 def _read_limit_response(request: Request) -> JSONResponse | None:
     """超限时返回响应对象（中间件里不能靠抛异常），正常返回 None。"""
     per_minute, per_hour, block_after = READ_LIMITS
+    # 清单接口最容易被循环枚举；正常翻页远低于这个阈值。
+    if request.url.path in ("/api/routes", "/api/summits"):
+        per_minute = min(per_minute, 30)
+        per_hour = min(per_hour, 300)
     ip_hash = hashlib.sha256(f"ip:{_request_ip(request)}".encode("utf-8")).hexdigest()
     block_key = _auth_bucket_key("read-block", _request_ip(request))
     if _auth_rate_limited([block_key], 1, READ_BLOCK_MINUTES):
@@ -742,6 +751,75 @@ def login(body: LoginIn, request: Request,
         conn.execute(text("DELETE FROM auth_rate_limits WHERE bucket_key = :k"), {"k": user_key})
         merged = _merge_guest_records(conn, x_guest_token, user["id"])
     return TokenOut(token=make_token(user["id"]), userId=user["id"], **merged)
+
+
+@app.post("/api/auth/wechat", response_model=TokenOut, tags=["认证"],
+          responses={401: {"description": "微信登录 code 无效"},
+                     429: {"description": "登录尝试过多"},
+                     502: {"description": "微信登录服务暂不可用"},
+                     503: {"description": "服务端未配置微信小程序凭据"}},
+          summary="用小程序登录 code 换取 JWT，并原子合并游客记录")
+def wechat_login(body: WechatLoginIn, request: Request,
+                 x_guest_token: str | None = Header(default=None)):
+    app_id = os.getenv("WECHAT_APP_ID", "").strip()
+    app_secret = os.getenv("WECHAT_APP_SECRET", "").strip()
+    if not app_id or not app_secret:
+        err(503, "WECHAT_LOGIN_NOT_CONFIGURED", "服务端尚未配置微信小程序登录凭据")
+
+    ip_key = _auth_bucket_key("wechat-login-ip", _request_ip(request))
+    if _auth_rate_limited([ip_key], limit=30, minutes=15):
+        err(429, "RATE_LIMITED", "微信登录尝试过多，请稍后再试")
+    _auth_record_attempt([ip_key], minutes=15)
+
+    try:
+        with httpx.Client(timeout=8, trust_env=False) as client:
+            response = client.get(
+                "https://api.weixin.qq.com/sns/jscode2session",
+                params={"appid": app_id, "secret": app_secret,
+                        "js_code": body.code, "grant_type": "authorization_code"},
+            )
+            response.raise_for_status()
+            session = response.json()
+    except (httpx.HTTPError, ValueError):
+        err(502, "WECHAT_LOGIN_UNAVAILABLE", "暂时无法连接微信登录服务，请稍后重试")
+
+    if not isinstance(session, dict):
+        err(502, "WECHAT_LOGIN_UNAVAILABLE", "微信登录服务返回异常，请稍后重试")
+    openid = session.get("openid")
+    unionid = session.get("unionid") or None
+    if not openid or session.get("errcode"):
+        err(401, "WECHAT_CODE_INVALID", "微信登录已过期，请重新登录")
+
+    try:
+        with engine.begin() as conn:
+            user = conn.execute(text("""SELECT id, wx_openid, wx_unionid
+                  FROM users WHERE wx_openid = :openid AND deleted_at IS NULL
+                  FOR UPDATE"""), {"openid": openid}).mappings().first()
+            if not user and unionid:
+                user = conn.execute(text("""SELECT id, wx_openid, wx_unionid
+                      FROM users WHERE wx_unionid = :unionid AND deleted_at IS NULL
+                      FOR UPDATE"""), {"unionid": unionid}).mappings().first()
+
+            if user:
+                uid = user["id"]
+                conn.execute(text("""UPDATE users SET
+                      wx_openid = COALESCE(wx_openid, :openid),
+                      wx_unionid = COALESCE(wx_unionid, :unionid),
+                      last_seen_at = now()
+                    WHERE id = :uid"""),
+                    {"openid": openid, "unionid": unionid, "uid": uid})
+            else:
+                uid = conn.execute(text("""INSERT INTO users
+                      (wx_openid, wx_unionid, nickname)
+                    VALUES (:openid, :unionid, '山友')
+                    ON CONFLICT (wx_openid) DO UPDATE SET last_seen_at = now()
+                    RETURNING id"""),
+                    {"openid": openid, "unionid": unionid}).scalar_one()
+
+            merged = _merge_guest_records(conn, x_guest_token, uid)
+    except IntegrityError:
+        err(409, "WECHAT_ACCOUNT_CONFLICT", "微信身份已关联其他账号，请联系平台处理")
+    return TokenOut(token=make_token(uid), userId=uid, **merged)
 
 
 @app.get("/api/me/account", response_model=AccountOut, tags=["认证"], responses=ERR_401,
@@ -2861,8 +2939,10 @@ def my_reports(uid: int = Depends(require_user)):
 
 
 class DeleteAccountIn(BaseModel):
-    password: str = Field(min_length=1, max_length=128,
-                          description="再输一次密码，防止别人拿你的手机误操作")
+    password: str | None = Field(default=None, min_length=1, max_length=128,
+                                 description="密码账号再次输入密码")
+    code: str | None = Field(default=None, min_length=1, max_length=256,
+                             description="微信小程序重新登录取得的一次性 code")
     confirm: str = Field(description="必须原样写“注销”两个字")
 
 
@@ -2887,12 +2967,33 @@ def delete_account(body: DeleteAccountIn, uid: int = Depends(require_user)):
         err(404, "USER_NOT_FOUND", "账号不存在")
     if user["deleted_at"]:
         err(409, "ACCOUNT_DELETED", "这个账号已经注销过了")
-    if not user["password_hash"]:
-        err(403, "PASSWORD_MISMATCH", "这个账号没有可验证的密码，无法自助注销，请联系平台")
-    try:
-        password_hasher.verify(user["password_hash"], body.password)
-    except (VerifyMismatchError, InvalidHashError):
-        err(403, "PASSWORD_MISMATCH", "密码不对")
+    if body.code:
+        app_id = os.getenv("WECHAT_APP_ID", "").strip()
+        app_secret = os.getenv("WECHAT_APP_SECRET", "").strip()
+        if not app_id or not app_secret:
+            err(503, "WECHAT_LOGIN_NOT_CONFIGURED", "服务端尚未配置微信小程序登录凭据")
+        try:
+            with httpx.Client(timeout=8, trust_env=False) as client:
+                response = client.get("https://api.weixin.qq.com/sns/jscode2session",
+                    params={"appid": app_id, "secret": app_secret,
+                            "js_code": body.code, "grant_type": "authorization_code"})
+                response.raise_for_status()
+                session = response.json()
+        except (httpx.HTTPError, ValueError):
+            err(502, "WECHAT_LOGIN_UNAVAILABLE", "暂时无法连接微信登录服务，请稍后重试")
+        current_openid = q1("SELECT wx_openid FROM users WHERE id=:u AND deleted_at IS NULL", u=uid)
+        if not isinstance(session, dict) or session.get("errcode") or not session.get("openid") \
+                or not current_openid or session["openid"] != current_openid["wx_openid"]:
+            err(403, "REAUTH_FAILED", "微信身份验证失败，请确认当前登录的是此账号")
+    elif body.password:
+        if not user["password_hash"]:
+            err(403, "PASSWORD_MISMATCH", "此账号请使用微信身份验证注销")
+        try:
+            password_hasher.verify(user["password_hash"], body.password)
+        except (VerifyMismatchError, InvalidHashError):
+            err(403, "PASSWORD_MISMATCH", "密码不对")
+    else:
+        err(400, "REAUTH_REQUIRED", "请使用微信身份验证或输入账号密码")
 
     removed: dict[str, int] = {}
     kept: dict[str, int] = {}
@@ -2913,6 +3014,7 @@ def delete_account(body: DeleteAccountIn, uid: int = Depends(require_user)):
             "WHERE identity_type = 'user' AND identity_id = :u", u=uid)
         removed["visits"] = run("DELETE FROM visits WHERE user_id = :u", u=uid)
         removed["wants"] = run("DELETE FROM wants WHERE user_id = :u", u=uid)
+        removed["events"] = run("DELETE FROM events WHERE user_id = :u", u=uid)
         removed["drafts"] = run("DELETE FROM account_arrival_drafts WHERE user_id = :u", u=uid)
         removed["publishReceipts"] = run("DELETE FROM arrival_publish_receipts WHERE user_id = :u", u=uid)
         removed["votes"] = run("DELETE FROM comment_votes WHERE user_id = :u", u=uid)
@@ -3917,7 +4019,6 @@ def recent_board_activity():
                       JOIN users author ON author.id = c.user_id
                      WHERE pt.type = :type AND pt.status = 'published'
                        AND pt.geom IS NOT NULL AND c.status = 'normal'
-                       AND author.password_hash IS NOT NULL
                      ORDER BY c.created_at DESC, c.id DESC LIMIT 1""", type=point_type)
         if row:
             page = "peaks" if kind == "summit" else "junctions"
@@ -3928,7 +4029,7 @@ def recent_board_activity():
                   FROM comments c JOIN route_segments rs ON rs.id = c.segment_id
                   JOIN users author ON author.id = c.user_id
                   JOIN routes r ON r.id = rs.route_id
-                 WHERE c.status = 'normal' AND author.password_hash IS NOT NULL
+                 WHERE c.status = 'normal'
                  ORDER BY c.created_at DESC, c.id DESC LIMIT 1""")
     if row:
         items.append(RecentBoardItem(kind="segment", name=row["name"], text=row["text"],
@@ -4177,15 +4278,28 @@ def qr_target(code: str) -> QrTargetOut:
           response_model=EventsOut,
           responses={400: {"description": "事件缺少 name"}},
           summary="扫码 / 打卡 / 留言 / 打开，三个验证指标都从这里出")
-def track(payload: dict | list[dict]) -> EventsOut:
+def track(payload: dict | list[dict], request: Request,
+          authorization: str | None = Header(default=None)) -> EventsOut:
     rows = payload if isinstance(payload, list) else [payload]
+    if len(rows) > 50:
+        err(400, "TOO_MANY_EVENTS", "单次最多上报 50 条事件")
+    ip_key = _auth_bucket_key("events-ip", _request_ip(request))
+    if _auth_rate_limited([ip_key], limit=1200, minutes=60):
+        err(429, "RATE_LIMITED", "事件上报过于频繁")
+    uid = None
+    if authorization and authorization.lower().startswith("bearer "):
+        try:
+            uid = require_user(authorization)
+        except HTTPException:
+            pass
     with engine.begin() as conn:
         for e in rows:
             name = str(e.get("name") or "").strip()
             if not name:
                 err(400, "BAD_EVENT", "事件缺少 name")
-            conn.execute(text("""INSERT INTO events (name, props) VALUES (:n, :p)"""),
-                         {"n": name, "p": json.dumps(e.get("props") or {}, ensure_ascii=False)})
+            conn.execute(text("""INSERT INTO events (user_id, name, props) VALUES (:u, :n, :p)"""),
+                         {"u": uid, "n": name, "p": json.dumps(e.get("props") or {}, ensure_ascii=False)})
+    _auth_record_attempt([ip_key], minutes=60)
     return EventsOut(accepted=len(rows))
 
 
