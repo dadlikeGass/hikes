@@ -10,7 +10,7 @@ npm run typecheck
 npm run dev:weapp
 ```
 
-默认 API 地址为 `https://www.fotowa.fun`。如需切换环境，设置 `TARO_APP_API_BASE_URL` 后重新构建。域名完成解析与 HTTPS 配置后，在微信公众平台登记 `https://www.fotowa.fun` 为 request 合法域名。用微信开发者工具打开本目录；项目已配置 AppID。
+默认 API 根地址为 `https://www.fotowa.fun/api`。如需切换环境，设置 `TARO_APP_API_BASE_URL` 后重新构建。该变量在构建期注入，修改后必须重新构建，再用微信开发者工具上传。请确认 `/health`、`/routes` 与 `/openapi.json` 都由 FastAPI 响应，再把 HTTPS 域名登记为微信 request 合法域名。用微信开发者工具打开本目录；项目已配置 AppID。
 
 底部入口为山头、路书、首页、留言版、我；扫码从首页按钮进入。线路列表来自线上 API，连接失败时展示仓库的 157 条只读线路资料。线上山头点位当前缺名称，山头列表展示仓库收录的 100 座有名称的山峰资料；打卡、留言和个人记录只使用服务端数据。
 
