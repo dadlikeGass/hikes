@@ -3,7 +3,7 @@ import { defineConfig } from '@tarojs/cli'
 export default defineConfig({
   projectName: 'hikes-miniapp',
   env: {
-    TARO_APP_API_BASE_URL: JSON.stringify(process.env.TARO_APP_API_BASE_URL || 'https://www.dcyy.world')
+    TARO_APP_API_BASE_URL: JSON.stringify(process.env.TARO_APP_API_BASE_URL || 'https://www.fotowa.fun')
   },
   date: '2026-10-19',
   designWidth: 750,
