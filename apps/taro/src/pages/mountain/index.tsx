@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { View, Text, Textarea, Input } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import { getErrorMessage, request } from '../../services/api'
+import { buildMountainApplication } from '../../services/mountain-application'
 import catalog from '../../data/catalog.json'
 import './index.scss'
 
@@ -26,7 +27,7 @@ export default function MountainPage(){
   const confirm=await Taro.showModal({title:'确认提交维护申请？',content:'平台会审核你填写的原因与计划；提交后不会立即获得维护权限。',confirmText:'提交申请'})
   if(!confirm.confirm)return
   setApplying(true)
-  try{await request('/api/king-applications',{method:'POST',data:data?{targetKind:'existing',mountainId:data.id,reason:reason.trim(),expectations:expectations.trim(),visitsPerMonth}:{targetKind:'new',newPointType:'peak',newName:requestedName,newRegion:localPeak?.region||undefined,newLocationText:locationText.trim(),newAltitude:localPeak?.elevation||undefined,newIntro:localPeak?.intro||undefined,reason:reason.trim(),expectations:expectations.trim(),visitsPerMonth}});setApplicationStatus('申请已提交，请在“我的”页面查看申请进度。');setShowApplication(false)}catch(e){Taro.showToast({title:getErrorMessage(e),icon:'none'})}finally{setApplying(false)}
+  try{await request('/api/king-applications',{method:'POST',data:buildMountainApplication({mountain:data,localPeak:localPeak||null,locationText,reason,expectations,visitsPerMonth})});setApplicationStatus('申请已提交，请在“我的”页面查看申请进度。');setShowApplication(false)}catch(e){Taro.showToast({title:getErrorMessage(e),icon:'none'})}finally{setApplying(false)}
  }
  return <View className='page mountain-page'><Text className='eyebrow'>MOUNTAIN COMMUNITY</Text><Text className='hero-title'>{data?.name||requestedName}</Text><View className='mountain-hero'><Text className='mountain-glyph'>山</Text><Text className='mountain-status'>{loading?'正在读取山头资料…':status}</Text><Text className='subtle'>{data?.region||'每一座山，都值得被熟悉的人照看。'}{data?`　·　${data.pointCount} 个关联点位`:''}</Text></View>
  {localPeak&&!data&&<View className='card'><Text className='section-label'>山头资料</Text><Text className='subtle'>{localPeak.region} · 海拔 {localPeak.elevation} m</Text><Text className='subtle'>{localPeak.intro}</Text><Text className='subtle'>该资料尚未关联服务端山头，仍可提交新山头维护申请。</Text></View>}

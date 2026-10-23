@@ -1,5 +1,6 @@
 import Taro from '@tarojs/taro'
 import { API_BASE_URL } from './config'
+import { joinApiUrl } from './api-origin'
 
 type RequestOptions = { method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; data?: Record<string, unknown>; retryNetwork?: number }
 export class ApiError extends Error {
@@ -19,7 +20,7 @@ function flushEvents(): void {
   const token = Taro.getStorageSync('hikes.auth.token')
   const header: Record<string,string> = { 'Content-Type': 'application/json' }
   if (token) header.Authorization = `Bearer ${token}`
-  Taro.request({ url: `${API_BASE_URL}/api/events`, method: 'POST', data: batch, header, timeout: 5000 })
+  Taro.request({ url: joinApiUrl(API_BASE_URL, '/api/events'), method: 'POST', data: batch, header, timeout: 5000 })
     .then(response => { if (response.statusCode < 200 || response.statusCode >= 300) throw new Error('event upload failed'); flushingEvents = false; if (eventQueue.length) flushEvents() })
     .catch(() => { eventQueue.unshift(...batch); if (eventQueue.length > 40) eventQueue.length = 40; flushingEvents = false; setTimeout(flushEvents, 30000) })
 }
@@ -59,7 +60,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   const retries = options.retryNetwork || 0
   for (let attempt = 0; ; attempt += 1) {
     try {
-      const response = await Taro.request<T>({ url: `${API_BASE_URL}${path}`, method: options.method || 'GET', data: options.data, header, timeout: 15000 })
+      const response = await Taro.request<T>({ url: joinApiUrl(API_BASE_URL, path), method: options.method || 'GET', data: options.data, header, timeout: 15000 })
       if (response.statusCode < 200 || response.statusCode >= 300) {
         const body = response.data as any
         const detail = body?.error || body?.detail?.error
@@ -104,7 +105,7 @@ export async function requestWithGuest<T>(path: string, token: string, options: 
   const header: Record<string, string> = { 'Content-Type': 'application/json', 'X-Guest-Token': token }
   if (auth) header.Authorization = `Bearer ${auth}`
   try {
-    const response = await Taro.request<T>({ url: `${API_BASE_URL}${path}`, method: options.method || 'GET', data: options.data, header, timeout: 15000 })
+    const response = await Taro.request<T>({ url: joinApiUrl(API_BASE_URL, path), method: options.method || 'GET', data: options.data, header, timeout: 15000 })
     if (response.statusCode < 200 || response.statusCode >= 300) {
       const body = response.data as any
       throw new ApiError(body?.error?.message || `请求失败 (${response.statusCode})`, response.statusCode, body?.error?.code)

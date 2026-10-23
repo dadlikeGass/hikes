@@ -10,7 +10,7 @@ npm run typecheck
 npm run dev:weapp
 ```
 
-默认 API 地址为 `https://www.fotowa.fun`。如需切换环境，设置 `TARO_APP_API_BASE_URL` 后重新构建。域名完成解析与 HTTPS 配置后，在微信公众平台登记 `https://www.fotowa.fun` 为 request 合法域名。用微信开发者工具打开本目录；项目已配置 AppID。
+默认 API 根地址为 `https://www.fotowa.fun/api`。如需切换环境，设置 `TARO_APP_API_BASE_URL` 后重新构建。该变量在构建期注入，修改后必须重新构建，再用微信开发者工具上传。请确认 `/health`、`/routes` 与 `/openapi.json` 都由 FastAPI 响应，再把 HTTPS 域名登记为微信 request 合法域名。用微信开发者工具打开本目录；项目已配置 AppID。
 
 底部入口为山头、路书、首页、留言版、我；扫码从首页按钮进入。线路列表来自线上 API，连接失败时展示仓库的 157 条只读线路资料。线上山头点位当前缺名称，山头列表展示仓库收录的 100 座有名称的山峰资料；打卡、留言和个人记录只使用服务端数据。
 
@@ -18,6 +18,9 @@ npm run dev:weapp
 
 - 首页：真实路线列表、扫码入口、近期留言、游客/账号到访凭证；每次回到首页刷新，加载失败时可点击重试。
 - 路书列表/详情：接 `/api/routes` 与 `/api/routes/{slug}`，显示线路长度、爬升、参考用时、轨迹地图、难度适用的分段和山顶。
+- 路书页顶部「机场信息牌」：每 3 秒翻牌换一条线路（`components/RecommendedBoard`），手指按住时暂停，翻牌那一刻才换内容，所以看到的线路和点进去的线路始终一致；网页版同名交互在 `app/js/app.js` 的 `hf-flip`。
+- 路书详情坡度图：`components/SlopeChart` + `services/slope.ts`，与网页版 `apiProfileSVG`／`slopeBands` 同一套口径（±0.4 km 滑动窗口估坡度、≤15% 缓 / 15–25% 中 / >25% 陡、碎段按 1.5% 与 0.5 km 合并）。小程序不能内联 SVG，所以画成一根根竖条（纵轴海拔、颜色 = 该段坡度），下面接坡度分段清单。
+- 排序口径：山头与路书列表按**互联网热度档**降序（`mountains.heat_tier`：极热 > 热门 > 较热 > 小众），再按本周打卡量；没有资料的山头/线路 `heatTier` 为空、排在后面，不插队。线路本身没有热度字段，热度取自线路峰点 1.5 km 内最近的有资料山头。
 - 扫码/点位：`wx.scanCode` 识别现有 `/p/{code}` 短链或点位编号；匿名读取点位与山顶留言；游客 `POST /api/guest` 和 `POST /api/guest/visit`；显示到访序号和时间。
 - 游客纪念：按 API 保存私人纪念及未公开留言草稿；公开留言需账号并在发布前明确确认。
 - 微信账号：`wx.login()` code 交给后端 `/api/auth/wechat` 换 JWT；服务端合并游客打卡和草稿，登录后在多设备读取账号记录，登录前的点位发布流程会回到原点位。
