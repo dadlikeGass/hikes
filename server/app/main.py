@@ -50,6 +50,7 @@ from app.efforts import reconcile_efforts
 from app.letters import public_letter, letter_is_unlocked
 from app.king_routes import build_king_router
 from app.king_service import ServiceError
+from app.content_safety import moderator, ModerationError
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://hikes:hikes@db:5432/hikes")
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-change-me")
@@ -214,6 +215,10 @@ class RouteBrief(BaseModel):
     segment_count: int
     visit_count: int
     city: str | None = Field(default=None, description="所在区域 / 城市，路书页的「区域」筛选用")
+    heatTier: str | None = Field(
+        default=None,
+        description="这条线路沿途最近的有资料山头的热度档（极热/热门/较热/小众）；"
+                    "1.5 km 内没有带热度的山头则为 null，列表里排在带热度的后面")
 
 
 class RouteListOut(BaseModel):
@@ -867,6 +872,10 @@ def health():
 
 @app.get("/api/routes", response_model=RouteListOut, tags=["路书"])
 def list_routes(level: str | None = None, limit: int = 20):
+    # 排序口径：先是"这座山在互联网上有多热"（mountains.heat_tier，来自名山资料库），
+    # 再是本周打卡量，最后按里程兜底。线路本身没有搜索热度字段，热度取自线路峰点
+    # 1.5 km 内最近的有资料山头（与 pipeline/match_peaks.py 的 MAX_KM 同一个口径）。
+    # 没有任何带热度山头的线路 heatTier 为 null，排在带热度的之后。
     sql = """SELECT id, slug, name, sub, city, km, up, down, hardest_level, hours, kcal,
                     peak_count,
                     (SELECT count(*) FROM route_segments s WHERE s.route_id = r.id) AS segment_count,
@@ -881,11 +890,30 @@ def list_routes(level: str | None = None, limit: int = 20):
                     (SELECT u.nickname FROM visits v
                        JOIN points p ON p.id = v.point_id JOIN users u ON u.id = v.user_id
                        WHERE p.route_id = r.id AND v.duration_sec IS NOT NULL
-                       ORDER BY v.duration_sec LIMIT 1) AS fastest_holder
-             FROM routes r WHERE status = 'published'"""
+                       ORDER BY v.duration_sec LIMIT 1) AS fastest_holder,
+                    heat.heat_tier AS "heatTier"
+             FROM routes r
+             LEFT JOIN LATERAL (
+                SELECT (array_agg(hh.heat_tier ORDER BY hh.rank DESC, hh.dist))[1] AS heat_tier
+                  FROM (
+                    SELECT m.heat_tier,
+                           CASE m.heat_tier WHEN '极热' THEN 4 WHEN '热门' THEN 3
+                                            WHEN '较热' THEN 2 WHEN '小众' THEN 1 ELSE 0 END AS rank,
+                           ST_Distance(m.geom::geography, mp.geom::geography) AS dist
+                      FROM points mp
+                      JOIN mountains m ON m.geom IS NOT NULL
+                       AND ST_DWithin(m.geom::geography, mp.geom::geography, 1500)
+                     WHERE mp.route_id = r.id AND mp.type = 'peak'
+                       AND mp.geom IS NOT NULL AND m.heat_tier IS NOT NULL
+                  ) hh
+             ) heat ON TRUE
+             WHERE r.status = 'published'"""
     if level:
         sql += " AND hardest_level = :level"
-    sql += " ORDER BY km LIMIT :limit"
+    # NULLS LAST：没有热度数据的线路不插队到前面
+    sql += """ ORDER BY CASE heat.heat_tier WHEN '极热' THEN 4 WHEN '热门' THEN 3
+                        WHEN '较热' THEN 2 WHEN '小众' THEN 1 END DESC NULLS LAST,
+                  weekly_visits DESC, km LIMIT :limit"""
     return RouteListOut(items=[dict(r) for r in q(sql, level=level, limit=limit)],
                         nextCursor=None)
 
@@ -2188,6 +2216,11 @@ class SummitItem(BaseModel):
     lat: float | None = None
     lng: float | None = None
     visits30: int = Field(default=0, description="本周热度：这个顶近 7 天被扫了几次")
+    heatTier: str | None = Field(
+        default=None,
+        description="互联网热度档（极热/热门/较热/小众），来自名山资料库；"
+                    "没有资料的山头为 null，列表里排在带热度的之后")
+    annualVisits: str | None = Field(default=None, description="年接待量原文，例如「年徒步到访 20 万人次以上（估算）」")
     fastest: str | None = None
     holder: str | None = None
     origin: Literal["route", "user"] = "route"
@@ -2206,44 +2239,58 @@ def series_of(code: str | None) -> str | None:
 @app.get("/api/summits", response_model=list[SummitItem], tags=["点位"],
          summary="山头列表：一条线路一张卡，卡是它的主峰")
 def list_summits(limit: int = 100):
+    # 排序口径：先按互联网热度档（mountains.heat_tier，来自名山资料库：
+    # 极热 > 热门 > 较热 > 小众），再按本周打卡量、海拔。
+    # 没有热度资料的山头 heatTier 为 null，用 NULLS LAST 排在后面，不插队。
     rows = q(f"""
-        SELECT 'p-' || pt.code        AS id, pt.id AS "pointId", pt.code,
-               pt.name, mp.altitude, coalesce(pt.level, r.hardest_level, 'mid') AS level,
-               r.slug                 AS "routeSlug", r.name AS "routeName",
-               coalesce(pt.city, r.city) AS city, pt.country, pt.province,
-               r.peak_count           AS "peakCount",
-               h.rise                 AS "segRise", round(h.km, 2) AS "segKm",
-               mp.lat, mp.lng,
-               (SELECT count(*) FROM visits v WHERE v.point_id = pt.id
-                  AND v.created_at > now() - interval '7 days') AS "visits30",
-               (SELECT to_char(make_interval(secs => min(v.duration_sec)), 'HH24:MI')
-                  FROM visits v WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL) AS fastest,
-               (SELECT u.nickname FROM visits v JOIN users u ON u.id = v.user_id
-                  WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL
-                  ORDER BY v.duration_sec LIMIT 1) AS holder,
-               'route' AS origin
-        FROM routes r
-        JOIN ({HARD_SEG}) h ON h.route_id = r.id
-        JOIN ({MAIN_PEAK}) mp ON mp.route_id = r.id
-        JOIN points pt ON pt.route_id = r.id AND pt.index_in_route = mp.idx
-        UNION ALL
-        SELECT 'p-' || pt.code, pt.id, pt.code, pt.name, pt.altitude,
-               coalesce(pt.level, 'mid'),
-               NULL, NULL, pt.city, pt.country, pt.province,
-               1, coalesce(pt.track_up, 0), coalesce(pt.track_km, 0),
-               ST_Y(pt.geom), ST_X(pt.geom),
-               (SELECT count(*) FROM visits v WHERE v.point_id = pt.id
-                  AND v.created_at > now() - interval '7 days'),
-               (SELECT to_char(make_interval(secs => min(v.duration_sec)), 'HH24:MI')
-                  FROM visits v WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL),
-               (SELECT u.nickname FROM visits v JOIN users u ON u.id = v.user_id
-                  WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL
-                  ORDER BY v.duration_sec LIMIT 1),
-               'user'
-        FROM points pt
-        WHERE pt.type = 'peak' AND pt.status = 'published'
-          AND pt.route_id IS NULL AND pt.altitude IS NOT NULL
-        ORDER BY "visits30" DESC, altitude DESC
+        WITH base AS (
+          SELECT 'p-' || pt.code        AS id, pt.id AS "pointId", pt.code,
+                 pt.name, mp.altitude, coalesce(pt.level, r.hardest_level, 'mid') AS level,
+                 r.slug                 AS "routeSlug", r.name AS "routeName",
+                 coalesce(pt.city, r.city) AS city, pt.country, pt.province,
+                 r.peak_count           AS "peakCount",
+                 h.rise                 AS "segRise", round(h.km, 2) AS "segKm",
+                 mp.lat, mp.lng,
+                 (SELECT count(*) FROM visits v WHERE v.point_id = pt.id
+                    AND v.created_at > now() - interval '7 days') AS "visits30",
+                 (SELECT to_char(make_interval(secs => min(v.duration_sec)), 'HH24:MI')
+                    FROM visits v WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL) AS fastest,
+                 (SELECT u.nickname FROM visits v JOIN users u ON u.id = v.user_id
+                    WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL
+                    ORDER BY v.duration_sec LIMIT 1) AS holder,
+                 'route' AS origin,
+                 hm.heat_tier AS "heatTier", hm.annual_visits AS "annualVisits",
+                 CASE hm.heat_tier WHEN '极热' THEN 4 WHEN '热门' THEN 3
+                                   WHEN '较热' THEN 2 WHEN '小众' THEN 1 END AS heat_rank
+          FROM routes r
+          JOIN ({HARD_SEG}) h ON h.route_id = r.id
+          JOIN ({MAIN_PEAK}) mp ON mp.route_id = r.id
+          JOIN points pt ON pt.route_id = r.id AND pt.index_in_route = mp.idx
+          LEFT JOIN mountains hm ON hm.id = pt.mountain_id
+          UNION ALL
+          SELECT 'p-' || pt.code, pt.id, pt.code, pt.name, pt.altitude,
+                 coalesce(pt.level, 'mid'),
+                 NULL, NULL, pt.city, pt.country, pt.province,
+                 1, coalesce(pt.track_up, 0), coalesce(pt.track_km, 0),
+                 ST_Y(pt.geom), ST_X(pt.geom),
+                 (SELECT count(*) FROM visits v WHERE v.point_id = pt.id
+                    AND v.created_at > now() - interval '7 days'),
+                 (SELECT to_char(make_interval(secs => min(v.duration_sec)), 'HH24:MI')
+                    FROM visits v WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL),
+                 (SELECT u.nickname FROM visits v JOIN users u ON u.id = v.user_id
+                    WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL
+                    ORDER BY v.duration_sec LIMIT 1),
+                 'user',
+                 hm.heat_tier, hm.annual_visits,
+                 CASE hm.heat_tier WHEN '极热' THEN 4 WHEN '热门' THEN 3
+                                   WHEN '较热' THEN 2 WHEN '小众' THEN 1 END
+          FROM points pt
+          LEFT JOIN mountains hm ON hm.id = pt.mountain_id
+          WHERE pt.type = 'peak' AND pt.status = 'published'
+            AND pt.route_id IS NULL AND pt.altitude IS NOT NULL
+        )
+        SELECT * FROM base
+        ORDER BY heat_rank DESC NULLS LAST, "visits30" DESC, altitude DESC
         LIMIT :limit""", limit=limit)
     out = []
     for r in rows:
@@ -3821,6 +3868,14 @@ def save_account_arrival_draft(body: GuestArrivalDraftIn,
     return {"saved": True, "private": bool(note), "commentDraft": bool(comment)}
 
 
+def _moderate_public_text(uid: int, content: str):
+    user = q1("SELECT wx_openid FROM users WHERE id=:u AND deleted_at IS NULL", u=uid)
+    try:
+        moderator.check(content, user["wx_openid"] if user else None)
+    except ModerationError as exc:
+        err(exc.status, exc.code, exc.message)
+
+
 @app.post("/api/me/arrival-drafts/{code}/publish", tags=["我"],
           responses={**ERR_401, 404: {"description": "点位或草稿不存在"}},
           summary="由用户明确发布该点位的留言草稿")
@@ -3840,6 +3895,7 @@ def publish_arrival_draft(code: str, uid: int = Depends(require_user)):
             if receipt is not None:
                 return {"published": True, "commentId": receipt, "alreadyPublished": True}
             err(404, "COMMENT_DRAFT_NOT_FOUND", "没有待发布的留言草稿")
+        _moderate_public_text(uid, draft["public_comment_draft"])
         comment_id = conn.execute(text("""INSERT INTO comments (point_id, user_id, text)
             VALUES (:p, :u, :t) RETURNING id"""),
             {"p": point["id"], "u": uid, "t": draft["public_comment_draft"]}).scalar_one()
@@ -4146,6 +4202,7 @@ def add_seg_comment(body: CommentIn, request: Request, sid: int = Path(ge=1),
     # 注意：局部变量不能叫 text —— 会把 sqlalchemy 的 text() 遮蔽掉（踩过）
     body_text = body.text.strip()
     _reject_duplicate_comment(uid, body_text, segment_id=sid)
+    _moderate_public_text(uid, body_text)
     with engine.begin() as conn:
         cid = conn.execute(text("""INSERT INTO comments (segment_id, user_id, text)
             VALUES (:sid, :uid, :txt) RETURNING id"""),
@@ -4167,6 +4224,7 @@ def add_comment(body: CommentIn, request: Request, point_id: int = Path(ge=1),
     keys = _rate_check(request, "comment", f"u:{uid}")
     body_text = body.text.strip()      # 同上：不要遮蔽 sqlalchemy.text
     _reject_duplicate_comment(uid, body_text, point_id=point_id)
+    _moderate_public_text(uid, body_text)
     with engine.begin() as conn:
         cid = conn.execute(text("""INSERT INTO comments (point_id, user_id, text)
             VALUES (:pid, :uid, :txt) RETURNING id"""),
@@ -4193,6 +4251,7 @@ def add_comment_reply(comment_id: int, body: CommentIn, request: Request,
     if not body_text:
         err(422, "EMPTY_REPLY", "请填写回复内容")
     keys = _rate_check(request, "comment", f"u:{uid}")
+    _moderate_public_text(uid, body_text)
     with engine.begin() as conn:
         conn.execute(text("""INSERT INTO comment_replies(comment_id,user_id,text)
             VALUES (:cid,:uid,:body)"""), {"cid":comment_id,"uid":uid,"body":body_text})
@@ -4752,6 +4811,7 @@ def create_point(body: NewPointIn, uid: int = Depends(require_user)):
         # 同名山头全国都有，地区一律写进名字——「老君山（洛阳）」。
         # 之前只在没坐标时才加，导致有定位的点位在列表里看不出是哪一个。
         name = name + "（" + body.area.strip() + "）"
+    _moderate_public_text(uid, name + "\n" + (body.nickname or "") + "\n" + body.intro.strip())
     # 海拔没填就从轨迹里取最高点：GPX 里本来就有高程，不该让用户再抄一遍
     altitude = body.altitude
     if altitude is None:
