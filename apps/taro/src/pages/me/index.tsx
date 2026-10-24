@@ -6,6 +6,7 @@ import PrivacyPrompt from '../../components/privacy-prompt'
 import TabHeader from '../../components/TabHeader'
 import hero from '../../assets/me-hero.jpg'
 import { ApiError, getErrorMessage, loginWithWechat, request, requestPrivacyAuthorization, trackEvent } from '../../services/api'
+import { ICP_NUMBER } from '../../config/icp'
 import './index.scss'
 
 type User={id:number;nickname?:string;visitedCount?:number;claimedPoints?:number}
@@ -21,5 +22,6 @@ export default function Me(){const [user,setUser]=useState<User|null>(null);cons
  <View className='me-link' onClick={()=>Taro.switchTab({url:'/pages/places/index'})}><Text className='me-link-icon'>山</Text><View className='me-link-copy'><Text>我的山头</Text><Text className='subtle'>查看山头与到访记录</Text></View><Text className='visit-arrow'>›</Text></View><View className='me-link' onClick={()=>Taro.navigateTo({url:'/pages/managed/index'})}><Text className='me-link-icon'>⌂</Text><View className='me-link-copy'><Text>我的维护工作</Text><Text className='subtle'>留言待办、申请提醒和管理详情</Text></View><Text className='visit-arrow'>›</Text></View>
  <View className='me-link' onClick={()=>Taro.navigateTo({url:'/pages/messages/index'})}><Text className='me-link-icon'>✉</Text><View className='me-link-copy'><Text>山间消息</Text><Text className='subtle'>山头动态和留言提醒</Text></View><Text className='visit-arrow'>›</Text></View>
  <View className='me-link' onClick={()=>Taro.navigateTo({url:'/pages/legal/index?doc=rules'})}><Text className='me-link-icon'>✦</Text><View className='me-link-copy'><Text>留言规范与内容举报</Text><Text className='subtle'>帮助把现场信息留给后来的人</Text></View><Text className='visit-arrow'>›</Text></View><View className='card legal-links'><Text onClick={()=>Taro.navigateTo({url:'/pages/legal/index?doc=privacy'})}>隐私政策</Text><Text onClick={()=>Taro.navigateTo({url:'/pages/legal/index?doc=terms'})}>用户协议</Text><Text onClick={()=>Taro.navigateTo({url:'/pages/delete-account/index'})}>删除账号</Text></View>
+ <View className='icp-footer'><Text className='icp-number'>{ICP_NUMBER}</Text><Text className='icp-hint'>备案号 · 长按可复制</Text></View>
  </View>
 }

@@ -786,3 +786,10 @@ input,textarea,select{font:inherit;color:inherit}
 .lcvia{display:block;padding:9px 14px;border-top:1px solid var(--hair);
   font-size:11.5px;color:var(--blue);font-weight:700;background:#FCFAF6}
 .tbd{color:var(--ink3);font-weight:700}
+
+/* ICP 备案号页脚：工信部要求页面底部可见并可点进备案系统 */
+.icp-footer{padding:6px 16px calc(88px + env(safe-area-inset-bottom,0px));text-align:center;font-size:11.5px;color:#9aa1a9}
+.icp-footer a{color:#9aa1a9;text-decoration:none;border-bottom:1px solid transparent}
+.icp-footer a:hover{color:#6b7280;border-bottom-color:#d7dbe0}
+.icp-note{text-align:center;font-size:12px;color:#9aa1a9;padding:26px 0 10px}
+.icp-note a{color:#9aa1a9;text-decoration:none}
