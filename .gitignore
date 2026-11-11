@@ -15,3 +15,6 @@ venv/
 .local-backups/
 server/media/
 server/media-test/
+
+# 服务器上的手动备份，不进仓库
+server/app/*.bak*
