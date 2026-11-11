@@ -8,6 +8,7 @@ import json
 import logging
 import hashlib
 import math
+import mimetypes
 import os
 import pathlib
 import re
@@ -18,6 +19,7 @@ from zoneinfo import ZoneInfo
 from typing import Any, Literal
 
 import jwt
+import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Path
 from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,6 +33,10 @@ try:
 except ImportError:            # 可选依赖：没装也不该让整个服务起不来
     HAS_QR = False
 from fastapi.staticfiles import StaticFiles
+
+# Python 3.10 的 mimetypes 不认 .webp，静态资源（地形高清图）会被发成 text/plain。
+# 浏览器大多能嗅探出来，但没理由靠嗅探——这里补上。
+mimetypes.add_type("image/webp", ".webp")
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
@@ -43,7 +49,7 @@ _SERVER_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if (_SERVER_ROOT / "app" / "main.py").is_file():
     sys.path.insert(0, str(_SERVER_ROOT))
 
-from app.checkins import (record_visit, CHECKIN_RADIUS_PEAK_M,
+from app.checkins import (record_visit, climb_duration_for_peak, CHECKIN_RADIUS_PEAK_M,
                           CHECKIN_RADIUS_OTHER_M, MAX_ACCURACY_M)
 from app.efforts import reconcile_efforts
 from app.letters import public_letter, letter_is_unlocked
@@ -90,6 +96,16 @@ def q(sql: str, **params):
 def q1(sql: str, **params):
     rows = q(sql, **params)
     return rows[0] if rows else None
+
+
+def exec_sql(sql: str, **params) -> int:
+    """执行没有结果集的语句（纯 INSERT/DELETE/UPDATE），返回受影响行数。
+
+    q() 只能跑有结果集的查询：对纯 INSERT 调 .mappings().all() 会抛
+    ResourceClosedError（2026-10-25 实测踩过）。
+    """
+    with engine.begin() as conn:
+        return conn.execute(text(sql), params).rowcount
 
 
 def _audit(conn, actor_id: int, action: str, target_type: str, target_id: int,
@@ -213,6 +229,10 @@ class RouteBrief(BaseModel):
     segment_count: int
     visit_count: int
     city: str | None = Field(default=None, description="所在区域 / 城市，路书页的「区域」筛选用")
+    heatTier: str | None = Field(
+        default=None,
+        description="这条线路沿途最近的有资料山头的热度档（极热/热门/较热/小众）；"
+                    "1.5 km 内没有带热度的山头则为 null，列表里排在带热度的后面")
 
 
 class RouteListOut(BaseModel):
@@ -369,6 +389,8 @@ class VisitOut(BaseModel):
     routeName: str | None = None
     idxInRoute: int | None = None
     totalInRoute: int | None = None
+    durationS: int | None = Field(default=None, description="登顶用时（秒）；山脚+山顶两次打卡才有")
+    climbHint: str | None = Field(default=None, description="双点打卡的下一步提醒")
 
 
 class TokenOut(BaseModel):
@@ -381,7 +403,7 @@ class TokenOut(BaseModel):
 
 class AccountOut(BaseModel):
     userId: int
-    username: str
+    username: str | None = None
     nickname: str | None = None
     createdAt: datetime
 
@@ -421,6 +443,10 @@ class RegisterIn(BaseModel):
 class LoginIn(BaseModel):
     username: str = Field(min_length=3, max_length=32)
     password: str = Field(min_length=1, max_length=128)
+
+
+class WechatLoginIn(BaseModel):
+    code: str = Field(min_length=1, max_length=256)
 
 
 def _auth_bucket_key(kind: str, value: str) -> str:
@@ -464,11 +490,15 @@ RATE_LIMIT_DEFAULTS: dict[str, tuple[int, int]] = {
     "comment": (10, 30),      # 留言 / 岔路情报：每身份、每 IP
     "visit": (60, 120),       # 打卡
     "report": (10, 30),       # 举报
+    "nominate": (10, 30),     # 山头提名
+    "vote": (60, 120),        # 提名点赞
 }
 RATE_LIMIT_MESSAGES = {
     "comment": "留言太频繁，请稍后再试",
     "visit": "打卡太频繁，请稍后再试",
     "report": "举报提交过于频繁，请稍后再试",
+    "nominate": "提名太频繁，请稍后再试",
+    "vote": "点赞太频繁，请稍后再试",
 }
 
 
@@ -530,12 +560,13 @@ def _rate_hit(keys: list[str]) -> None:
 # 只针对匿名可读的 GET：/api/* 与二维码短链 /p/*；/api/me、/api/admin 这类
 # 需要登录的接口本来就按账号校验，交给各自的鉴权，不在这里重复限。
 # 阈值按来源 IP 双窗口：每分钟挡突发，每小时挡持续拉取；一小时内被挡够多次就临时封禁。
-READ_LIMIT_PER_MINUTE = 120        # 正常浏览（一次页面加载几个请求）碰不到
-READ_LIMIT_PER_HOUR = 2000
-READ_BLOCK_AFTER_TRIPS = 200       # 一小时内被拒这么多**次**才临时封禁：
+READ_LIMIT_PER_MINUTE = 600        # 2026-10-25 放宽：一次页面加载会并发 30+ 个请求（含山头留言水合），
+                                   # 120/分钟在反复刷新时会误伤真实用户
+READ_LIMIT_PER_HOUR = 12000
+READ_BLOCK_AFTER_TRIPS = 1000      # 一小时内被拒这么多**次**才临时封禁：
                                    # 按"被拒次数"而不是"触顶轮次"计，阈值必须高于正常人一次突发的量
                                    # （页面狂点也就几十次），否则会把误触的人当成爬虫封掉。
-READ_BLOCK_MINUTES = 60
+READ_BLOCK_MINUTES = 15
 
 
 def _read_limit_config() -> tuple[int, int, int]:
@@ -568,6 +599,12 @@ def _is_public_read(request: Request) -> bool:
 def _read_limit_response(request: Request) -> JSONResponse | None:
     """超限时返回响应对象（中间件里不能靠抛异常），正常返回 None。"""
     per_minute, per_hour, block_after = READ_LIMITS
+    # 清单接口最容易被循环枚举；正常翻页远低于这个阈值。
+    if request.url.path in ("/api/routes", "/api/summits"):
+        # 首屏清单接口：每次打开 App 都会请求一次，30/分钟等于"每分钟只能开 30 次页"，
+        # 反复刷新就会整页没数据。放到 120/分钟，仍然挡住循环枚举。
+        per_minute = min(per_minute, 120)
+        per_hour = min(per_hour, 1200)
     ip_hash = hashlib.sha256(f"ip:{_request_ip(request)}".encode("utf-8")).hexdigest()
     block_key = _auth_bucket_key("read-block", _request_ip(request))
     if _auth_rate_limited([block_key], 1, READ_BLOCK_MINUTES):
@@ -744,6 +781,75 @@ def login(body: LoginIn, request: Request,
     return TokenOut(token=make_token(user["id"]), userId=user["id"], **merged)
 
 
+@app.post("/api/auth/wechat", response_model=TokenOut, tags=["认证"],
+          responses={401: {"description": "微信登录 code 无效"},
+                     429: {"description": "登录尝试过多"},
+                     502: {"description": "微信登录服务暂不可用"},
+                     503: {"description": "服务端未配置微信小程序凭据"}},
+          summary="用小程序登录 code 换取 JWT，并原子合并游客记录")
+def wechat_login(body: WechatLoginIn, request: Request,
+                 x_guest_token: str | None = Header(default=None)):
+    app_id = os.getenv("WECHAT_APP_ID", "").strip()
+    app_secret = os.getenv("WECHAT_APP_SECRET", "").strip()
+    if not app_id or not app_secret:
+        err(503, "WECHAT_LOGIN_NOT_CONFIGURED", "服务端尚未配置微信小程序登录凭据")
+
+    ip_key = _auth_bucket_key("wechat-login-ip", _request_ip(request))
+    if _auth_rate_limited([ip_key], limit=30, minutes=15):
+        err(429, "RATE_LIMITED", "微信登录尝试过多，请稍后再试")
+    _auth_record_attempt([ip_key], minutes=15)
+
+    try:
+        with httpx.Client(timeout=8, trust_env=False) as client:
+            response = client.get(
+                "https://api.weixin.qq.com/sns/jscode2session",
+                params={"appid": app_id, "secret": app_secret,
+                        "js_code": body.code, "grant_type": "authorization_code"},
+            )
+            response.raise_for_status()
+            session = response.json()
+    except (httpx.HTTPError, ValueError):
+        err(502, "WECHAT_LOGIN_UNAVAILABLE", "暂时无法连接微信登录服务，请稍后重试")
+
+    if not isinstance(session, dict):
+        err(502, "WECHAT_LOGIN_UNAVAILABLE", "微信登录服务返回异常，请稍后重试")
+    openid = session.get("openid")
+    unionid = session.get("unionid") or None
+    if not openid or session.get("errcode"):
+        err(401, "WECHAT_CODE_INVALID", "微信登录已过期，请重新登录")
+
+    try:
+        with engine.begin() as conn:
+            user = conn.execute(text("""SELECT id, wx_openid, wx_unionid
+                  FROM users WHERE wx_openid = :openid AND deleted_at IS NULL
+                  FOR UPDATE"""), {"openid": openid}).mappings().first()
+            if not user and unionid:
+                user = conn.execute(text("""SELECT id, wx_openid, wx_unionid
+                      FROM users WHERE wx_unionid = :unionid AND deleted_at IS NULL
+                      FOR UPDATE"""), {"unionid": unionid}).mappings().first()
+
+            if user:
+                uid = user["id"]
+                conn.execute(text("""UPDATE users SET
+                      wx_openid = COALESCE(wx_openid, :openid),
+                      wx_unionid = COALESCE(wx_unionid, :unionid),
+                      last_seen_at = now()
+                    WHERE id = :uid"""),
+                    {"openid": openid, "unionid": unionid, "uid": uid})
+            else:
+                uid = conn.execute(text("""INSERT INTO users
+                      (wx_openid, wx_unionid, nickname)
+                    VALUES (:openid, :unionid, '山友')
+                    ON CONFLICT (wx_openid) DO UPDATE SET last_seen_at = now()
+                    RETURNING id"""),
+                    {"openid": openid, "unionid": unionid}).scalar_one()
+
+            merged = _merge_guest_records(conn, x_guest_token, uid)
+    except IntegrityError:
+        err(409, "WECHAT_ACCOUNT_CONFLICT", "微信身份已关联其他账号，请联系平台处理")
+    return TokenOut(token=make_token(uid), userId=uid, **merged)
+
+
 @app.get("/api/me/account", response_model=AccountOut, tags=["认证"], responses=ERR_401,
          summary="当前登录账号的基本资料")
 def my_account(uid: int = Depends(require_user)):
@@ -785,10 +891,43 @@ def health():
                      revision=BUILD_REVISION, **dict(counts))
 
 
+# ==================== 定位 ====================
+
+class LocateOut(BaseModel):
+    province: str | None = Field(default=None, description="省 / 直辖市，用于按城市推送")
+    city: str | None = Field(default=None, description="区县 / 城市（库里粒度不一）")
+    name: str | None = Field(default=None, description="最近的已收录点位名")
+    distance_km: float | None = Field(default=None, description="到该点位的直线距离")
+
+
+@app.get("/api/locate", response_model=LocateOut, tags=["系统"],
+         summary="模糊定位：经纬度 → 最近的已收录点位所在省市（手机端按城市推送用）")
+def locate(lat: float, lng: float):
+    """客户端先把坐标**网格化**（约 5 km）再传；这里只做最近邻查询，不保存任何位置。"""
+    if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+        err(422, "BAD_COORD", "坐标超出范围")
+    row = q1("""SELECT province, city, name,
+                       ST_Distance(geom::geography,
+                                   ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography) / 1000.0 AS distance_km
+                FROM points
+                WHERE geom IS NOT NULL AND (province IS NOT NULL OR city IS NOT NULL)
+                ORDER BY geom <-> ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)
+                LIMIT 1""", lat=lat, lng=lng)
+    if not row:
+        err(404, "NO_REFERENCE", "附近还没有已收录的点位")
+    return LocateOut(province=row["province"], city=row["city"], name=row["name"],
+                     distance_km=round(float(row["distance_km"]), 1)
+                     if row["distance_km"] is not None else None)
+
+
 # ==================== 路书 ====================
 
 @app.get("/api/routes", response_model=RouteListOut, tags=["路书"])
 def list_routes(level: str | None = None, limit: int = 20):
+    # 排序口径：先是"这座山在互联网上有多热"（mountains.heat_tier，来自名山资料库），
+    # 再是本周打卡量，最后按里程兜底。线路本身没有搜索热度字段，热度取自线路峰点
+    # 1.5 km 内最近的有资料山头（与 pipeline/match_peaks.py 的 MAX_KM 同一个口径）。
+    # 没有任何带热度山头的线路 heatTier 为 null，排在带热度的之后。
     sql = """SELECT id, slug, name, sub, city, km, up, down, hardest_level, hours, kcal,
                     peak_count,
                     (SELECT count(*) FROM route_segments s WHERE s.route_id = r.id) AS segment_count,
@@ -803,11 +942,30 @@ def list_routes(level: str | None = None, limit: int = 20):
                     (SELECT u.nickname FROM visits v
                        JOIN points p ON p.id = v.point_id JOIN users u ON u.id = v.user_id
                        WHERE p.route_id = r.id AND v.duration_sec IS NOT NULL
-                       ORDER BY v.duration_sec LIMIT 1) AS fastest_holder
-             FROM routes r WHERE status = 'published'"""
+                       ORDER BY v.duration_sec LIMIT 1) AS fastest_holder,
+                    heat.heat_tier AS "heatTier"
+             FROM routes r
+             LEFT JOIN LATERAL (
+                SELECT (array_agg(hh.heat_tier ORDER BY hh.rank DESC, hh.dist))[1] AS heat_tier
+                  FROM (
+                    SELECT m.heat_tier,
+                           CASE m.heat_tier WHEN '极热' THEN 4 WHEN '热门' THEN 3
+                                            WHEN '较热' THEN 2 WHEN '小众' THEN 1 ELSE 0 END AS rank,
+                           ST_Distance(m.geom::geography, mp.geom::geography) AS dist
+                      FROM points mp
+                      JOIN mountains m ON m.geom IS NOT NULL
+                       AND ST_DWithin(m.geom::geography, mp.geom::geography, 1500)
+                     WHERE mp.route_id = r.id AND mp.type = 'peak'
+                       AND mp.geom IS NOT NULL AND m.heat_tier IS NOT NULL
+                  ) hh
+             ) heat ON TRUE
+             WHERE r.status = 'published'"""
     if level:
         sql += " AND hardest_level = :level"
-    sql += " ORDER BY km LIMIT :limit"
+    # NULLS LAST：没有热度数据的线路不插队到前面
+    sql += """ ORDER BY CASE heat.heat_tier WHEN '极热' THEN 4 WHEN '热门' THEN 3
+                        WHEN '较热' THEN 2 WHEN '小众' THEN 1 END DESC NULLS LAST,
+                  weekly_visits DESC, km LIMIT :limit"""
     return RouteListOut(items=[dict(r) for r in q(sql, level=level, limit=limit)],
                         nextCursor=None)
 
@@ -1413,7 +1571,8 @@ def _window_since(window: str) -> datetime:
 @app.get("/api/boards/mountains", response_model=dict, tags=["榜单"])
 def board_mountains(window: Literal["week", "month", "year", "all"] = "week",
                     metric: Literal["people", "visits", "hot"] = "people",
-                    limit: int = 5):
+                    limit: int = 5,
+                    province: str | None = None):
     """山头榜，三个口径分开列、分开说：
 
     * `metric=people`：窗口内按去重**人数**排 —— 首页"打卡人数榜"
@@ -1466,8 +1625,9 @@ def board_mountains(window: Literal["week", "month", "year", "all"] = "week",
       FROM visits v JOIN points p ON p.id = v.point_id
       JOIN mountains m ON m.id = p.mountain_id
      WHERE v.occurred_at >= :since AND p.mountain_id IS NOT NULL
+       AND (CAST(:province AS text) IS NULL OR p.province = CAST(:province AS text))
      GROUP BY 1, m.name ORDER BY """ + order + " LIMIT :limit",
-        since=since, limit=limit)
+        since=since, limit=limit, province=province)
     return {"window": window, "metric": metric,
             "items": [dict(r) for r in rows]}
 
@@ -1828,7 +1988,8 @@ def _receipts(identity_type: str, identity_id: int, limit: int, cursor: int | No
     col = "user_id" if identity_type == "user" else "guest_id"
     rows = q("""SELECT v.id AS "visitId", p.code, p.name, p.type AS kind,
         v.seq, v.occurred_at AS "visitedAt", v.recorded_at AS "recordedAt",
-        e.duration_s AS "durationS", e.excluded_reason AS "effortReason"
+        coalesce(e.duration_s, v.duration_sec) AS "durationS",
+        e.excluded_reason AS "effortReason"
         FROM visits v JOIN points p ON p.id=v.point_id
         LEFT JOIN segment_efforts e ON e.end_visit_id=v.id
         WHERE v.""" + col + """=:identity
@@ -1858,6 +2019,9 @@ def _mountain_summary(identity_type: str, identity_id: int, limit: int):
     col = "user_id" if identity_type == "user" else "guest_id"
     rows = q(f"""SELECT p.mountain_id AS "mountainId", m.name,
         max(v.occurred_at) AS "myLastVisitedAt",
+        count(*) AS "myVisits",
+        (SELECT min(code) FROM points WHERE mountain_id = p.mountain_id
+           AND status = 'published') AS "pointCode",
         (SELECT count(DISTINCT CASE WHEN allv.user_id IS NOT NULL
             THEN 'u:' || allv.user_id::text ELSE 'g:' || allv.guest_id::text END)
          FROM visits allv JOIN points allp ON allp.id=allv.point_id
@@ -2110,6 +2274,11 @@ class SummitItem(BaseModel):
     lat: float | None = None
     lng: float | None = None
     visits30: int = Field(default=0, description="本周热度：这个顶近 7 天被扫了几次")
+    heatTier: str | None = Field(
+        default=None,
+        description="互联网热度档（极热/热门/较热/小众），来自名山资料库；"
+                    "没有资料的山头为 null，列表里排在带热度的之后")
+    annualVisits: str | None = Field(default=None, description="年接待量原文，例如「年徒步到访 20 万人次以上（估算）」")
     fastest: str | None = None
     holder: str | None = None
     origin: Literal["route", "user"] = "route"
@@ -2128,44 +2297,58 @@ def series_of(code: str | None) -> str | None:
 @app.get("/api/summits", response_model=list[SummitItem], tags=["点位"],
          summary="山头列表：一条线路一张卡，卡是它的主峰")
 def list_summits(limit: int = 100):
+    # 排序口径：先按互联网热度档（mountains.heat_tier，来自名山资料库：
+    # 极热 > 热门 > 较热 > 小众），再按本周打卡量、海拔。
+    # 没有热度资料的山头 heatTier 为 null，用 NULLS LAST 排在后面，不插队。
     rows = q(f"""
-        SELECT 'p-' || pt.code        AS id, pt.id AS "pointId", pt.code,
-               pt.name, mp.altitude, coalesce(pt.level, r.hardest_level, 'mid') AS level,
-               r.slug                 AS "routeSlug", r.name AS "routeName",
-               coalesce(pt.city, r.city) AS city, pt.country, pt.province,
-               r.peak_count           AS "peakCount",
-               h.rise                 AS "segRise", round(h.km, 2) AS "segKm",
-               mp.lat, mp.lng,
-               (SELECT count(*) FROM visits v WHERE v.point_id = pt.id
-                  AND v.created_at > now() - interval '7 days') AS "visits30",
-               (SELECT to_char(make_interval(secs => min(v.duration_sec)), 'HH24:MI')
-                  FROM visits v WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL) AS fastest,
-               (SELECT u.nickname FROM visits v JOIN users u ON u.id = v.user_id
-                  WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL
-                  ORDER BY v.duration_sec LIMIT 1) AS holder,
-               'route' AS origin
-        FROM routes r
-        JOIN ({HARD_SEG}) h ON h.route_id = r.id
-        JOIN ({MAIN_PEAK}) mp ON mp.route_id = r.id
-        JOIN points pt ON pt.route_id = r.id AND pt.index_in_route = mp.idx
-        UNION ALL
-        SELECT 'p-' || pt.code, pt.id, pt.code, pt.name, pt.altitude,
-               coalesce(pt.level, 'mid'),
-               NULL, NULL, pt.city, pt.country, pt.province,
-               1, coalesce(pt.track_up, 0), coalesce(pt.track_km, 0),
-               ST_Y(pt.geom), ST_X(pt.geom),
-               (SELECT count(*) FROM visits v WHERE v.point_id = pt.id
-                  AND v.created_at > now() - interval '7 days'),
-               (SELECT to_char(make_interval(secs => min(v.duration_sec)), 'HH24:MI')
-                  FROM visits v WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL),
-               (SELECT u.nickname FROM visits v JOIN users u ON u.id = v.user_id
-                  WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL
-                  ORDER BY v.duration_sec LIMIT 1),
-               'user'
-        FROM points pt
-        WHERE pt.type = 'peak' AND pt.status = 'published'
-          AND pt.route_id IS NULL AND pt.altitude IS NOT NULL
-        ORDER BY "visits30" DESC, altitude DESC
+        WITH base AS (
+          SELECT 'p-' || pt.code        AS id, pt.id AS "pointId", pt.code,
+                 pt.name, mp.altitude, coalesce(pt.level, r.hardest_level, 'mid') AS level,
+                 r.slug                 AS "routeSlug", r.name AS "routeName",
+                 coalesce(pt.city, r.city) AS city, pt.country, pt.province,
+                 r.peak_count           AS "peakCount",
+                 h.rise                 AS "segRise", round(h.km, 2) AS "segKm",
+                 mp.lat, mp.lng,
+                 (SELECT count(*) FROM visits v WHERE v.point_id = pt.id
+                    AND v.created_at > now() - interval '7 days') AS "visits30",
+                 (SELECT to_char(make_interval(secs => min(v.duration_sec)), 'HH24:MI')
+                    FROM visits v WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL) AS fastest,
+                 (SELECT u.nickname FROM visits v JOIN users u ON u.id = v.user_id
+                    WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL
+                    ORDER BY v.duration_sec LIMIT 1) AS holder,
+                 'route' AS origin,
+                 hm.heat_tier AS "heatTier", hm.annual_visits AS "annualVisits",
+                 CASE hm.heat_tier WHEN '极热' THEN 4 WHEN '热门' THEN 3
+                                   WHEN '较热' THEN 2 WHEN '小众' THEN 1 END AS heat_rank
+          FROM routes r
+          JOIN ({HARD_SEG}) h ON h.route_id = r.id
+          JOIN ({MAIN_PEAK}) mp ON mp.route_id = r.id
+          JOIN points pt ON pt.route_id = r.id AND pt.index_in_route = mp.idx
+          LEFT JOIN mountains hm ON hm.id = pt.mountain_id
+          UNION ALL
+          SELECT 'p-' || pt.code, pt.id, pt.code, pt.name, pt.altitude,
+                 coalesce(pt.level, 'mid'),
+                 NULL, NULL, pt.city, pt.country, pt.province,
+                 1, coalesce(pt.track_up, 0), coalesce(pt.track_km, 0),
+                 ST_Y(pt.geom), ST_X(pt.geom),
+                 (SELECT count(*) FROM visits v WHERE v.point_id = pt.id
+                    AND v.created_at > now() - interval '7 days'),
+                 (SELECT to_char(make_interval(secs => min(v.duration_sec)), 'HH24:MI')
+                    FROM visits v WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL),
+                 (SELECT u.nickname FROM visits v JOIN users u ON u.id = v.user_id
+                    WHERE v.point_id = pt.id AND v.duration_sec IS NOT NULL
+                    ORDER BY v.duration_sec LIMIT 1),
+                 'user',
+                 hm.heat_tier, hm.annual_visits,
+                 CASE hm.heat_tier WHEN '极热' THEN 4 WHEN '热门' THEN 3
+                                   WHEN '较热' THEN 2 WHEN '小众' THEN 1 END
+          FROM points pt
+          LEFT JOIN mountains hm ON hm.id = pt.mountain_id
+          WHERE pt.type = 'peak' AND pt.status = 'published'
+            AND pt.route_id IS NULL AND pt.altitude IS NOT NULL
+        )
+        SELECT * FROM base
+        ORDER BY heat_rank DESC NULLS LAST, "visits30" DESC, altitude DESC
         LIMIT :limit""", limit=limit)
     out = []
     for r in rows:
@@ -2861,8 +3044,10 @@ def my_reports(uid: int = Depends(require_user)):
 
 
 class DeleteAccountIn(BaseModel):
-    password: str = Field(min_length=1, max_length=128,
-                          description="再输一次密码，防止别人拿你的手机误操作")
+    password: str | None = Field(default=None, min_length=1, max_length=128,
+                                 description="密码账号再次输入密码")
+    code: str | None = Field(default=None, min_length=1, max_length=256,
+                             description="微信小程序重新登录取得的一次性 code")
     confirm: str = Field(description="必须原样写“注销”两个字")
 
 
@@ -2887,12 +3072,33 @@ def delete_account(body: DeleteAccountIn, uid: int = Depends(require_user)):
         err(404, "USER_NOT_FOUND", "账号不存在")
     if user["deleted_at"]:
         err(409, "ACCOUNT_DELETED", "这个账号已经注销过了")
-    if not user["password_hash"]:
-        err(403, "PASSWORD_MISMATCH", "这个账号没有可验证的密码，无法自助注销，请联系平台")
-    try:
-        password_hasher.verify(user["password_hash"], body.password)
-    except (VerifyMismatchError, InvalidHashError):
-        err(403, "PASSWORD_MISMATCH", "密码不对")
+    if body.code:
+        app_id = os.getenv("WECHAT_APP_ID", "").strip()
+        app_secret = os.getenv("WECHAT_APP_SECRET", "").strip()
+        if not app_id or not app_secret:
+            err(503, "WECHAT_LOGIN_NOT_CONFIGURED", "服务端尚未配置微信小程序登录凭据")
+        try:
+            with httpx.Client(timeout=8, trust_env=False) as client:
+                response = client.get("https://api.weixin.qq.com/sns/jscode2session",
+                    params={"appid": app_id, "secret": app_secret,
+                            "js_code": body.code, "grant_type": "authorization_code"})
+                response.raise_for_status()
+                session = response.json()
+        except (httpx.HTTPError, ValueError):
+            err(502, "WECHAT_LOGIN_UNAVAILABLE", "暂时无法连接微信登录服务，请稍后重试")
+        current_openid = q1("SELECT wx_openid FROM users WHERE id=:u AND deleted_at IS NULL", u=uid)
+        if not isinstance(session, dict) or session.get("errcode") or not session.get("openid") \
+                or not current_openid or session["openid"] != current_openid["wx_openid"]:
+            err(403, "REAUTH_FAILED", "微信身份验证失败，请确认当前登录的是此账号")
+    elif body.password:
+        if not user["password_hash"]:
+            err(403, "PASSWORD_MISMATCH", "此账号请使用微信身份验证注销")
+        try:
+            password_hasher.verify(user["password_hash"], body.password)
+        except (VerifyMismatchError, InvalidHashError):
+            err(403, "PASSWORD_MISMATCH", "密码不对")
+    else:
+        err(400, "REAUTH_REQUIRED", "请使用微信身份验证或输入账号密码")
 
     removed: dict[str, int] = {}
     kept: dict[str, int] = {}
@@ -2913,6 +3119,7 @@ def delete_account(body: DeleteAccountIn, uid: int = Depends(require_user)):
             "WHERE identity_type = 'user' AND identity_id = :u", u=uid)
         removed["visits"] = run("DELETE FROM visits WHERE user_id = :u", u=uid)
         removed["wants"] = run("DELETE FROM wants WHERE user_id = :u", u=uid)
+        removed["events"] = run("DELETE FROM events WHERE user_id = :u", u=uid)
         removed["drafts"] = run("DELETE FROM account_arrival_drafts WHERE user_id = :u", u=uid)
         removed["publishReceipts"] = run("DELETE FROM arrival_publish_receipts WHERE user_id = :u", u=uid)
         removed["votes"] = run("DELETE FROM comment_votes WHERE user_id = :u", u=uid)
@@ -3566,19 +3773,25 @@ def route_progress(uid: int = Depends(require_user)):
 
 @app.get("/api/visits/recent", tags=["打卡"],
          summary="最近的打卡流水（谁 · 在哪座山 · 什么时候）")
-def recent_visits(days: int = 7, limit: int = 30):
-    rows = q("""SELECT u.nickname AS who, v.created_at AS at, v.seq,
-                       v.duration_sec,
-                       coalesce(r.name, pt.name) AS place,
-                       r.slug AS route_slug, pt.code,
-                       pt.type
-                FROM visits v
-                JOIN users  u  ON u.id = v.user_id
-                JOIN points pt ON pt.id = v.point_id
-                LEFT JOIN routes r ON r.id = pt.route_id
-                WHERE v.created_at > now() - make_interval(days => :days)
-                ORDER BY v.created_at DESC
-                LIMIT :limit""", days=days, limit=limit)
+def recent_visits(days: int = 7, limit: int = 30, code: str = ""):
+    """code 传了就只看这个点位（山头页的"最近登顶"看板用）。"""
+    point_code = (code or "").strip().upper()
+    sql = """SELECT u.nickname AS who, v.created_at AS at, v.seq,
+                    v.duration_sec,
+                    coalesce(r.name, pt.name) AS place,
+                    r.slug AS route_slug, pt.code,
+                    pt.type
+             FROM visits v
+             JOIN users  u  ON u.id = v.user_id
+             JOIN points pt ON pt.id = v.point_id
+             LEFT JOIN routes r ON r.id = pt.route_id
+             WHERE v.created_at > now() - make_interval(days => :days)"""
+    params = {"days": days, "limit": limit}
+    if point_code:
+        sql += " AND pt.code = :code"
+        params["code"] = point_code
+    sql += " ORDER BY v.created_at DESC LIMIT :limit"
+    rows = q(sql, **params)
     out = []
     for r in rows:
         d = dict(r)
@@ -3630,6 +3843,8 @@ class GuestVisitOut(BaseModel):
     routeName: str | None = None
     idxInRoute: int | None = Field(default=None, description="这条线路上的第几个点位")
     totalInRoute: int | None = None
+    durationS: int | None = Field(default=None, description="登顶用时（秒）；山脚+山顶两次打卡才有")
+    climbHint: str | None = Field(default=None, description="双点打卡的下一步提醒")
 
 
 def _guest_of(token: str | None):
@@ -3776,6 +3991,28 @@ def new_guest(request: Request, x_guest_token: str | None = Header(default=None)
     return GuestOut(token=tok, createdAt=row[0].isoformat())
 
 
+def _climb_hint(conn, *, identity_type: str, identity_id: int, row):
+    """双点打卡提示：山脚打卡提醒去山顶；山顶打卡说明能不能算出用时。"""
+    point = conn.execute(text("""SELECT pt.type, pt.route_id FROM points pt
+        WHERE pt.id = (SELECT point_id FROM visits WHERE id = :id)"""),
+        {"id": row["id"]}).mappings().first()
+    if not point:
+        return None, None
+    if point["type"] == "peak":
+        duration = climb_duration_for_peak(conn, identity_type=identity_type,
+                                           identity_id=identity_id, visit_id=row["id"])
+        if duration is not None:
+            return duration, "登顶用时 %d 分 %d 秒，已上排行榜" % (duration // 60, duration % 60)
+        return None, "本次山脚未打卡，无法记录登顶时间；下次先从山脚打卡"
+    if point["type"] == "trailhead" and point["route_id"] is not None:
+        has_peak = conn.execute(text("""SELECT 1 FROM points
+            WHERE route_id = :r AND type = 'peak' AND status = 'published' LIMIT 1"""),
+            {"r": point["route_id"]}).first()
+        if has_peak:
+            return None, "出发时间已记录；到山顶再打一次卡，会自动算出登顶用时"
+    return None, None
+
+
 @app.post("/api/guest/visit", response_model=GuestVisitOut, tags=["游客"],
           responses={**ERR_404, 401: {"description": "缺少或无效的游客令牌"},
                      429: {"description": "打卡过于频繁"}},
@@ -3803,12 +4040,14 @@ def guest_visit(body: GuestVisitIn, request: Request,
                 reconcile_efforts(conn, "guest", g["id"], row["visit_date"])
         except Exception:
             logging.exception("guest effort reconciliation failed")
+        duration, climb_hint = _climb_hint(conn, identity_type="guest", identity_id=g["id"], row=row)
     _rate_hit(keys)
     return GuestVisitOut(visitId=row["id"], seq=row["seq"],
                          visitedAt=row["occurred_at"].isoformat(), isFirstToday=first,
                          pointCode=pt["code"], peakName=pt["name"], altitude=pt["altitude"],
                          routeName=pt["route_name"], idxInRoute=pt["index_in_route"],
-                         totalInRoute=pt["total_in_route"])
+                         totalInRoute=pt["total_in_route"], durationS=duration,
+                         climbHint=climb_hint)
 
 
 class MergeOut(BaseModel):
@@ -3886,6 +4125,7 @@ def do_visit(body: VisitIn, request: Request, point_id: int = Path(ge=1),
                 reconcile_efforts(conn, "user", uid, row["visit_date"])
         except Exception:
             logging.exception("account effort reconciliation failed")
+        duration, climb_hint = _climb_hint(conn, identity_type="user", identity_id=uid, row=row)
     mine = q1("SELECT count(*) AS n FROM visits WHERE user_id=:uid AND point_id=:pid",
               uid=uid, pid=point_id)
     _rate_hit(keys)
@@ -3893,7 +4133,165 @@ def do_visit(body: VisitIn, request: Request, point_id: int = Path(ge=1),
                     message=f"这是该点位第 {row['seq']} 条到访记录",
                     visitedAt=row["occurred_at"], pointCode=point["code"], peakName=point["name"],
                     altitude=point["altitude"], routeName=point["route_name"],
-                    idxInRoute=point["index_in_route"], totalInRoute=point["total_in_route"])
+                    idxInRoute=point["index_in_route"], totalInRoute=point["total_in_route"],
+                    durationS=duration, climbHint=climb_hint)
+
+
+# ==================== 登顶用时排行 ====================
+
+class PeakLeaderboardOut(BaseModel):
+    items: dict[str, list[dict]]
+
+
+@app.get("/api/peaks/leaderboard", response_model=PeakLeaderboardOut, tags=["点位"],
+         summary="山头登顶用时排行（按点位编号批量查询；空 = 还没人留下用时）")
+def peaks_leaderboard(codes: str = "", limit: int = 10):
+    limit = min(max(limit, 1), 50)
+    wanted = [c.strip().upper() for c in codes.split(",") if c.strip()][:20]
+    items: dict[str, list[dict]] = {}
+    for code in wanted:
+        rows = q("""SELECT v.duration_sec, v.visit_date, u.nickname
+                    FROM visits v
+                    JOIN points pt ON pt.id = v.point_id
+                    LEFT JOIN users u ON u.id = v.user_id
+                    WHERE pt.code = :code AND v.duration_sec IS NOT NULL
+                      AND (u.id IS NULL OR u.leaderboard_enabled)
+                    ORDER BY v.duration_sec ASC, v.occurred_at ASC
+                    LIMIT :limit""", code=code, limit=limit)
+        items[code] = [{"durationS": r["duration_sec"], "nickname": r["nickname"],
+                        "date": str(r["visit_date"])} for r in rows]
+    return {"items": items}
+
+
+# ==================== 本地山头提名 ====================
+
+class NominationIn(BaseModel):
+    name: str = Field(min_length=1, max_length=10, description="山头名，最多 10 个字")
+    province: str | None = None
+    city: str | None = None
+
+
+class NominationOut(BaseModel):
+    id: int
+    name: str
+    province: str | None = None
+    votes: int
+    myVote: bool
+    mine: bool = False
+
+
+class NominationListOut(BaseModel):
+    items: list[NominationOut]
+
+
+def _nomination_identity(x_guest_token: str | None, authorization: str | None) -> str | None:
+    """提名 / 点赞的身份：登录用户优先，其次游客令牌；都没有返回 None。"""
+    if authorization:
+        try:
+            return "u:%d" % require_user(authorization)
+        except HTTPException:
+            return None
+    g = _guest_of(x_guest_token)
+    if g:
+        return "g:%s" % x_guest_token
+    return None
+
+
+def _nomination_row(nomination_id: int, me: str | None) -> NominationOut | None:
+    row = q1("""SELECT n.id, n.name, n.province,
+                   (SELECT count(*) FROM peak_nomination_votes v
+                     WHERE v.nomination_id = n.id) AS votes,
+                   EXISTS(SELECT 1 FROM peak_nomination_votes v
+                     WHERE v.nomination_id = n.id AND v.identity = CAST(:me AS text)) AS my_vote,
+                   (n.created_by = CAST(:me AS text)) AS mine
+                FROM peak_nominations n WHERE n.id = :id""",
+             id=nomination_id, me=me)
+    if not row:
+        return None
+    return NominationOut(id=row["id"], name=row["name"], province=row["province"] or None,
+                         votes=row["votes"], myVote=bool(row["my_vote"]),
+                         mine=bool(row["mine"]))
+
+
+@app.get("/api/peak-nominations", response_model=NominationListOut, tags=["点位"],
+         summary="本地山头提名榜（按点赞数排序；无需审核）")
+def list_peak_nominations(province: str | None = None, limit: int = 10,
+                          x_guest_token: str | None = Header(default=None),
+                          authorization: str | None = Header(default=None)):
+    limit = min(max(limit, 1), 50)
+    me = _nomination_identity(x_guest_token, authorization)
+    rows = q("""SELECT n.id, n.name, n.province,
+                   (SELECT count(*) FROM peak_nomination_votes v
+                     WHERE v.nomination_id = n.id) AS votes,
+                   EXISTS(SELECT 1 FROM peak_nomination_votes v
+                     WHERE v.nomination_id = n.id AND v.identity = CAST(:me AS text)) AS my_vote,
+                   (n.created_by = CAST(:me AS text)) AS mine
+                FROM peak_nominations n
+                WHERE n.status = 'active'
+                  AND (CAST(:province AS text) IS NULL OR n.province = CAST(:province AS text))
+                ORDER BY votes DESC, n.created_at ASC
+                LIMIT :limit""", me=me, province=province, limit=limit)
+    return NominationListOut(items=[NominationOut(
+        id=r["id"], name=r["name"], province=r["province"] or None,
+        votes=r["votes"], myVote=bool(r["my_vote"]), mine=bool(r["mine"])) for r in rows])
+
+
+@app.post("/api/peak-nominations", response_model=NominationOut, tags=["点位"],
+          summary="提名本地山头（10 字以内；重复提名自动合并并点赞）")
+def create_peak_nomination(body: NominationIn, request: Request,
+                           x_guest_token: str | None = Header(default=None),
+                           authorization: str | None = Header(default=None)):
+    me = _nomination_identity(x_guest_token, authorization)
+    if not me:
+        err(401, "IDENTITY_REQUIRED", "先领一个游客身份再提名")
+    keys = _rate_check(request, "nominate", me)
+    name = body.name.strip()
+    if not name:
+        err(422, "NAME_REQUIRED", "写个山头名吧")
+    if len(name) > 10:
+        err(422, "NAME_TOO_LONG", "山头名最多 10 个字")
+    province = (body.province or "").strip()[:20]
+    row = q1("""INSERT INTO peak_nominations (name, province, city, created_by)
+                VALUES (:name, :province, :city, :me)
+                ON CONFLICT (name, province) DO NOTHING
+                RETURNING id""",
+             name=name, province=province,
+             city=(body.city or None), me=me)
+    if not row:
+        row = q1("""SELECT id FROM peak_nominations
+                    WHERE name = :name AND province = :province""",
+                 name=name, province=province)
+    exec_sql("""INSERT INTO peak_nomination_votes (nomination_id, identity)
+         VALUES (:nid, :me)
+         ON CONFLICT (nomination_id, identity) DO NOTHING""",
+             nid=row["id"], me=me)
+    _rate_hit(keys)
+    return _nomination_row(row["id"], me)
+
+
+@app.post("/api/peak-nominations/{nomination_id}/vote", response_model=NominationOut, tags=["点位"],
+          summary="给提名点赞 / 取消点赞")
+def vote_peak_nomination(nomination_id: int, request: Request,
+                         x_guest_token: str | None = Header(default=None),
+                         authorization: str | None = Header(default=None)):
+    me = _nomination_identity(x_guest_token, authorization)
+    if not me:
+        err(401, "IDENTITY_REQUIRED", "先领一个游客身份再点赞")
+    if not q1("SELECT 1 FROM peak_nominations WHERE id = :id AND status = 'active'",
+              id=nomination_id):
+        err(404, "NOMINATION_NOT_FOUND", "这条提名不存在")
+    keys = _rate_check(request, "vote", me)
+    existing = q1("SELECT 1 FROM peak_nomination_votes WHERE nomination_id = :id AND identity = :me",
+                  id=nomination_id, me=me)
+    if existing:
+        exec_sql("DELETE FROM peak_nomination_votes WHERE nomination_id = :id AND identity = :me",
+                 id=nomination_id, me=me)
+    else:
+        exec_sql("""INSERT INTO peak_nomination_votes (nomination_id, identity)
+                 VALUES (:id, :me) ON CONFLICT (nomination_id, identity) DO NOTHING""",
+                 id=nomination_id, me=me)
+    _rate_hit(keys)
+    return _nomination_row(nomination_id, me)
 
 
 # ==================== 留言 ====================
@@ -3917,7 +4315,6 @@ def recent_board_activity():
                       JOIN users author ON author.id = c.user_id
                      WHERE pt.type = :type AND pt.status = 'published'
                        AND pt.geom IS NOT NULL AND c.status = 'normal'
-                       AND author.password_hash IS NOT NULL
                      ORDER BY c.created_at DESC, c.id DESC LIMIT 1""", type=point_type)
         if row:
             page = "peaks" if kind == "summit" else "junctions"
@@ -3928,7 +4325,7 @@ def recent_board_activity():
                   FROM comments c JOIN route_segments rs ON rs.id = c.segment_id
                   JOIN users author ON author.id = c.user_id
                   JOIN routes r ON r.id = rs.route_id
-                 WHERE c.status = 'normal' AND author.password_hash IS NOT NULL
+                 WHERE c.status = 'normal'
                  ORDER BY c.created_at DESC, c.id DESC LIMIT 1""")
     if row:
         items.append(RecentBoardItem(kind="segment", name=row["name"], text=row["text"],
@@ -4177,15 +4574,28 @@ def qr_target(code: str) -> QrTargetOut:
           response_model=EventsOut,
           responses={400: {"description": "事件缺少 name"}},
           summary="扫码 / 打卡 / 留言 / 打开，三个验证指标都从这里出")
-def track(payload: dict | list[dict]) -> EventsOut:
+def track(payload: dict | list[dict], request: Request,
+          authorization: str | None = Header(default=None)) -> EventsOut:
     rows = payload if isinstance(payload, list) else [payload]
+    if len(rows) > 50:
+        err(400, "TOO_MANY_EVENTS", "单次最多上报 50 条事件")
+    ip_key = _auth_bucket_key("events-ip", _request_ip(request))
+    if _auth_rate_limited([ip_key], limit=1200, minutes=60):
+        err(429, "RATE_LIMITED", "事件上报过于频繁")
+    uid = None
+    if authorization and authorization.lower().startswith("bearer "):
+        try:
+            uid = require_user(authorization)
+        except HTTPException:
+            pass
     with engine.begin() as conn:
         for e in rows:
             name = str(e.get("name") or "").strip()
             if not name:
                 err(400, "BAD_EVENT", "事件缺少 name")
-            conn.execute(text("""INSERT INTO events (name, props) VALUES (:n, :p)"""),
-                         {"n": name, "p": json.dumps(e.get("props") or {}, ensure_ascii=False)})
+            conn.execute(text("""INSERT INTO events (user_id, name, props) VALUES (:u, :n, :p)"""),
+                         {"u": uid, "n": name, "p": json.dumps(e.get("props") or {}, ensure_ascii=False)})
+    _auth_record_attempt([ip_key], minutes=60)
     return EventsOut(accepted=len(rows))
 
 

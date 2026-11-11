@@ -118,3 +118,47 @@ def record_visit(conn, *, identity_type: str, identity_id: int, point_id: int,
         {"type": identity_type, "identity": identity_id, "uuid": action_id,
          "hash": digest, "visit": row["id"]})
     return row, is_new
+
+
+def climb_duration_for_peak(conn, *, identity_type: str, identity_id: int,
+                            visit_id: int):
+    """山顶点位：找当天同一线路、同一身份、更早的山脚打卡，写 visits.duration_sec。
+
+    规则（2026-10-25 确认，方案 A）：
+      - 山脚（trailhead）与山顶（peak）必须同一天、同一条线路；
+      - 山顶必须晚于山脚，用时 ≤ 12 小时；
+      - 两次打卡的证据等级都必须是 code / gps_close；
+      - 离线补传（recorded_at - occurred_at > 5 分钟）不计时。
+    返回用时秒数（成功写入）或 None。重复调用会覆盖，以最新数据为准。
+    """
+    row = conn.execute(text("""SELECT v.id, v.occurred_at, v.recorded_at, v.evidence_level,
+                                      v.visit_date, pt.type, pt.route_id
+        FROM visits v JOIN points pt ON pt.id = v.point_id
+        WHERE v.id = :id"""), {"id": visit_id}).mappings().first()
+    if not row or row["type"] != "peak" or row["route_id"] is None:
+        return None
+    column = "user_id" if identity_type == "user" else "guest_id"
+    # 不要求同一业务日：夜爬常在 23:5x 出发、0x:xx 登顶，跨午夜仍是一趟。
+    # 用"山脚早于山顶 + 同线路 + 用时 ≤ 12 小时"约束就够了。
+    start = conn.execute(text("""
+        SELECT v.id, v.occurred_at, v.recorded_at, v.evidence_level
+        FROM visits v JOIN points pt ON pt.id = v.point_id
+        WHERE v.""" + column + """ = :identity
+          AND pt.route_id = :route AND pt.type = 'trailhead'
+          AND v.occurred_at < :peak_at
+        ORDER BY v.occurred_at DESC LIMIT 1"""),
+        {"identity": identity_id, "route": row["route_id"],
+         "peak_at": row["occurred_at"]}).mappings().first()
+    if not start:
+        return None
+    duration = int((row["occurred_at"] - start["occurred_at"]).total_seconds())
+    if duration <= 0 or duration > 12 * 3600:
+        return None
+    for visit in (start, row):
+        if visit["evidence_level"] not in ("code", "gps_close"):
+            return None
+        if visit["recorded_at"] - visit["occurred_at"] > timedelta(minutes=5):
+            return None
+    conn.execute(text("UPDATE visits SET duration_sec = :d WHERE id = :id"),
+                 {"d": duration, "id": visit_id})
+    return duration
