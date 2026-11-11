@@ -45,13 +45,13 @@ html{background:var(--bg)}body{background:var(--bg);color:var(--ink);font-family
 
 /* Anime mountain direction: sky blue, vivid pink actions, teal terrain, soft surfaces. */
 :root{--bg:#eef9ff;--paper:#ffffff;--ink:#25283b;--ink2:#59657c;--ink3:#7c879b;--line:#e4eef4;--hair:#edf4f8;--blue:#39a875;--blue-bg:#e8f8f2;--blue-deep:#25283b;--coral:#ff5298;--coral-bg:#fff0f6;--violet:#48b7b0;--violet-bg:#e6f8f6;--violet-deep:#218f88;--shadow:0 2px 10px rgba(37,70,98,.035);--r:20px}
-html,body,#app{background:var(--bg)}.topbar{background:#e4f5fd;border-color:#d9eff9}.brand em{color:var(--coral)}.home-scene{background:#8bcffa url('../assets/decor/scenic-reference.svg') center 52%/cover no-repeat}.home-sun{display:none}.home-hiker{filter:none}.home-primary,.btn.coral,.btn.blue,.scanstrip,.pill-btn.acc,.scan-btn{background:var(--pink,#ff5298);box-shadow:none}.home-primary{background:#ff5298}.btn{border-radius:16px}.btn.ghost{border-color:#d8eaf2}.card,.rowlink,.trailcard,.hotcard,.profilebox,.signage,.msg,.intel,.comment,.guide{border-color:transparent;box-shadow:0 2px 10px rgba(37,70,98,.035);border-radius:20px}.tabbar{border-color:#edf4f8}.tabbar .scan-btn{background:#ff5298}.tabbar .scan em,.tabbar a.on,.tabbar a.on .ico{color:#ff5298;stroke:#ff5298}.hero{border-radius:0 0 24px 24px}.hero>svg{opacity:0}.hero:before{content:"";position:absolute;inset:0;background:url('../assets/decor/scenic-reference.svg') center 54%/cover no-repeat}.hero .cap{z-index:1}.hero .floating{z-index:2}.badge.easy{background:#e7f8f0;color:#238b70}.badge.mid{background:#fff5da;color:#916c16}.badge.hard{background:#fff0f6;color:#c83773}
+html,body,#app{background:var(--bg)}.topbar{background:#e4f5fd;border-color:#d9eff9}.brand em{color:var(--coral)}.home-scene{background:#8bcffa url('../assets/decor/scenic-reference.svg') center 52%/cover no-repeat}.home-hiker{filter:none}.home-primary,.btn.coral,.btn.blue,.scanstrip,.pill-btn.acc,.scan-btn{background:var(--pink,#ff5298);box-shadow:none}.home-primary{background:#ff5298}.btn{border-radius:16px}.btn.ghost{border-color:#d8eaf2}.card,.rowlink,.trailcard,.hotcard,.profilebox,.signage,.msg,.intel,.comment,.guide{border-color:transparent;box-shadow:0 2px 10px rgba(37,70,98,.035);border-radius:20px}.tabbar{border-color:#edf4f8}.tabbar .scan-btn{background:#ff5298}.tabbar .scan em,.tabbar a.on,.tabbar a.on .ico{color:#ff5298;stroke:#ff5298}.hero{border-radius:0 0 24px 24px}.hero>svg{opacity:0}.hero:before{content:"";position:absolute;inset:0;background:url('../assets/decor/scenic-reference.svg') center 54%/cover no-repeat}.hero .cap{z-index:1}.hero .floating{z-index:2}.badge.easy{background:#e7f8f0;color:#238b70}.badge.mid{background:#fff5da;color:#916c16}.badge.hard{background:#fff0f6;color:#c83773}
 .home-desktop{display:none}
 @media(min-width:700px){
   #app.home-image{width:100%;max-width:none;height:100dvh}
   #app.home-image .home-art{display:none}
   #app.home-image .home-desktop{display:flex;flex-direction:column;width:100%;height:100%;background:#fff;overflow:auto}
-  .home-desktop-scene{position:relative;flex:1 1 58%;min-height:320px;background:#8bcffa url('../images/home/mountain-landscape.png') center 43%/cover no-repeat;overflow:hidden}
+  .home-desktop-scene{position:relative;flex:1 1 58%;min-height:320px;background:#8bcffa url('../images/home/mountain-landscape.webp') center 43%/cover no-repeat;overflow:hidden}
   .home-desktop-brand{position:absolute;z-index:2;left:max(36px,calc((100vw - 1160px)/2));top:34px;display:flex;align-items:center;gap:12px;color:#25283b;font-size:clamp(30px,3.1vw,46px);font-weight:900;letter-spacing:.035em}
   .home-desktop-brand img{width:50px;height:42px}
   .home-desktop-hiker{position:absolute;left:max(-25px,calc((100vw - 1200px)/2));bottom:-12%;width:clamp(360px,38vw,590px);max-height:88%;object-fit:contain;object-position:bottom;filter:drop-shadow(0 10px 15px rgba(37,56,77,.12))}
@@ -91,7 +91,8 @@ html,body,#app{background:var(--bg)}.topbar{background:#e4f5fd;border-color:#d9e
 #app.home-image .tabbar{display:flex!important}
 #app.home-image .view{display:flex;flex-direction:column;overflow:auto;padding:0!important}
 #app.home-image .home-page{width:100%;min-height:100%;display:flex;flex-direction:column;background:#fff}
-.home-scene{position:relative;flex:1 1 auto;min-height:320px;height:auto;max-height:none;background:#85cbf5 url('../images/home/mountain-landscape.png') center 50%/cover no-repeat;isolation:isolate}
+.home-scene{position:relative;flex:1 1 auto;min-height:320px;height:auto;max-height:none;background:#85cbf5;isolation:isolate}
+.home-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;pointer-events:none}
 .home-scene:after{content:"";position:absolute;inset:auto 0 0;height:9%;background:linear-gradient(transparent,rgba(30,65,112,.08));pointer-events:none}
 .home-brand{top:max(22px,env(safe-area-inset-top));left:22px;gap:9px;color:#25283b;font-family:"Zhi Mang Xing","Ma Shan Zheng","STKaiti",KaiTi,"Kaiti SC",serif;font-size:30px;font-weight:500;letter-spacing:0}
 .home-brand img{width:82px;height:62px;object-fit:contain;order:0;margin:-10px -17px -11px -20px}
@@ -112,11 +113,10 @@ html,body,#app{background:var(--bg)}.topbar{background:#e4f5fd;border-color:#d9e
 .topbar .row-between .back{grid-column:1;justify-self:start}
 .topbar .row-between .home-return{grid-column:2;justify-self:center}
 .topbar .row-between .top-actions{grid-column:3;justify-self:end;position:static;right:auto;top:auto;display:flex;gap:9px}
-.home-sun{right:12%;top:19%;width:clamp(48px,10vw,92px);background:#ffb76f;opacity:.96;box-shadow:none}
 .home-hiker{display:block;position:absolute;z-index:1;left:clamp(-15px,6vw,11%);bottom:-7%;width:clamp(320px,42vw,640px);max-height:84%;object-fit:contain;object-position:bottom;filter:none}
 .home-content{position:relative;z-index:2;width:min(100% - 38px,1040px);padding:17px 0 19px;display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,370px);gap:14px 32px;align-items:center}
-.home-copy h1{font-family:"Zhi Mang Xing","Ma Shan Zheng","STKaiti",KaiTi,"Kaiti SC",serif;font-size:clamp(42px,7vw,72px);font-weight:500;line-height:1.04;letter-spacing:.01em;color:#25283b;margin:0 auto;text-align:center}
-.home-copy h1:after{content:"";display:block;width:78%;height:9px;margin:3px 0 0 5%;background:url('../assets/decor/pink-underline.svg') center/100% 100% no-repeat}
+.home-copy h1{font-family:"F4","Zhi Mang Xing","Ma Shan Zheng","STKaiti",KaiTi,"Kaiti SC",serif;font-size:clamp(42px,7vw,72px);font-weight:500;line-height:1.04;letter-spacing:.01em;color:#25283b;margin:0 auto;text-align:center}
+.home-copy h1:after{content:"";display:block;width:78%;height:9px;margin:3px 0 0 5%;background:url('../assets/decor/pink-underline.svg') center/100% 100% no-repeat;transform-origin:0 50%;transform:scaleX(var(--p,1));transition:transform .16s linear}
 .home-copy p{font-size:clamp(15px,2vw,21px);color:#59657c;margin:11px 0 0}
 /* 首页网格：文案与主按钮在左，到访摘要与两个榜单在右。
    文案块必须 align-self:start——榜单（右列）变高会把整行撑高，
@@ -195,7 +195,7 @@ html,body,#app{background:var(--bg)}.topbar{background:#e4f5fd;border-color:#d9e
 #app[data-page="trails"] .sec-head:first-of-type{margin-top:17px}
 
 /* Two distinct mountain roles, one shared card structure. */
-.kingcard,.kingcard.npc{isolation:isolate;min-height:166px;margin:14px 0 16px;padding:17px 16px;overflow:hidden;border:0;border-radius:24px;box-shadow:none;color:#25283b;background:#e7f7ff url('../images/home/mountain-landscape.png') right 47%/auto 150% no-repeat}
+.kingcard,.kingcard.npc{isolation:isolate;min-height:166px;margin:14px 0 16px;padding:17px 16px;overflow:hidden;border:0;border-radius:24px;box-shadow:none;color:#25283b;background:#e7f7ff url('../images/home/mountain-landscape.webp') right 47%/auto 150% no-repeat}
 .kingcard:before{inset:0;width:auto;height:auto;border:0;border-radius:0;background:linear-gradient(90deg,#eaf8ff 0%,rgba(234,248,255,.97) 47%,rgba(234,248,255,.2) 100%);pointer-events:none}
 .kingcard:after{display:none}
 .kingcard.npc{background-color:#e5f7f4}
@@ -301,7 +301,7 @@ html,body,#app{background:var(--bg)}.topbar{background:#e4f5fd;border-color:#d9e
  /* 桌面：整张插画当 hero 的底（左栏标题、左下卡片都压在图上），
     下面那个 .trailbook-landscape 只当版式占位，不再重复画一张图。 */
  .trailbook-intro{margin:0 0 28px;min-height:560px;height:auto;border-radius:22px;display:grid;grid-template-columns:43% 57%;grid-template-rows:1fr auto;
-   background:#8fe4fd url('../images/home/trailbook-hero.png') center top/cover no-repeat}
+   background:#8fe4fd url('../images/home/trailbook-hero.webp') center top/cover no-repeat}
  .trailbook-copy{grid-column:1;grid-row:1;padding:35px 28px 0;background:transparent;align-self:start}
  .trailbook-copy h1{font-size:clamp(34px,4.4vw,58px);white-space:normal;text-wrap:balance;text-align:left;margin-top:52px}
  .trailbook-copy h1:after{margin-left:50px;width:112px;height:11px}
@@ -1098,3 +1098,230 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{
 .account-copy{margin:0 0 14px;color:var(--ink2);font-size:13px;line-height:1.65}
 .account-card>.btn{width:100%}
 
+
+/* ===== 2026-10-25：首页打字机 + 城市定位 chip ===== */
+.tw-title .tw-caret,.home-slogan .tw-caret{display:inline-block;width:.07em;height:.86em;margin-left:.08em;background:currentColor;opacity:.85;vertical-align:baseline;transform:translateY(.05em)}
+.tw-caret.tw-idle{animation:tw-blink 1s steps(1) infinite}
+@keyframes tw-blink{50%{opacity:0}}
+.tw-caret.tw-caret-out{animation:none;opacity:0;transition:opacity .45s}
+@media (prefers-reduced-motion: reduce){.tw-caret{animation:none;opacity:0}}
+.home-copy h1 .tw-caret{background:#c83773}
+.home-slogan{margin:11px 0 0}
+.home-slogan .tw-caret{background:#59657c}
+.loc-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0 0}
+.loc-chip{font:inherit;font-size:13px;line-height:1;padding:7px 12px;border-radius:999px;border:1px solid #d8eaf2;background:#fff;color:#2c3238;cursor:pointer}
+.loc-chip.off{color:#8a94a6}
+.loc-mini{font:inherit;font-size:12px;line-height:1;padding:6px 10px;border-radius:999px;border:1px dashed #d8eaf2;background:transparent;color:#59657c;cursor:pointer}
+
+/* ===== 2026-10-25：本地山头模块 + 提名 ===== */
+.local-peaks{margin-top:14px}
+.lp-card{background:#fff;border:1px solid #edf4f8;border-radius:18px;box-shadow:0 2px 10px rgba(37,70,98,.035);padding:13px 14px;margin-top:10px}
+.lp-main{display:flex;flex-direction:column;gap:2px;text-decoration:none;color:inherit}
+.lp-main b{font-size:15px;color:#25283b}
+.lp-main span{font-size:12px;color:#8590a3}
+.lp-stats{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:12px;color:#59657c}
+.lp-stats i{font-style:normal;font-weight:700;color:#25283b}
+.lp-first{display:inline-block;margin-top:7px;font-size:12.5px;color:#ff5298;text-decoration:none}
+.lp-board{margin-top:9px;border-top:1px dashed #edf4f8;padding-top:7px}
+.lp-board-head{font-size:11.5px;color:#8590a3;margin-bottom:3px}
+.lp-row{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12.5px;color:#3a4252;position:relative}
+.lp-pos{width:16px;color:#b4bccb;font-size:11px;text-align:center}
+.lp-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lp-time{color:#59657c;font-size:12px}
+.lp-votes{color:#ff5298;font-weight:700;font-size:12px}
+.lp-vote{font:inherit;font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid #ffd3e4;background:#fff;color:#ff5298;cursor:pointer}
+.lp-vote.on{background:#ff5298;color:#fff;border-color:#ff5298}
+.star-badge{position:absolute;right:0;top:-3px;font-size:10px;color:#ffb020;line-height:1;font-weight:700}
+.lp-empty{font-size:12px;color:#8590a3;padding:6px 2px}
+.nom-form{display:flex;gap:8px;margin-top:6px}
+.nom-form input{flex:1;min-width:0;font:inherit;font-size:13px;padding:8px 12px;border-radius:12px;border:1px solid #e3edf3;background:#fff;color:#25283b}
+.nom-form .btn{flex:0 0 auto;margin:0}
+
+/* ===== 2026-10-25：首页标题 F4 龙藏体（子集自托管）+ 毛笔书写容器 ===== */
+@font-face{font-family:"F4";src:url("../fonts/F4.woff2") format("woff2");font-display:swap}
+.home-copy h1 .home-writer{display:none;justify-content:center;align-items:flex-end;gap:min(1vw,8px);width:100%;max-width:100%;margin:-4px auto 2px;position:relative;overflow:visible}
+.home-copy h1.brush-mode{line-height:1}
+.home-copy h1.brush-mode .home-writer{display:flex;margin:-2px auto 0}
+.home-copy h1.brush-mode > [data-tw],.home-copy h1.brush-mode > .tw-caret{display:none}
+.hw-char{flex:0 0 auto;width:clamp(46px,13.5vw,58px);aspect-ratio:1;overflow:visible}
+.hw-char svg{display:block;width:100%!important;height:100%!important;max-width:100%}
+.ink-splash{position:absolute;right:0;bottom:-14%;width:min(6vw,24px);pointer-events:none;filter:blur(.3px)}
+
+
+/* ===== 品牌三层（绿山/粉山/白太阳）+ DCYY 文字框 ===== */
+.home-brand .brand-logo{position:relative;width:82px;height:62px;display:inline-block;flex:0 0 auto;margin:-10px -17px -11px -20px}
+.home-brand .brand-logo .logo-layer{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;margin:0}
+.home-brand .brand-word{display:inline-flex;gap:1px;line-height:1}
+.home-brand .brand-word .bw{font-style:normal;opacity:0;display:inline-block;transform-origin:50% 82%}
+@media (prefers-reduced-motion: reduce){
+  .home-brand .brand-word .bw{opacity:1;transform:none}
+  .home-brand .brand-logo .logo-layer{opacity:1;transform:none}
+}
+
+/* 品牌 logo 层不继承文字框的边框/底色（文字框只给 .brand-word） */
+.home-brand .brand-logo{border:0;background:none;padding:0;border-radius:0;letter-spacing:normal;font:inherit}
+
+/* ===== 首页场景层级：底图 0 < 徒步者 3 < 品牌 4 ===== */
+.home-scene .home-hiker{z-index:3}
+.home-scene .home-brand{z-index:4}
+
+/* 详情页轨迹图：放大后底图会盖满整个画布，圆角靠 svg 自身裁切保住 */
+.tracewrap svg{border-radius:12px}
+
+/* ===== 2026-10-26：坡度图可交互（拖红点 / 标注）+ 矢量等高线 ===== */
+.prof-ui{display:flex;align-items:center;gap:8px;padding:6px 2px 2px;flex-wrap:wrap}
+.prof-read{flex:1;min-width:0;font-size:12px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.prof-ui .btn.mini{padding:5px 10px;font-size:11.5px;width:auto}
+.prof-form{display:flex;gap:6px;padding:6px 0 2px;flex-wrap:wrap}
+.prof-form[hidden]{display:none}
+.prof-form input{flex:1;min-width:140px;font:inherit;font-size:13px;padding:7px 10px;border-radius:10px;border:1px solid #e3edf3;background:#fff;color:#25283b}
+.prof-notes{display:flex;flex-direction:column;gap:2px;padding:2px 0}
+.prof-note{display:flex;align-items:baseline;gap:7px;font-size:12px;color:var(--ink2);border-top:1px dashed var(--hair);padding:5px 0 0}
+.prof-note b{flex:0 0 auto;font-size:11.5px;color:#2563EB;font-variant-numeric:tabular-nums}
+.prof-note span{flex:1;min-width:0;word-break:break-word}
+.prof-note-del{flex:0 0 auto;background:none;border:0;padding:0 2px;font:inherit;font-size:11px;color:var(--ink3);cursor:pointer}
+.profilebox svg{touch-action:pan-y;cursor:crosshair}
+.prof-cursor .pc-line{stroke:#ff4d6d;stroke-width:1;stroke-dasharray:3 3;opacity:.85;vector-effect:non-scaling-stroke}
+.prof-cursor .pc-dot{fill:#ff4d6d;stroke:#fff;stroke-width:1.2}
+.prof-cursor[hidden]{display:none}
+/* 细等高线：缩放越过 1.7× 才淡入（trkApply 切 class） */
+.trk-contours .minor{opacity:0;transition:opacity .35s ease}
+.trk-contours.show-minor .minor{opacity:1}
+@media (prefers-reduced-motion: reduce){.trk-contours .minor{transition:none}}
+/* ===== 2026-10-26：占山为王卡 —— 巡山动物"跳出模块"（2.5D）+ 毛笔标题 ===== */
+/* 卡片本身不再裁切，裁切交给 .kk-bg（背景光晕/山脊在里面，照旧被圆角切住） */
+.places-page .kingcard.king-hero{overflow:visible;margin-bottom:32px}
+.kingcard .kk-bg{position:absolute;inset:0;border-radius:inherit;overflow:hidden;pointer-events:none;z-index:0}
+.kingcard .kk-bg .kk-shade{position:absolute;inset:0;background:linear-gradient(90deg,#eaf8ff 0%,rgba(234,248,255,.97) 47%,rgba(234,248,255,.2) 100%)}
+.kingcard.npc .kk-bg .kk-shade{background:linear-gradient(90deg,#eaf9f6 0%,rgba(234,249,246,.96) 47%,rgba(234,249,246,.12) 100%)}
+.kingcard .kk-bg .kk-orb{position:absolute;border-radius:50%;background:rgba(255,255,255,.24)}
+.kingcard .kk-bg .kk-orb.a{width:270px;height:270px;right:-48px;top:-92px}
+.kingcard .kk-bg .kk-orb.b{width:220px;height:220px;right:-10px;top:-58px;background:rgba(255,255,255,.18)}
+.kingcard::before,.kingcard::after{display:none}
+/* 动物探出右下角：负 margin 让它越过卡片边界，配投影+轻微倾斜做立体感 */
+.king-hero .kk-imp{z-index:3}
+.places-page .king-hero .kk-imp::after{content:"";position:absolute;right:10px;bottom:-8px;width:124px;height:20px;border-radius:50%;
+  background:radial-gradient(ellipse at center,rgba(24,58,52,.24),rgba(24,58,52,0) 72%);pointer-events:none;z-index:0}
+.places-page .king-hero .kk-mascot{position:relative;z-index:1;width:188px;height:194px;margin:0 -14px -24px 0;object-position:center bottom;
+  transform:rotate(-4deg) translateY(2px);
+  filter:drop-shadow(0 16px 18px rgba(24,58,52,.26));
+  animation:kk-peek 4.4s ease-in-out infinite}
+@keyframes kk-peek{
+  0%,100%{transform:rotate(-4deg) translateY(2px)}
+  50%{transform:rotate(-2.2deg) translateY(-6px)}
+}
+.places-page .kingcard:hover .kk-mascot,.places-page .kingcard:focus-visible .kk-mascot{animation-duration:2.2s}
+@media(max-width:699px){
+  .places-page .kingcard.king-hero{overflow:visible;margin-bottom:26px}
+  .places-page .king-hero .kk-mascot{width:146px;height:152px;margin:0 -10px -18px 0}
+  .places-page .king-hero .kk-imp::after{right:6px;bottom:-6px;width:96px;height:16px}
+}
+@media(prefers-reduced-motion:reduce){.kingcard .kk-mascot{animation:none}}
+
+/* 毛笔版「占山为王」 */
+.kk-big .kk-writer{display:none;align-items:flex-end;justify-content:flex-start;gap:6px}
+.kk-big.kk-brush .kk-writer{display:flex}
+.kk-big.kk-brush > [data-king-tw],.kk-big.kk-brush > .tw-caret{display:none}
+.kk-writer .hw-char{flex:0 0 auto;width:clamp(50px,14vw,72px);aspect-ratio:1;overflow:visible}
+.kk-writer .hw-char svg{display:block;width:100%!important;height:100%!important;max-width:100%}
+/* ===== 2026-10-26：山头页「登顶记录板」（机场航班牌 / split-flap 观感） ===== */
+.flap-board{--fb-ink:#f2ead4;--fb-dim:#8fa8a1;--fb-line:rgba(255,255,255,.1);
+  margin:8px 0 6px;border-radius:20px;color:var(--fb-ink);
+  background:radial-gradient(130% 90% at 18% 0%,#1a342c 0%,#0c1714 72%);
+  border:1px solid rgba(255,255,255,.08);box-shadow:0 12px 28px rgba(9,28,22,.28);overflow:hidden}
+.fb-head{display:flex;align-items:center;gap:8px;padding:13px 14px 8px}
+.fb-head h3{margin:0;font-size:14px;font-weight:800;letter-spacing:.3px;color:var(--fb-ink);min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fb-head h3 em{margin-left:7px;font-style:normal;font-weight:500;font-size:10.5px;color:var(--fb-dim);
+  letter-spacing:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.fb-tag{display:inline-flex;align-items:center;gap:5px;font:700 9.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:1.6px;color:#8ff0c4}
+.fb-dot{width:6px;height:6px;border-radius:50%;background:#3fe08f;animation:fbPulse 2.2s infinite}
+@keyframes fbPulse{0%{box-shadow:0 0 0 0 rgba(63,224,143,.5)}70%{box-shadow:0 0 0 7px rgba(63,224,143,0)}100%{box-shadow:0 0 0 0 rgba(63,224,143,0)}}
+.fb-refresh{margin-left:auto;flex:0 0 auto;padding:4px 9px;border-radius:999px;cursor:pointer;
+  font:700 10px/1 system-ui,-apple-system,sans-serif;color:#cfe9df;
+  border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.05)}
+.fb-refresh:hover{background:rgba(255,255,255,.12)}
+.fb-stamp{flex:0 0 auto;font:600 9.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--fb-dim)}
+.fb-tabs{display:flex;gap:6px;padding:2px 12px 8px}
+.fb-tabs button{padding:6px 13px;border-radius:999px;cursor:pointer;font:800 12px/1 system-ui,-apple-system,sans-serif;
+  color:#9fb3ad;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)}
+.fb-tabs button.on{color:#0f2a22;background:#8ff0c4;border-color:#8ff0c4}
+.fb-cols,.fb-row{display:grid;grid-template-columns:40px minmax(0,1.25fr) minmax(0,.95fr) minmax(0,1fr);
+  gap:7px;align-items:center}
+.fb-cols{padding:0 12px 5px;font:700 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:1.1px;color:var(--fb-dim);text-transform:uppercase}
+.fb-rows{padding:0 6px 2px}
+.fb-row{position:relative;padding:8px 6px;border-top:1px dashed var(--fb-line)}
+.fb-cell{position:relative;display:flex;align-items:baseline;gap:3px;min-height:26px;padding:4px 6px;border-radius:5px;
+  background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.012));
+  font:700 11.5px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;color:#f0e8d2;font-variant-numeric:tabular-nums;
+  transform-origin:50% 50%;transition:transform .26s cubic-bezier(.3,.9,.4,1),opacity .22s ease;
+  min-width:0;overflow:hidden}
+.fb-cell::after{content:"";position:absolute;left:2px;right:2px;top:50%;height:1px;background:rgba(0,0,0,.38)}
+.fb-cell.is-flip{transform:rotateX(-88deg);opacity:.3}
+.fb-cell.fb-c1{justify-content:center;color:#8ff0c4}
+.fb-v{font-style:normal;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fb-rank{font-style:normal;font-size:12px}
+.fb-star{position:absolute;right:1px;top:2px;font-size:7.5px;line-height:1;color:#ffb020}
+.fb-empty{padding:12px 8px;font-size:12px;color:#9fb3ad}
+.fb-foot{padding:9px 14px 12px;font-size:10.5px;line-height:1.6;color:#7f9791}
+@media(max-width:699px){
+  .fb-cols,.fb-row{grid-template-columns:32px minmax(0,1.15fr) minmax(0,.95fr) minmax(0,.95fr);gap:5px}
+  .fb-cell{font-size:10.5px;padding:4px 5px}
+  .fb-head h3{font-size:13px}
+  .fb-stamp{display:none}
+}
+@media(prefers-reduced-motion:reduce){
+  .fb-cell{transition:none}
+  .fb-dot{animation:none}
+}
+/* ===== 2026-10-26：路书页「热门线路坡度图 · 互动」 ===== */
+.trails-prof{margin:12px 0 4px}
+.tp-chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.tp-chips::-webkit-scrollbar{display:none}
+.tp-chip{flex:0 0 auto;max-width:46vw;padding:6px 12px;border-radius:999px;cursor:pointer;
+  font:700 11.5px/1 system-ui,-apple-system,sans-serif;color:#59657c;
+  border:1px solid #e2edf4;background:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tp-chip.on{color:#fff;background:#2563EB;border-color:#2563EB}
+.tp-box{padding:10px 12px 8px}
+.tp-box svg{touch-action:pan-y;cursor:crosshair}
+.tp-legend{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:6px 2px 2px;font-size:10.5px;color:var(--ink3)}
+.tp-more{margin-left:auto;color:#2563EB;text-decoration:none;font-weight:700}
+.tp-empty{padding:12px 4px;font-size:12px;color:var(--ink3)}
+/* 高清地形层淡入（换图不留闪） */
+.tracewrap svg .trk-terrain-hi,.trailcard svg .trk-terrain-hi{transition:opacity .35s ease}
+@media (prefers-reduced-motion: reduce){.tracewrap svg .trk-terrain-hi,.trailcard svg .trk-terrain-hi{transition:none}}
+/* ===== 2026-10-26：首页打卡两个入口（扫码 / 定位） ===== */
+.ck-hub{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:14px 0 0}
+.ck-btn{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  padding:13px 13px 12px;border-radius:18px;cursor:pointer;text-align:left;
+  text-decoration:none;color:#25283b;border:1px solid transparent;
+  transition:transform .12s ease,box-shadow .16s ease}
+.ck-btn .ico{width:22px;height:22px;stroke-width:1.8;margin-bottom:4px}
+.ck-btn b{font-size:15px;font-weight:800;letter-spacing:-.2px}
+.ck-btn em{font-style:normal;font-size:11px;line-height:1.35;color:#5b6a7d}
+.ck-btn:active{transform:scale(.978)}
+.ck-scan{background:#ff5298;color:#fff;box-shadow:0 8px 18px rgba(255,82,152,.24)}
+.ck-scan em{color:rgba(255,255,255,.86)}
+.ck-scan .ico{stroke:#fff}
+.ck-gps{background:#fff;border-color:#dbe9f1;box-shadow:0 2px 10px rgba(37,70,98,.05)}
+.ck-gps .ico{stroke:#1f9d7a}
+.ck-gps em{color:#5b6a7d}
+.ck-tip{margin:9px 0 0;font-size:11px;line-height:1.55;color:#8590a3}
+@media(max-width:360px){.ck-hub{grid-template-columns:1fr}.ck-btn{flex-direction:row;align-items:center;gap:9px}.ck-btn em{margin-left:auto;text-align:right}}
+
+/* 定位面板：定位中 / 命中 / 超范围 */
+.ck-wait{display:flex;align-items:center;justify-content:center;padding:26px 0 18px}
+.ck-spin{width:26px;height:26px;border-radius:50%;border:3px solid #e3edf3;border-top-color:#ff5298;
+  animation:ckSpin .8s linear infinite}
+@keyframes ckSpin{to{transform:rotate(360deg)}}
+.ck-hit{padding:14px 15px;border-radius:16px;background:linear-gradient(135deg,#f2fbf7,#eaf7ff);
+  border:1px solid #dcefe6}
+.ck-hit b{display:block;font-size:17px;font-weight:850;color:#173d31}
+.ck-hit span{display:block;margin-top:3px;font-size:12px;color:#55706a}
+.ck-hit em{display:block;margin-top:3px;font-style:normal;font-size:11px;color:#8590a3}
+.ck-warn{margin-top:9px;padding:9px 11px;border-radius:12px;background:#fff6e6;color:#8a5b12;font-size:11.5px;line-height:1.5}
+.ck-near-title{margin:14px 0 6px;font-size:11.5px;font-weight:800;color:#8590a3;letter-spacing:.4px}
+.ck-far{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:8px 2px;
+  border-bottom:1px dashed #edf4f8;font-size:12.5px;color:#3a4252}
+.ck-far span{font-size:11.5px;color:#8590a3}
+@media(prefers-reduced-motion:reduce){.ck-spin{animation:none}.ck-btn{transition:none}}

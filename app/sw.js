@@ -1,10 +1,13 @@
 /* Offline shell for already visited pages. Private API responses are never cached. */
-const SHELL_CACHE = 'hikes-shell-v10-5';
-const PUBLIC_CACHE = 'hikes-public-v10-5';
+const SHELL_CACHE = 'hikes-shell-v10-43';
+const PUBLIC_CACHE = 'hikes-public-v10-43';
 const SHELL = ['./', './index.html', './css/app.css', './css/redesign.css',
   './js/data.js', './js/ui.js', './js/track.js', './js/api.js',
   './js/offline-store.js', './js/king-applications.js', './js/vendor/jsqr.js',
-  './js/app.js', './js/admin.js'];
+  './js/locate.js', './js/trail-motion.js', './js/app.js', './js/admin.js',
+  './images/home/mountain-landscape.webp', './images/home/hiker.webp',
+  './js/vendor/gsap.min.js', './js/vendor/hanzi-writer.min.js', './js/home-anim.js',
+  './js/flap-board.js', './js/hanzi/data/到.json', './js/hanzi/data/此.json', './js/hanzi/data/一.json', './js/hanzi/data/游.json', './js/hanzi/data/占.json', './js/hanzi/data/山.json', './js/hanzi/data/为.json', './js/hanzi/data/王.json'];
 
 self.addEventListener('install', event => {
   /* 新版本立即接管：缓存名一变（下面 v10-2），旧的空详情缓存当场清掉，

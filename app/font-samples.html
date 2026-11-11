@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>到此一游 · 字体样张</title>
+<style>
+  :root {
+    --bg: #f7f8f4; --ink: #25283b; --ink3: #8590a3; --pink: #c83773; --line: #e3edf3;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 18px 18px 60px; }
+  h1 { font-size: 18px; margin: 8px 0 4px; }
+  p.sub { margin: 0 0 16px; font-size: 13px; color: var(--ink3); line-height: 1.6; }
+  .pills { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0 4px; }
+  .pills button { font: inherit; font-size: 12.5px; padding: 7px 13px; border-radius: 999px;
+    border: 1px solid #d8eaf2; background: #fff; color: #2c3238; cursor: pointer; }
+  .pills button.on { background: var(--pink); border-color: var(--pink); color: #fff; }
+  .stage { margin: 18px 0 8px; padding: 20px 12px 26px; text-align: center;
+    background: #fff; border: 1px solid var(--line); border-radius: 20px; }
+  .demo-title { font-size: clamp(46px, 12vw, 84px); line-height: 1.05; letter-spacing: .01em;
+    margin: 0; display: inline-block; position: relative; }
+  .demo-title .tw { white-space: pre; }
+  /* 打字机光标 */
+  .caret { display: inline-block; width: .07em; height: .86em; margin-left: .08em;
+    background: currentColor; opacity: .85; transform: translateY(.05em); vertical-align: baseline; }
+  .caret.idle { animation: blink 1s steps(1) infinite; }
+  .caret.out { opacity: 0; transition: opacity .45s; }
+  @keyframes blink { 50% { opacity: 0; } }
+  /* 标题下红线：用伪元素，宽度按打字进度生长（由 JS 设置 --p 百分比） */
+  .rule { position: relative; height: 10px; margin: 8px auto 0; width: min(78%, 340px); }
+  .rule::before { content: ""; position: absolute; inset: 0;
+    background: var(--pink); opacity: .9; border-radius: 6px;
+    transform-origin: left center; transform: scaleX(var(--p, 0));
+    transition: transform .16s linear;
+    -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 10' preserveAspectRatio='none'><path d='M1 6 C 14 2, 30 9, 50 5 S 84 2, 99 6 L 98 10 C 82 7, 66 10, 50 8 S 18 6, 2 9 Z' fill='black'/></svg>") center/100% 100% no-repeat;
+    mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 10' preserveAspectRatio='none'><path d='M1 6 C 14 2, 30 9, 50 5 S 84 2, 99 6 L 98 10 C 82 7, 66 10, 50 8 S 18 6, 2 9 Z' fill='black'/></svg>") center/100% 100% no-repeat; }
+  /* 静态对比行 */
+  .rows { display: grid; gap: 10px; margin-top: 20px; }
+  .row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; background: #fff;
+    border: 1px solid var(--line); border-radius: 16px; }
+  .row .tag { flex: 0 0 92px; font-size: 11px; color: var(--ink3); line-height: 1.35; }
+  .row .sample { flex: 1; font-size: 34px; letter-spacing: .02em; white-space: nowrap; overflow: hidden; }
+  .row .play { flex: 0 0 auto; font: inherit; font-size: 12px; padding: 6px 11px;
+    border-radius: 999px; border: 1px solid #d8eaf2; background: #fff; cursor: pointer; }
+  .hint { margin-top: 18px; font-size: 12px; color: var(--ink3); line-height: 1.7; }
+
+  /* ---------- 候选字体（最终在服务器上会换成自托管子集 woff2，这里用 CDN + 系统回退） ---------- */
+  /* 全部自托管子集（只含样张用到的十几个字，每个几 KB） */
+  @font-face{font-family:"F1";src:url("fonts/F1.woff2") format("woff2");font-display:swap}
+  @font-face{font-family:"F2";src:url("fonts/F2.woff2") format("woff2");font-display:swap}
+  @font-face{font-family:"F3";src:url("fonts/F3.woff2") format("woff2");font-display:swap}
+  @font-face{font-family:"F4";src:url("fonts/F4.woff2") format("woff2");font-display:swap}
+  @font-face{font-family:"F5";src:url("fonts/F5.woff2") format("woff2");font-display:swap}
+  @font-face{font-family:"F6";src:url("fonts/F6.woff2") format("woff2");font-display:swap}
+  @font-face{font-family:"F7";src:url("fonts/F7.woff2") format("woff2");font-display:swap}
+  @font-face{font-family:"F8";src:url("fonts/F8.woff2") format("woff2");font-display:swap}
+  .f1 { font-family: "F1", "STKaiti", KaiTi, 楷体, serif; }   /* 马善政（现用） */
+  .f2 { font-family: "F2", "STKaiti", KaiTi, 楷体, serif; }   /* 智莽行书 */
+  .f3 { font-family: "F3", "STKaiti", KaiTi, 楷体, serif; }   /* 柳建毛草 */
+  .f4 { font-family: "F4", "STKaiti", KaiTi, 楷体, serif; }   /* 龙藏体 */
+  .f5 { font-family: "F5", "PingFang SC", sans-serif; }       /* 站酷快乐体 */
+  .f6 { font-family: "F6", "PingFang SC", sans-serif; }       /* 站酷小薇 */
+  .f7 { font-family: "F7", "PingFang SC", sans-serif; }       /* 得意黑（GitHub） */
+  .f8 { font-family: "F8", "PingFang SC", sans-serif; }       /* 霞鹜文楷（GitHub） */
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>「到此一游」字体样张</h1>
+  <p class="sub">点上面的名字切换字体，下面的大字会逐字打出，红线跟着每个字一起长。</p>
+
+  <div class="pills" id="pills">
+    <button data-f="f1" class="on">1 · 马善政（现用）</button>
+    <button data-f="f2">2 · 智莽行书</button>
+    <button data-f="f3">3 · 柳建毛草</button>
+    <button data-f="f4">4 · 龙藏体</button>
+    <button data-f="f5">5 · 站酷快乐体</button>
+    <button data-f="f6">6 · 站酷小薇</button>
+    <button data-f="f7">7 · 得意黑</button>
+    <button data-f="f8">8 · 霞鹜文楷</button>
+  </div>
+
+  <div class="stage">
+    <p class="demo-title f1" id="demo" aria-label="到此一游"><span class="tw" id="tw"></span><i class="caret" id="caret" aria-hidden="true"></i></p>
+    <div class="rule" id="rule"></div>
+  </div>
+  <div class="hint" id="hint">字体：马善政 · 16ms 空等后每字 160ms</div>
+
+  <div class="rows" id="rows"></div>
+
+  <p class="hint">
+    说明：本页只是选型样张。确定后我会把选中的字体<b>子集化成十几 KB 的 woff2 自托管</b>（不依赖 Google Fonts，国内手机可秒开），
+    并把红线动画接到首页打字机上。
+  </p>
+</div>
+
+<script>
+(function () {
+  var TITLE = '到此一游';
+  var fonts = {
+    f1: { name: '马善政（现用）', cls: 'f1' },
+    f2: { name: '智莽行书', cls: 'f2' },
+    f3: { name: '柳建毛草', cls: 'f3' },
+    f4: { name: '龙藏体', cls: 'f4' },
+    f5: { name: '站酷快乐体', cls: 'f5' },
+    f6: { name: '站酷小薇', cls: 'f6' },
+    f7: { name: '得意黑', cls: 'f7' },
+    f8: { name: '霞鹜文楷', cls: 'f8' }
+  };
+  var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var tw = document.getElementById('tw');
+  var caret = document.getElementById('caret');
+  var rule = document.getElementById('rule');
+  var demo = document.getElementById('demo');
+  var hint = document.getElementById('hint');
+  var timer = null;
+
+  function type(fontKey) {
+    var f = fonts[fontKey];
+    demo.className = 'demo-title ' + f.cls;
+    hint.textContent = '字体：' + f.name + ' · 每字 160ms，红线逐字生长';
+    if (timer) { clearTimeout(timer); timer = null; }
+    tw.textContent = '';
+    rule.style.setProperty('--p', 0);
+    caret.className = 'caret idle';
+    if (reduce) {
+      tw.textContent = TITLE;
+      rule.style.setProperty('--p', 1);
+      caret.className = 'caret out';
+      return;
+    }
+    var n = 0;
+    (function tick() {
+      if (n > TITLE.length) {
+        caret.className = 'caret out';
+        return;
+      }
+      tw.textContent = TITLE.slice(0, n);
+      rule.style.setProperty('--p', n / TITLE.length);
+      caret.className = 'caret' + (n === 0 || n === TITLE.length ? ' idle' : '');
+      n++;
+      timer = setTimeout(tick, 160);
+    })();
+  }
+
+  document.getElementById('pills').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-f]');
+    if (!b) return;
+    Array.prototype.forEach.call(this.querySelectorAll('button'), function (x) {
+      x.classList.toggle('on', x === b);
+    });
+    type(b.getAttribute('data-f'));
+  });
+
+  var rows = document.getElementById('rows');
+  Object.keys(fonts).forEach(function (k) {
+    var f = fonts[k];
+    var row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = '<span class="tag">' + f.name + '</span>' +
+      '<span class="sample ' + f.cls + '">到此一游</span>' +
+      '<button class="play">播放</button>';
+    row.querySelector('.play').addEventListener('click', function () { type(k); });
+    rows.appendChild(row);
+  });
+
+  setTimeout(function () { type('f1'); }, 300);
+})();
+</script>
+</body>
+</html>

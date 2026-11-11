@@ -146,6 +146,50 @@
       });
     });
   };
+  /* ---------- 登顶用时榜 / 本地山头提名 ---------- */
+  function nominationHeaders() {
+    return authToken().then(function (tk) {
+      if (tk) return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk };
+      return guestToken().then(function (gt) {
+        return gt ? { 'Content-Type': 'application/json', 'X-Guest-Token': gt }
+                  : { 'Content-Type': 'application/json' };
+      });
+    });
+  }
+  g.API.peaksLeaderboard = function (codes) {
+    return timedFetch('/api/peaks/leaderboard?limit=10&codes=' + encodeURIComponent(codes || ''))
+      .then(function (r) { return r.ok ? r.json() : { items: {} }; })
+      .catch(function () { return { items: {} }; });
+  };
+  g.API.nominations = function (province) {
+    return nominationHeaders().then(function (h) {
+      var url = '/api/peak-nominations?limit=10' +
+        (province ? '&province=' + encodeURIComponent(province) : '');
+      return timedFetch(url, { headers: h }).then(function (r) {
+        return r.ok ? r.json() : { items: [] };
+      });
+    }).catch(function () { return { items: [] }; });
+  };
+  g.API.nominate = function (name, province, city) {
+    return nominationHeaders().then(function (h) {
+      return timedFetch('/api/peak-nominations', {
+        method: 'POST', headers: h,
+        body: JSON.stringify({ name: name, province: province || null, city: city || null })
+      }).then(function (r) {
+        return r.json().then(function (d) {
+          if (!r.ok) throw new Error((d.detail && d.detail.error && d.detail.error.message) || '提名失败');
+          return d;
+        });
+      });
+    });
+  };
+  g.API.voteNomination = function (id) {
+    return nominationHeaders().then(function (h) {
+      return timedFetch('/api/peak-nominations/' + encodeURIComponent(id) + '/vote', {
+        method: 'POST', headers: h
+      }).then(function (r) { return r.json(); });
+    });
+  };
   g.API.nearbyPoints = function (position) {
     return timedFetch('/api/points/nearby', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -191,7 +235,7 @@
        把真实原因记在 API.hotError 里，榜单空态会把它原样显示出来 */
     /* 取 50 条而不是 10 条：榜上只展示前 5，但页面上的筛选要在这 50 条里筛，
        只取 10 条的话一按「海外」就只剩两三条，筛选等于没用 */
-    settle(j('/api/peaks/hot?limit=50')),
+    settle(j('/api/peaks/hot?limit=300')),
     settle(j('/api/community/recent'))
   ]).then(function (res) {
     var routeResult = res[0], summitResult = res[1], pointResult = res[2];
@@ -208,6 +252,7 @@
     g.API.partialErrors = res.slice(1).filter(function (r) { return !r.ok; })
       .map(function (r) { return r.error; });
 
+    if (!routes) { H.trails = H.trails || []; }
     if (routes) {
       H.trails = routes.map(function (r) {
         return {
@@ -301,6 +346,10 @@
           board: [], comments: []
         };
       });
+      H.summits = H.peaks;
+    } else {
+      /* 山头清单失败时给空数组：页面上的 H.peaks.slice() 不能因为一次 429/403 整页崩掉 */
+      H.peaks = H.peaks || [];
       H.summits = H.peaks;
     }
 

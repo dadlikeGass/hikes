@@ -94,7 +94,8 @@
     hill2: '<path d="M3 19.5 10 8l4 6.5 2.5-3L21 19.5z"/><circle cx="17" cy="6" r="1.8"/>',
     info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8.2v.2"/>',
     lock: '<rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>',
-    route: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.5 6H14a3.5 3.5 0 0 1 0 7h-4a3.5 3.5 0 0 0 0 7h3"/>'
+    route: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.5 6H14a3.5 3.5 0 0 1 0 7h-4a3.5 3.5 0 0 0 0 7h3"/>',
+    pin: '<path d="M12 21s6.5-6.4 6.5-11a6.5 6.5 0 1 0-13 0C5.5 14.6 12 21 12 21z"/><circle cx="12" cy="10" r="2.4"/>'
   };
 
   function icon(name, cls) {

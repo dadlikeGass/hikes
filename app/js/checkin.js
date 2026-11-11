@@ -292,18 +292,39 @@
       if (!g.navigator.geolocation) {
         return Promise.reject(new Error('这个浏览器拿不到位置，请改用扫码打卡'));
       }
+      /* 户外采样（2026-10-25）：高精度 + 连续采样，取精度最好的样本。
+         单次 getCurrentPosition 在户外常拿到 ±100~300 m 的粗值（GPS 前十几秒在收敛），
+         而服务端要求 ≤ 50 m；采样窗口内一旦够好就提前返回。 */
       function locate(options) {
+        var windowMs = options.timeout || 15000;
+        var high = options.enableHighAccuracy !== false;
         return new Promise(function (resolve, reject) {
-          g.navigator.geolocation.getCurrentPosition(function (position) {
-            resolve({ lat: position.coords.latitude, lng: position.coords.longitude,
-                      accuracyM: Math.ceil(position.coords.accuracy) });
-          }, reject, options);
+          var best = null, settled = false, watch = null, timer = null;
+          function finish(error) {
+            if (settled) return;
+            settled = true;
+            if (watch !== null) { try { g.navigator.geolocation.clearWatch(watch); } catch (e) {} }
+            if (timer) clearTimeout(timer);
+            if (error && !best) reject(error); else resolve(best);
+          }
+          timer = setTimeout(function () { finish(best ? null : { code: 3 }); }, windowMs);
+          try {
+            watch = g.navigator.geolocation.watchPosition(function (position) {
+              var sample = { lat: position.coords.latitude, lng: position.coords.longitude,
+                             accuracyM: Math.ceil(position.coords.accuracy) };
+              if (!best || sample.accuracyM < best.accuracyM) best = sample;
+              if (high && sample.accuracyM <= 30) finish();   /* 够好就别让用户干等 */
+            }, function (error) { finish(error); },
+               { enableHighAccuracy: high, maximumAge: options.maximumAge || 0, timeout: windowMs });
+          } catch (e) {
+            finish({ code: 2 });
+          }
         });
       }
       /* 室内电脑的 GPS 经常在第一次高精度请求时超时。权限被拒就立即说清楚；
          超时/暂不可用再试一次不要求高精度的系统定位。精度仍由服务端把关，
          不会拿 Wi-Fi 粗定位冒充“已经到点位”。 */
-      return locate({ enableHighAccuracy: true, timeout: 12000, maximumAge: 0 })
+      return locate({ enableHighAccuracy: true, timeout: 20000, maximumAge: 0 })
         .catch(function (first) {
           if (first && first.code === 1) {
             throw new Error('没有定位权限：请允许本站使用定位，或改用扫码打卡');
