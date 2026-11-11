@@ -45,6 +45,9 @@ CACHE = Path(__import__("os").environ.get(
     "HIKE_DEM_CACHE", Path.home() / ".cache" / "hikes" / "terrarium"))
 
 ZOOM = 12                    # 12 级 ≈ 30 m/px，和 SRTM GL1 30 m 同级
+# 底图里是否把等高线画进栅格。设 HIKE_TERRAIN_CONTOURS=0 只出晕渲，
+# 等高线改由前端用矢量画（export_contours.py 的产物），放大不会糊。
+DRAW_CONTOURS = __import__("os").environ.get("HIKE_TERRAIN_CONTOURS", "1") != "0"
 TILE = 256
 TILE_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
 DEM_LABEL = f"Terrain Tiles terrarium z{ZOOM} (~30 m/px, AWS Open Data)"
@@ -186,16 +189,19 @@ def render(slug, pts, origin_m):
         level += 200.0 * (10.0 / 200.0) ** progress
         if level <= hi:
             levels.add(level)
-    for level in sorted(l for l in levels if lo <= l <= hi):
-        for line in find_contours(smooth, level):
-            if len(line) < 10:
-                continue
-            stride = max(1, len(line) // 1200)
-            coords = [(int(c), int(r)) for r, c in line[::stride]]
-            if len(coords) > 1:
-                major = abs((level - start_elev) / 200 - round((level - start_elev) / 200)) < .025
-                draw.line(coords, fill=(87, 132, 124, 100 if major else 62),
-                          width=2 if major else 1)
+    # 等高线可以交给前端画矢量（见 export_contours.py）：栅格里的线放大就糊，
+    # 矢量线不糊，而且能"放大才显示更细的一层"。HIKE_TERRAIN_CONTOURS=0 时底图只留晕渲。
+    if DRAW_CONTOURS:
+        for level in sorted(l for l in levels if lo <= l <= hi):
+            for line in find_contours(smooth, level):
+                if len(line) < 10:
+                    continue
+                stride = max(1, len(line) // 1200)
+                coords = [(int(c), int(r)) for r, c in line[::stride]]
+                if len(coords) > 1:
+                    major = abs((level - start_elev) / 200 - round((level - start_elev) / 200)) < .025
+                    draw.line(coords, fill=(87, 132, 124, 100 if major else 62),
+                              width=2 if major else 1)
 
     # 轨迹不画进底图：底图可复用，UI 再叠真实 GPX。
     OUT.mkdir(parents=True, exist_ok=True)
