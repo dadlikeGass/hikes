@@ -21,7 +21,17 @@
   var BASE_SCALE = 1.08;      /* 底图基础放大：给视差/呼吸留余量，不露边 */
   var BREATH = 0.045;         /* 呼吸幅度：1.08 → 1.125 */
 
-  var played = false, brandPlayed = false;
+  var played = false;
+  /* 品牌动画跟着"这一份 DOM"走：换页重来就重播，同一份 DOM 的重复渲染才直接补终态。
+     以前用一个布尔量记住"播过了"，结果从别的页面回到首页时 logo 是直接蹦出来的，
+     看起来就像"动画没了"。 */
+  var brandPlayedEl = null;
+
+  function killBrandLoops(el) {
+    if (!el || !g.gsap) return;
+    var prev = el.querySelectorAll(".logo-layer");
+    if (prev.length) g.gsap.killTweensOf(prev);
+  }
   var liveBg = null, liveHiker = null;
   var tiltBound = false;
   var brushState = null;
@@ -36,7 +46,7 @@
   function prime(canBrush) {
     if (!g.gsap || reduced()) return;
     var brand = document.getElementById('homeBrand');
-    if (brand && !brandPlayed) g.gsap.set(brand.querySelectorAll('.logo-layer'), { opacity: 0 });
+    if (brand && brandPlayedEl !== brand) g.gsap.set(brand.querySelectorAll('.logo-layer'), { opacity: 0 });
     if (!played) {
       var hiker = q('.home-scene .home-hiker');
       if (hiker) g.gsap.set(hiker, { y: 42, opacity: 0 });
@@ -262,8 +272,10 @@
 
   function brandPlay() {
     if (!g.gsap) { brandFinal(); return; }
-    if (reduced() || brandPlayed || !document.getElementById('homeBrand')) { brandFinal(); return; }
-    brandPlayed = true;
+    var brandNow = document.getElementById('homeBrand');
+    if (reduced() || !brandNow || brandPlayedEl === brandNow) { brandFinal(); return; }
+    killBrandLoops(brandNow);
+    brandPlayedEl = brandNow;
     var brand = document.getElementById('homeBrand');
     var letters = Array.prototype.slice.call(brand.querySelectorAll('.bw'));
     var green = document.getElementById('logoGreen');
@@ -297,7 +309,7 @@
   var pending = null;
   function home() {
     var canBrush = !!(hwLib() && !reduced());
-    if (brandPlayed || reduced()) brandFinal();   /* 重渲染：同步补终态，别留空窗 */
+    if (reduced()) brandFinal();                 /* 减少动态效果：直接落终态 */
     prime(canBrush);
     if (pending) clearTimeout(pending);
     pending = setTimeout(function () {
