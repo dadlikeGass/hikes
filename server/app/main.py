@@ -5582,6 +5582,7 @@ class RoutePointCandidateOut(BaseModel):
 
 class RoutePointCandidatesOut(BaseModel):
     slug: str
+    direction: str
     segmentationVersion: str
     points: list[RoutePointCandidateOut]
 
@@ -5603,7 +5604,8 @@ def list_route_point_candidates(slug: str, direction: str = "forward",
                    AND review_status = 'candidate'
                  ORDER BY forward_m""", route_id=route["id"])
     if not rows:
-        return RoutePointCandidatesOut(slug=slug, segmentationVersion="", points=[])
+        return RoutePointCandidatesOut(slug=slug, direction=direction,
+                                          segmentationVersion="", points=[])
     total_m = round(float(route["km"]) * 1000)
     ids = [r["id"] for r in rows]
     viewer = None
@@ -5634,7 +5636,7 @@ def list_route_point_candidates(slug: str, direction: str = "forward",
             latitude=float(row["latitude"]), longitude=float(row["longitude"]),
             elevationM=row["elevation_m"], reviewStatus=row["review_status"],
             votes=votes.get(row["id"], {}), myVerdict=mine.get(row["id"])))
-    return RoutePointCandidatesOut(slug=slug,
+    return RoutePointCandidatesOut(slug=slug, direction=direction,
                                    segmentationVersion=rows[0]["segmentation_version"] or "",
                                    points=points)
 

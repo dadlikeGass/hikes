@@ -1333,7 +1333,7 @@
         '<p>虚线＝已审核的分段边界，上方编号就是下方卡片里的段号；点某一段可联动轨迹与卡片。</p></div>';
     }
     return '<div class="profile-legend"><p class="legend-axis">横轴＝公里 · 纵轴＝海拔 m</p>' + slope +
-      '<p>底色透明，地形透过来。</p></div>';
+      '<p>地形按坡度分档填色，颜色越暖越陡；拖动可查看任意位置的海拔与坡度。</p></div>';
   }
   function publicDifficultyControls(t) {
     if (!t.difficultyV2) return '';
@@ -1447,7 +1447,7 @@
         var votes = point.votes || {};
         var km = reverse ? point.displayKm : point.forwardKm;
         return '<div class="route-point-row point-confirm-row">' +
-          '<span class="point-type">' + esc(pointTypeLabel(point.pointType, cand.direction || 'forward')) + '</span>' +
+          '<span class="point-type">' + esc(pointTypeLabel(point.pointType, cand.direction)) + '</span>' +
           '<b>' + esc(point.name || (Number(km).toFixed(2) + ' km 处点位')) + '</b>' +
           '<span class="point-meta">' + (point.elevationM ? point.elevationM + ' m · ' : '') +
           '里程 ' + Number(km).toFixed(2) + ' km · 确认 ' + (votes.confirm || 0) +
@@ -1480,7 +1480,8 @@
       '<form class="terrain-feedback-form" data-segment-id="' + esc(sid) + '" data-direction="' + esc(direction) + '">' +
       '<label class="feedback-field">信息类型<select name="feedbackType"><option value="long_term">长期路况 / 技术特征</option><option value="temporary">临时天气 / 封路 / 施工</option></select></label>' +
       '<fieldset><legend>主要路面</legend><label><input type="radio" name="surface" value="cement"> 水泥 / 铺装</label><label><input type="radio" name="surface" value="soil"> 土路</label><label><input type="radio" name="surface" value="gravel"> 碎石</label><label><input type="radio" name="surface" value="steps"> 石阶</label></fieldset>' +
-      '<fieldset><legend>通过方式（可多选）</legend><label><input type="checkbox" name="technique" value="hands"> 需要用手辅助</label><label><input type="checkbox" name="technique" value="exposure"> 临崖 / 暴露</label><label><input type="checkbox" name="technique" value="fallen-tree"> 倒木或障碍</label></fieldset>' +
+      '<fieldset><legend>通过方式（可多选）</legend><label><input type="checkbox" name="technique" value="hands"> 需要用手辅助</label><label><input type="checkbox" name="technique" value="exposure"> 临崖 / 暴露</label></fieldset>' +
+      '<fieldset><legend>障碍（可多选）</legend><label><input type="checkbox" name="obstacle" value="fallen-tree"> 倒木</label><label><input type="checkbox" name="obstacle" value="overgrown"> 路径不明显 / 草木茂密</label></fieldset>' +
       '<label class="feedback-field">影响范围<select name="extent"><option value="few">少量</option><option value="partial">部分</option><option value="major">主要路段</option></select></label>' +
       '<label class="feedback-field">补充说明<textarea name="note" maxlength="160" placeholder="只描述你实际看到的路况"></textarea></label>' +
       '<p class="hint">提交后进入待审核队列，不会立即改变公开难度；管理员核验后才可能进入下一版发布。</p>' +
@@ -1533,7 +1534,7 @@
       var body = { travelDirection: form.getAttribute('data-direction'),
         feedbackType: (form.querySelector('[name="feedbackType"]') || {}).value || 'long_term',
         surfaceTypes: picked('surface'), techniqueTypes: picked('technique'),
-        obstacleTypes: picked('technique').filter(function (v) { return v === 'fallen-tree'; }),
+        obstacleTypes: picked('obstacle'),
         extent: (form.querySelector('[name="extent"]') || {}).value || 'few',
         note: (form.querySelector('[name="note"]') || {}).value || '' };
       t.disabled = true;
@@ -4801,6 +4802,8 @@
             /* 旧数据先留着、只标 pending：切方向时不要掉回旧坡度分段再跳回来 */
             currentTrail.difficultyV2Pending = wantedDir;
             currentTrail.difficultyV2Error = false;
+            /* 候选点的里程是按方向算的，切方向必须重新取 */
+            currentTrail.pointCandidates = null;
             window.API.loadSegmentDifficulties(r.id, wantedDir).then(function (result) {
               currentTrail.difficultyV2 = result;
               currentTrail.difficultyV2Direction = wantedDir;
@@ -4989,6 +4992,15 @@
       (document.getElementById('arrivalPublic') || {}).value || '');
   });
 
+  /* 无障碍：SVG 里的点位/分段是 role=button + tabindex，必须能用键盘触发 */
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    var el = e.target && e.target.closest
+      ? e.target.closest('[data-act="route-point-select"],[data-act="route-segment-select"]') : null;
+    if (!el) return;
+    e.preventDefault();
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
   document.addEventListener('click', function (e) {
     var t = e.target.closest('[data-act]');
     if (!t) return;
