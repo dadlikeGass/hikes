@@ -4547,7 +4547,7 @@ def short_link(code: str, request: Request):
          responses={200: {"content": {"image/svg+xml": {}}, "description": "SVG 二维码"},
                     404: {"description": "编号不存在"},
                     503: {"description": "服务端没装 qrcode 依赖"}})
-def qr_svg(code: str, box: int = 10, border: int = 2):
+def qr_svg(code: str, box: int = 10, border: int = 4):
     """二维码里编码的是 PUBLIC_BASE_URL + /p/{code}。
     编号不存在时 404——避免印出一张扫不开的废码。"""
     if not HAS_QR:
@@ -4556,7 +4556,8 @@ def qr_svg(code: str, box: int = 10, border: int = 2):
         err(404, "POINT_NOT_FOUND", f"编号 {code} 不存在，不能生成二维码")
     # 冻结不阻止生成二维码：牌子已印出去，拦着没意义
     url = f"{PUBLIC_BASE}/p/{code}"
-    img = qrcode.make(url, image_factory=qrcode.image.svg.SvgPathImage,
+    img = qrcode.make(url, error_correction=qrcode.constants.ERROR_CORRECT_L,
+                       image_factory=qrcode.image.svg.SvgPathImage,
                       box_size=box, border=border)
     buf = io.BytesIO()
     img.save(buf)
