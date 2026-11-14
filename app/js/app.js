@@ -1169,12 +1169,13 @@
             (t.canMaintainRoute && pk.candidate_id ? '<button class="btn ghost" style="width:auto;padding:5px 9px;font-size:11px" data-act="peak-name-review" data-idx="'+pk.idx+'" data-cid="'+pk.candidate_id+'">确认「'+esc(pk.candidate_name)+'」</button><button class="btn ghost" style="width:auto;padding:5px 9px;font-size:11px" data-act="peak-name-reject" data-idx="'+pk.idx+'" data-cid="'+pk.candidate_id+'">驳回</button>' : '') +
           '</div>';
         }).join('') + '</div>' : '') +
-      '<div class="card tight">' + apiSegTable(t) +
+      /* 旧「段内最长连续爬升 + 平均坡度」评级是另一套口径，V2 线路不再展示 */
+      (t.difficultyV2 ? '' : '<div class="card tight">' + apiSegTable(t) +
       '<div style="font-size:11.5px;color:var(--ink3);padding:10px 0 2px;line-height:1.7">' +
       '段难度只看<strong>段内最长连续爬升</strong>与<strong>平均坡度</strong>：' +
       '最长连续爬升 ≤200 / 200–500 / &gt;500 m，坡度 ≤15 / 15–25 / &gt;25%。' +
       '距离不进难度——它体现在用时与消耗里；净下坡段与爬升很小的平路不评级。' +
-      '是否要手脚并用、是否需要绳索冰爪，由山友和维护人确认。</div></div>' +
+      '是否要手脚并用、是否需要绳索冰爪，由山友和维护人确认。</div></div>') +
 
       /* 打卡点：组委会 GPX 里的 <wpt>，我们贴回轨迹算出里程与海拔。
          顺便把附近的顶带上——赛道上的顶大多就在补给点旁边，
@@ -1388,6 +1389,7 @@
     if (direction === 'reverse' && pointType === 'end') return '起点';
     return POINT_TYPE_LABELS[pointType] || '点位';
   }
+  /* 沿途点位：一行胶囊就够——名字和里程卡片里都说过，这里只承担"有哪些点、点一下定位" */
   function routePointsSection(t) {
     var data = t.difficultyV2;
     var points = (data && data.points) || [];
@@ -1396,24 +1398,21 @@
     var selected = points.filter(function (point) {
       return String(routeSelection.pointId) === String(point.pointId);
     })[0];
-    var detail = selected ? '<div class="route-point-detail">' +
+    var info = selected ? '<div class="point-chip-info">' +
       '<b>' + esc(selected.name || (selected.forwardKm.toFixed(2) + ' km 处点位')) + '</b>' +
-      '<dl><dt>类型</dt><dd>' + esc(pointTypeLabel(selected.pointType, data.direction)) + '</dd>' +
-      '<dt>海拔</dt><dd>' + (selected.elevationM ? esc(selected.elevationM) + ' m' : '暂无') + '</dd>' +
-      '<dt>顺行里程</dt><dd>' + selected.forwardKm.toFixed(2) + ' km</dd>' +
-      '<dt>反向里程</dt><dd>' + Math.max(0, total - selected.forwardKm).toFixed(2) + ' km</dd>' +
-      '<dt>名称</dt><dd>' + (selected.name ? '已审核确认' : '尚无已确认名称，按里程显示') + '</dd></dl></div>' : '';
+      '<span>' + esc(pointTypeLabel(selected.pointType, data.direction)) +
+      (selected.elevationM ? ' · ' + selected.elevationM + ' m' : '') +
+      ' · 顺行 ' + selected.forwardKm.toFixed(2) + ' km · 反向 ' +
+      Math.max(0, total - selected.forwardKm).toFixed(2) + ' km</span></div>' : '';
     return '<div class="sec-head"><h3>沿途点位</h3><span class="more">' + points.length +
-      ' 个 · 均来自已发布版本</span></div>' + detail + '<div class="route-points">' +
+      ' 个 ›</span></div><div class="point-chips">' +
       points.map(function (point) {
-        return '<button class="route-point-row' + selectedRouteClass(point.pointId, null) +
-          '" data-act="route-point-select" data-route-point-id="' + esc(point.pointId) + '">' +
-          '<span class="point-type">' + esc(pointTypeLabel(point.pointType, data.direction)) + '</span>' +
-          '<b>' + esc(point.name || (point.forwardKm.toFixed(2) + ' km 处点位')) + '</b>' +
-          '<span class="point-meta">' + (point.elevationM ? point.elevationM + ' m · ' : '') +
-          '顺行 ' + point.forwardKm.toFixed(2) + ' km · 反向 ' +
-          Math.max(0, total - point.forwardKm).toFixed(2) + ' km</span></button>';
-      }).join('') + '</div>';
+        return '<button class="point-chip' + selectedRouteClass(point.pointId, null) +
+          '" data-act="route-point-select" data-route-point-id="' + esc(point.pointId) + '" title="' +
+          esc(point.forwardKm.toFixed(2) + ' km') + '">' +
+          '<i>' + esc(pointTypeLabel(point.pointType, data.direction).slice(0, 2)) + '</i>' +
+          esc(point.name || (point.forwardKm.toFixed(2) + ' km')) + '</button>';
+      }).join('') + '</div>' + info;
   }
   function publicSegmentCards(t) {
     var pd = window.PUBLIC_DIFFICULTY, data = t.difficultyV2, d = data.direction;
@@ -1882,16 +1881,25 @@
       });
     }
     if (prof.length < 2) return '';
-    var W = 380, H = 178, L = 40, R = 8, T = 24, B = 30, n = prof.length;
-    var min = hasElevation ? Math.floor(Math.min.apply(null, prof) / 100) * 100 : 0;
-    var max = hasElevation ? Math.ceil(Math.max.apply(null, prof) / 100) * 100 : 1;
-    if (max <= min) max = min + 100;
+    var W = 380, H = 200, L = 40, R = 8, T = 30, B = 28, n = prof.length;
+    var rawMin = hasElevation ? Math.min.apply(null, prof) : 0;
+    var rawMax = hasElevation ? Math.max.apply(null, prof) : 1;
+    var rawSpan = Math.max(1, rawMax - rawMin);
+    /* 档位按该线路自身跨度自适应，避免大跨度永远只有 4~5 条网格线 */
+    var step = rawSpan <= 300 ? 50 : rawSpan <= 500 ? 100 : rawSpan <= 1000 ? 200 : 250;
+    /* 底部按整百取整（不跟着档位跳到 0），顶部从底部逐档递增到超过最高点，再取一档 */
+    var min = hasElevation ? Math.floor(rawMin / 100) * 100 : 0;
+    var max = min + step;
+    if (hasElevation) {
+      while (max <= rawMax) max += step;
+    }
+    if (max <= rawMax) max = rawMax + step;
     function X(i) { return L + i / (n - 1) * (W - L - R); }
     function Y(v) { return H - B - (v - min) / (max - min) * (H - T - B); }
     var line = prof.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' ');
     var o = '<svg data-prof-id="' + esc(t.id) + '" viewBox="0 0 ' + W + ' ' + H + '" ' +
-      'preserveAspectRatio="none" style="display:block;width:100%;height:166px">';
-    for (var alt = min; alt <= max; alt += (max - min > 1000 ? 300 : 100)) {
+      'preserveAspectRatio="none" style="display:block;width:100%;height:200px">';
+    for (var alt = min; alt <= max; alt += step) {
       var gy = Y(alt);
       o += '<path d="M' + L + ' ' + gy.toFixed(1) + 'H' + (W - R) + '" stroke="#dce5e3" stroke-width="1"/>' +
         (hasElevation ? '<text x="2" y="' + (gy + 3).toFixed(1) + '" font-size="8" fill="#718096">' + alt + 'm</text>' : '');

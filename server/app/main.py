@@ -5723,6 +5723,41 @@ def adopt_point_confirmation(point_id: int, body: RoutePointAdoptIn,
     return {"pointId": point_id, "reviewStatus": new_status,
             "pointType": new_type, "name": new_name, "slug": before["slug"]}
 
+
+
+class RoutePointRenameIn(BaseModel):
+    name: str | None = None
+    pointType: Literal["start", "end", "peak", "valley", "saddle", "waist",
+                       "supply", "village", "landmark"] | None = None
+    note: str = ""
+
+
+@app.post("/api/admin/route-points-v2/{point_id}/rename", tags=["路书"],
+          responses={**ERR_401, **ERR_403, **ERR_404})
+def admin_rename_published_route_point(point_id: int, body: RoutePointRenameIn,
+                                       uid: int = Depends(require_route_curator)):
+    """改点位名称/类型，已发布的也能改（PATCH 只允许未发布点，改名一直只能走 SQL）。
+
+    只改当前展示值并留审计；版本化发布留给下一阶段。
+    """
+    before = q1("SELECT * FROM route_points_v2 WHERE id=:pid", pid=point_id)
+    if not before:
+        err(404, "ROUTE_POINT_NOT_FOUND", "点位不存在")
+    new_name = body.name if body.name is not None else before["name"]
+    new_type = body.pointType or before["point_type"]
+    with engine.begin() as conn:
+        conn.execute(text("""UPDATE route_points_v2 SET name=:name, point_type=:ptype, updated_at=now()
+                              WHERE id=:pid"""),
+                     {"name": new_name, "ptype": new_type, "pid": point_id})
+        conn.execute(text("""INSERT INTO route_point_review_audit
+                (route_point_id, actor_id, before_payload, after_payload)
+                VALUES (:pid,:actor,CAST(:b AS jsonb),CAST(:a AS jsonb))"""),
+            {"pid": point_id, "actor": uid,
+             "b": json.dumps({"name": before["name"], "point_type": before["point_type"]}, ensure_ascii=False),
+             "a": json.dumps({"name": new_name, "point_type": new_type, "note": body.note}, ensure_ascii=False)})
+    return {"pointId": point_id, "name": new_name, "pointType": new_type}
+
+
 # 挂在最后，避免覆盖 /api 路由。前端产物来自仓库 app/（同一套设计令牌）。
 import pathlib  # noqa: E402
 

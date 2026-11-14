@@ -1399,3 +1399,14 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{
 .point-confirm-row{grid-template-columns:auto 1fr}
 .point-confirm-row .btn.mini{grid-column:1/-1;grid-row:auto;width:100%}
 }
+
+/* 沿途点位改成一行胶囊：不再占半屏纵向列表 */
+.point-chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 6px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.point-chips::-webkit-scrollbar{display:none}
+.point-chip{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;border:1px solid #dfe8ee;background:#f7fafc;color:#25283b;font:inherit;font-size:11.5px;font-weight:700;padding:7px 11px;border-radius:999px;cursor:pointer}
+.point-chip i{font-style:normal;font-size:10px;font-weight:800;color:#218f88;background:#e6f8f6;border-radius:6px;padding:2px 5px}
+.point-chip.route-point-selected{background:#fff0f6;border-color:#ffd0e2;color:#c83773}
+.point-chip.route-point-selected i{color:#c83773;background:#ffe4ef}
+.point-chip-info{margin-top:6px;padding:10px 12px;border-radius:12px;background:#f6f9fb;display:flex;flex-direction:column;gap:3px}
+.point-chip-info b{font-size:13.5px;color:#25283b}
+.point-chip-info span{font-size:11.5px;color:#7c879b}
