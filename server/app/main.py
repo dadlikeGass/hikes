@@ -5563,6 +5563,7 @@ def get_route_segment_difficulties(slug: str, direction: str = "forward"):
 class RoutePointConfirmationIn(BaseModel):
     verdict: Literal["confirm", "relocate", "reject"]
     note: str = ""
+    suggestedName: str | None = None
 
 
 class RoutePointCandidateOut(BaseModel):
@@ -5601,7 +5602,8 @@ def list_route_point_candidates(slug: str, direction: str = "forward",
                        elevation_m, review_status, segmentation_version
                   FROM route_points_v2
                  WHERE route_id=:route_id
-                   AND review_status = 'candidate'
+                   AND (review_status = 'candidate'
+                        OR (review_status = 'published' AND name IS NULL))
                  ORDER BY forward_m""", route_id=route["id"])
     if not rows:
         return RoutePointCandidatesOut(slug=slug, direction=direction,
@@ -5648,18 +5650,20 @@ def submit_route_point_confirmation(slug: str, point_id: int, body: RoutePointCo
     """一人一点一票，可改票。只记录，不触发任何公开变更。"""
     row = q1("""SELECT p.id FROM route_points_v2 p JOIN routes r ON r.id=p.route_id
                  WHERE p.id=:point_id AND r.slug=:slug
-                   AND p.review_status = 'candidate'""",
+                   AND p.review_status IN ('candidate','published')""",
              point_id=point_id, slug=slug)
     if not row:
         err(404, "ROUTE_POINT_NOT_FOUND", "点位不存在或已结束众包确认")
     note = (body.note or "").strip()[:200]
     with engine.begin() as conn:
         conn.execute(text("""INSERT INTO route_point_confirmations
-            (route_point_id, user_id, verdict, note)
-            VALUES (:pid,:uid,:verdict,:note)
+            (route_point_id, user_id, verdict, note, suggested_name)
+            VALUES (:pid,:uid,:verdict,:note,:sname)
             ON CONFLICT (route_point_id, user_id)
-            DO UPDATE SET verdict=EXCLUDED.verdict, note=EXCLUDED.note, updated_at=now()"""),
-            {"pid": point_id, "uid": uid, "verdict": body.verdict, "note": note})
+            DO UPDATE SET verdict=EXCLUDED.verdict, note=EXCLUDED.note,
+                          suggested_name=EXCLUDED.suggested_name, updated_at=now()"""),
+            {"pid": point_id, "uid": uid, "verdict": body.verdict, "note": note,
+             "sname": (body.suggestedName or None) and (body.suggestedName.strip()[:40] or None)})
         tally = conn.execute(text("""SELECT verdict, count(*) AS n FROM route_point_confirmations
                                       WHERE route_point_id=:pid GROUP BY verdict"""),
                              {"pid": point_id}).mappings().all()
@@ -5673,14 +5677,18 @@ def admin_point_confirmation_queue(minConfirm: int = 3, uid: int = Depends(requi
                        p.review_status, r.slug, r.name AS route_name,
                        count(*) FILTER (WHERE c.verdict='confirm')  AS confirm_votes,
                        count(*) FILTER (WHERE c.verdict='relocate') AS relocate_votes,
-                       count(*) FILTER (WHERE c.verdict='reject')   AS reject_votes
+                       count(*) FILTER (WHERE c.verdict='reject')   AS reject_votes,
+                       mode() WITHIN GROUP (ORDER BY c.suggested_name)
+                         FILTER (WHERE c.suggested_name IS NOT NULL) AS top_suggested_name
                   FROM route_points_v2 p
                   JOIN routes r ON r.id = p.route_id
                   LEFT JOIN route_point_confirmations c ON c.route_point_id = p.id
-                 WHERE p.review_status = 'candidate'
+                 WHERE (p.review_status = 'candidate'
+                        OR (p.review_status = 'published' AND p.name IS NULL))
                  GROUP BY p.id, p.stable_key, p.name, p.point_type, p.forward_m,
                           p.review_status, r.slug, r.name
                 HAVING count(*) FILTER (WHERE c.verdict='confirm') >= :min_confirm
+                    OR count(*) FILTER (WHERE c.suggested_name IS NOT NULL) >= :min_confirm
                  ORDER BY confirm_votes DESC, r.slug, p.forward_m""", min_confirm=minConfirm)
     return [dict(row) for row in rows]
 
@@ -5703,11 +5711,15 @@ def adopt_point_confirmation(point_id: int, body: RoutePointAdoptIn,
     采纳后点位变成 'kept'（进待发布池）；真正对外生效仍需生成分段并走发布批次。
     """
     before = q1("""SELECT p.*, r.slug FROM route_points_v2 p JOIN routes r ON r.id=p.route_id
-                    WHERE p.id=:pid AND p.review_status = 'candidate'""",
+                    WHERE p.id=:pid AND p.review_status IN ('candidate','published')""",
                 pid=point_id)
     if not before:
         err(404, "ROUTE_POINT_NOT_FOUND", "点位不存在或已处理")
-    new_status = "kept" if body.decision == "accept" else "dropped"
+    # 已发布点位被采纳时保持 published（不回退状态），只更新名称/类型
+    if before["review_status"] == "published":
+        new_status = "published"
+    else:
+        new_status = "kept" if body.decision == "accept" else "dropped"
     new_type = body.pointType or before["point_type"]
     new_name = body.name if body.name is not None else before["name"]
     with engine.begin() as conn:

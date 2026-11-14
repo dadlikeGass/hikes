@@ -1450,10 +1450,12 @@
     var cand = t.pointCandidates;
     if (!cand || !(cand.points || []).length) return '';
     var reverse = routeDirection() === 'reverse';
-    return '<section class="point-confirm"><div class="sec-head"><h3>帮忙核对这条线的峰谷</h3>' +
-      '<span class="more">' + cand.points.length + ' 个待确认</span></div>' +
-      '<p class="point-confirm-note">这条线路的分段还没定稿。你只需要回答"这个位置对不对"，' +
-      '不需要判断难度。够票数后由管理员终审，不会因为投票直接改变公开内容。</p>' +
+    var anyName = cand.points.some(function (p) { return p.name; });
+    return '<section class="point-confirm"><div class="sec-head"><h3>' +
+      (anyName ? '帮忙补全点位名称' : '帮忙核对这条线的峰谷') + '</h3>' +
+      '<span class="more">' + cand.points.length + ' 个待核对</span></div>' +
+      '<p class="point-confirm-note">只需要回答"这个位置对不对、该叫什么"，不需要判断难度。' +
+      '建议够数后由管理员终审，不会因为投票直接改变公开内容。</p>' +
       '<div class="route-points">' + cand.points.map(function (point) {
         var votes = point.votes || {};
         var km = reverse ? point.displayKm : point.forwardKm;
@@ -1477,6 +1479,7 @@
       '<label><input type="radio" name="verdict" value="confirm" checked> 位置和类型都对</label>' +
       '<label><input type="radio" name="verdict" value="relocate"> 位置偏了（应该在别的里程上）</label>' +
       '<label><input type="radio" name="verdict" value="reject"> 这里不是峰顶/谷地</label></fieldset>' +
+      '<label class="feedback-field">建议名称（可选）<input name="suggestedName" maxlength="40" placeholder="例如：茶棚、五指峰"></label>' +
       '<label class="feedback-field">补充说明（可选）<textarea name="note" maxlength="160" placeholder="例如：其实在 6.1 km 处的鞍部"></textarea></label>' +
       '<p class="hint">众包只提供信号：够票数后由管理员终审，不会直接改变公开内容。</p>' +
       '<button type="button" class="btn coral" data-act="point-confirm-submit">提交</button>' +
@@ -1523,9 +1526,11 @@
       var pf = t.closest('.point-confirm-form');
       var verdict = (pf.querySelector('[name="verdict"]:checked') || {}).value || 'confirm';
       var noteEl = pf.querySelector('[name="note"]');
+      var nameEl = pf.querySelector('[name="suggestedName"]');
       t.disabled = true;
       window.API.submitPointConfirmation(pf.getAttribute('data-route'),
-        pf.getAttribute('data-point-id'), { verdict: verdict, note: (noteEl || {}).value || '' })
+        pf.getAttribute('data-point-id'), { verdict: verdict, note: (noteEl || {}).value || '',
+                                             suggestedName: (nameEl || {}).value || '' })
         .then(function () {
           U.closeSheet();
           U.toast('已记录，谢谢你帮忙核对');
@@ -4832,7 +4837,7 @@
               if (parse().name === 'trail' && parse().id === currentTrail.id) render();
             });
           }
-          if (currentTrail && !currentTrail.difficultyV2 && window.API && window.API.loadPointCandidates &&
+          if (currentTrail && window.API && window.API.loadPointCandidates &&
               !currentTrail.pointCandidatesLoading && !currentTrail.pointCandidates) {
             currentTrail.pointCandidatesLoading = true;
             window.API.loadPointCandidates(r.id, wantedDir).then(function (result) {
