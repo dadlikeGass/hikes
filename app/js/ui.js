@@ -105,7 +105,7 @@
 
   /* 难度标识：彩色形状 + 文字，形状颜色固定为 绿 / 蓝 / 深红 / 黑 */
   function levelMark(level, text) {
-    var L = g.HIKES.levels[level];
+    var L = g.HIKES.levels[level] || g.HIKES.levels.mid;   /* 未知等级（如 none）不再抛异常 */
     var svg = g.UI.shapeSVG ? g.UI.shapeSVG(level) : '';
     return '<span class="lvmark"><span class="lvshape">' + svg + '</span>' +
       (text === '' ? '' : esc(text || L.short)) + '</span>';

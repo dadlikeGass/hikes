@@ -978,8 +978,8 @@
       '<div class="profilebox tp-box" data-profbox="' + esc(t.id) + '">' +
       (svg || '<div class="tp-empty">这条线路还没有坡度剖面数据。</div>') +
       profUIHTML() +
-      '<div class="tp-legend"><span style="color:#52B44A">● ≤15% 缓</span>' +
-      '<span style="color:#2563EB">● 15–25% 中</span><span style="color:#9E1B1B">● &gt;25% 陡</span>' +
+      '<div class="tp-legend"><span style="color:#7fae86">● ≤15% 缓</span>' +
+      '<span style="color:#d9a94e">● 15–25% 中</span><span style="color:#b8563f">● &gt;25% 陡</span>' +
       '<a class="tp-more" href="#/trails/' + encodeURIComponent(t.id) + '">看完整路书 ›</a></div>' +
       '</div>';
   }
@@ -1245,7 +1245,7 @@
   function pad(n) { return (n < 10 ? '0' : '') + n; }
 
   /* ============ 详情页：全部读服务端算好的结果，前端不再重算（P6） ============ */
-  var LV_C = { easy: '#52B44A', mid: '#2563EB', hard: '#9E1B1B', hidden: '#22242E' };
+  var LV_C = { easy: '#7fae86', mid: '#d9a94e', hard: '#b8563f', hidden: '#22242E' };
   var LV_T = { easy: '简单', mid: '中等', hard: '困难', hidden: '隐藏' };
   var KND = { climb: '爬升', desc: '下降', flat: '平缓' };
   /* 定级靠"段内最长连续爬升"：净坡度小但爬升可观的段叫"起伏"，别写成"平缓"。
@@ -1316,15 +1316,15 @@
         '<span class="map-legend-note">颜色＝整段公共难度（已按行走方向重算）· 真实 DEM</span></div>';
     }
     return '<div class="map-legend" aria-label="坡度图例"><b>坡度</b>' +
-      '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#52B44A;margin-right:4px"></i>缓</span>' +
-      '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2563EB;margin-right:4px"></i>中</span>' +
-      '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#9E1B1B;margin-right:4px"></i>陡</span>' +
+      '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#7fae86;margin-right:4px"></i>缓</span>' +
+      '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#d9a94e;margin-right:4px"></i>中</span>' +
+      '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#b8563f;margin-right:4px"></i>陡</span>' +
       '<span class="map-legend-note">真实 DEM</span></div>';
   }
   function profileLegend(t) {
     var slope = '<div class="legend-row"><b>折线颜色＝局部坡度</b>' +
-      '<span style="color:#52B44A">● ≤15% 缓</span><span style="color:#2563EB">● 15–25% 中</span>' +
-      '<span style="color:#9E1B1B">● &gt;25% 陡</span></div>';
+      '<span style="color:#7fae86">● ≤15% 缓</span><span style="color:#d9a94e">● 15–25% 中</span>' +
+      '<span style="color:#b8563f">● &gt;25% 陡</span></div>';
     if (t.difficultyV2) {
       var reverse = t.difficultyV2.direction === 'reverse';
       return '<div class="profile-legend"><p class="legend-axis">横轴＝公里（' +
@@ -1384,6 +1384,16 @@
   function textWidthOf(text, size) { return String(text || '').length * size + 6; }
   var POINT_TYPE_LABELS = { start: '起点', end: '终点', peak: '峰顶', valley: '谷地',
     saddle: '垭口', waist: '山腰', supply: '补给点', village: '村庄', landmark: '地标' };
+  /* 环线首尾同名时，终点补「（终）」以示区分 */
+  function pointDisplayName(points, point) {
+    var name = point && point.name;
+    if (!name) return null;
+    if (point.pointType !== 'end') return name;
+    var dup = (points || []).some(function (p) {
+      return p !== point && p.name === name;
+    });
+    return dup ? name + '（终）' : name;
+  }
   function pointTypeLabel(pointType, direction) {
     if (direction === 'reverse' && pointType === 'start') return '终点';
     if (direction === 'reverse' && pointType === 'end') return '起点';
@@ -1411,7 +1421,7 @@
           '" data-act="route-point-select" data-route-point-id="' + esc(point.pointId) + '" title="' +
           esc(point.forwardKm.toFixed(2) + ' km') + '">' +
           '<i>' + esc(pointTypeLabel(point.pointType, data.direction).slice(0, 2)) + '</i>' +
-          esc(point.name || (point.forwardKm.toFixed(2) + ' km')) + '</button>';
+          esc(pointDisplayName(points, point) || (point.forwardKm.toFixed(2) + ' km')) + '</button>';
       }).join('') + '</div>' + info;
   }
   function publicSegmentCards(t) {
@@ -1425,8 +1435,9 @@
     return '<section class="public-segments' + (t.difficultyV2Pending ? ' is-pending' : '') + '"><div class="sec-head"><h3>方向化分段难度</h3><span class="more">' +
       (d === 'reverse' ? '反向行走' : 'GPX 顺行') + '</span></div>' + data.segments.map(function (s) {
         var from = s.fromKm, to = s.toKm;
-        var fromLabel = (s.fromPoint && s.fromPoint.name) || (from + ' km');
-        var toLabel = (s.toPoint && s.toPoint.name) || (to + ' km');
+        var allPoints = data.points || [];
+        var fromLabel = pointDisplayName(allPoints, s.fromPoint) || (from + ' km');
+        var toLabel = pointDisplayName(allPoints, s.toPoint) || (to + ' km');
         return '<article class="public-segment-card' + selectedRouteClass(null, s.segmentId) + '" data-act="route-segment-select" data-physical-segment-id="' + esc(s.segmentId) + '" style="--difficulty-color:' + pd.colorForGrade(s.grade.key) + '">' +
           '<div class="segment-grade"><span>' + (d === 'reverse' ? '反向' : '顺行') + '第 ' + s.displayOrder + ' 段</span><strong>' + esc(s.grade.label) + '</strong></div>' +
           '<div class="segment-body"><b>' + esc(fromLabel) + ' → ' + esc(toLabel) + '</b><span>' + from + '–' + to + ' km · 爬升 ' + s.ascentM + ' m · 下降 ' + s.descentM + ' m</span>' +
@@ -1813,9 +1824,9 @@
   /* ② 坡度图：按坡度自动分段（≤15% 绿 · 15–25% 蓝 · >25% 深红）
      同名点：剖面是等距重采样的，所以相邻两点的高差 / 水平距离就是这一小段的坡度。 */
   var SLOPE_BANDS = [
-    { max: 15, level: 'easy', color: '#52B44A' },
-    { max: 25, level: 'mid', color: '#2563EB' },
-    { max: 1e9, level: 'hard', color: '#9E1B1B' }
+    { max: 15, level: 'easy', color: '#7fae86' },
+    { max: 25, level: 'mid', color: '#d9a94e' },
+    { max: 1e9, level: 'hard', color: '#b8563f' }
   ];
   function slopeColor(pct) {
     for (var i = 0; i < SLOPE_BANDS.length; i++) {
@@ -2007,14 +2018,18 @@
     /* ---- 底部分段难度色带（与地图同一套七档色） ---- */
     if (publicSegments) {
       var barY = baseY + 18, barH = 7;
+      /* 连续缎带：段与段之间不留缝，选中段只做高度微抬，视觉上不打断 */
       publicSegments.forEach(function (s) {
         var x0 = XK(s.fromKm), x1 = XK(s.toKm);
         var onSegment = String(routeSelection.segmentId) === String(s.segmentId);
-        o += '<rect class="prof-segbar" x="' + (x0 + 0.6).toFixed(1) + '" y="' + (barY + (onSegment ? -1.5 : 0)) +
-          '" width="' + Math.max(1, x1 - x0 - 1.2).toFixed(1) + '" height="' + (onSegment ? barH + 3 : barH) +
-          '" rx="1.5" fill="' + window.PUBLIC_DIFFICULTY.colorForGrade(s.grade.key) + '"/>';
+        var isFirst = s === publicSegments[0], isLast = s === publicSegments[publicSegments.length - 1];
+        o += '<rect class="prof-segbar" x="' + x0.toFixed(1) + '" y="' + (barY + (onSegment ? -1.5 : 0)) +
+          '" width="' + Math.max(0.8, x1 - x0).toFixed(1) + '" height="' + (onSegment ? barH + 3 : barH) +
+          '" rx="' + (isFirst || isLast ? 3 : 0) + '" fill="' +
+          window.PUBLIC_DIFFICULTY.colorForGrade(s.grade.key) + '"/>';
       });
-      o += '<text x="' + L + '" y="' + (barY + barH + 9) + '" font-size="7" fill="#a7b3bd">分段难度</text>';
+      o += '<text x="' + (W - R) + '" y="' + (barY + barH + 9) + '" text-anchor="end" font-size="7" ' +
+        'fill="#a7b3bd">分段难度 · 颜色同地图</text>';
     }
 
     /* 交互层要用的几何参数（拖动红点算里程 / 海拔） */

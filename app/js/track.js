@@ -180,6 +180,7 @@
   function signage(place, opt) {
     opt = opt || {};
     var level = place.level || opt.level || 'mid';
+    if (!g.HIKES.levels[level]) level = 'mid';   /* 未知等级兜底，避免读数崩溃 */
     var L = g.HIKES.levels[level];
     var code = place.code || opt.code || ('QSD-' + (place.seq || 100));
     var alt = place.alt ? (place.alt + 'M')
