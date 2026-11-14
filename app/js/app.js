@@ -4757,7 +4757,8 @@
         break;
       case 'arrive': r.name = 'arrive'; r.id = parts[1] || ''; r.parent = '#/scan'; break;
       case 'admin':
-        r.name = parts[1] === 'p' ? 'admin-p' : 'admin';
+        r.name = parts[1] === 'p' ? 'admin-p'
+          : parts[1] === 'confirmations' ? 'admin-confirm' : 'admin';
         r.id = parts[2] || null;
         r.parent = '#/admin';
         break;
@@ -4774,7 +4775,7 @@
     'me-activity': '发起活动', 'me-managed': '我管理的留言版',
     'king-apply': '统一申请', 'king-applications': '我的申请', 'king-application': '申请进度',
     messages: '通知',
-    admin: '维护台', 'admin-p': '管理点位'
+    admin: '维护台', 'admin-p': '管理点位', 'admin-confirm': '点位确认'
   };
 
   function render() {

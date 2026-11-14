@@ -1418,3 +1418,15 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{
 .route-profile-point.route-point-selected circle{fill:#1f3a30;stroke:#fff;stroke-width:2}
 .prof-segbar{transition:opacity .15s}
 .public-segment-card.route-point-selected ~ .profilebox .prof-segbar{opacity:.6}
+
+/* 管理员：峰谷点位确认队列 */
+.cqrow{padding:12px 2px;border-bottom:1px solid var(--hair)}
+.cqrow:last-child{border-bottom:0}
+.cqhead{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.cqhead b{font-size:14px;color:#25283b}
+.cqhead span{font-size:11.5px;color:#7c879b}
+.cqvotes{margin-top:4px;font-size:11.5px;color:#536077;font-weight:700}
+.cqtags{margin-top:4px;font-size:11.5px}
+.cqtags i{font-style:normal;color:#218f88;background:#e6f8f6;padding:3px 8px;border-radius:8px}
+.cq-form .feedback-field{display:block;margin-bottom:12px}
+.cq-form input,.cq-form select{width:100%}

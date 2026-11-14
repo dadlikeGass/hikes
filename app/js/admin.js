@@ -429,7 +429,11 @@
       fillCommentAppeals();
       fillTrailheadQueue();
     }, 0);
-    return '<div class="pad"><div class="sec-head"><h3>我维护的山头</h3></div>' +
+    return '<div class="pad"><div class="sec-head"><h3>点位审核</h3></div>' +
+      '<a class="rowlink" href="#/admin/confirmations"><span class="em">' + U.icon('hill') + '</span>' +
+      '<div class="tx"><b>峰谷点位确认</b><span>众包建议名称与位置，采纳后写回公开数据</span></div>' +
+      '<span class="ar">›</span></a>' +
+      '<div class="sec-head"><h3>我维护的山头</h3></div>' +
       '<div id="maintenanceList" class="card tight"><div class="empty">正在读取…</div></div>' +
       '<div id="trailheadQueue"></div>' +
       '<div id="adqueue"></div><div id="masterQueue"></div><div id="clanQueue"></div>' +
@@ -489,7 +493,98 @@
     }).catch(function () { var box = document.getElementById('liveFlagged'); if (box) box.textContent = '留言加载失败'; });
   }
 
-  g.EXTRA_VIEWS = { admin: liveListView, 'admin-p': livePointView };
+
+  /* ---------- 峰谷点位众包确认队列 ---------- */
+  function confirmQueueState() {
+    g.__confirmQueue = g.__confirmQueue || { min: 3, rows: [] };
+    return g.__confirmQueue;
+  }
+  function confirmQueueShell() {
+    var st = confirmQueueState();
+    function btn(n) {
+      return '<button class="btn ghost mini" data-act="curator-confirm-threshold" data-val="' + n +
+        '"' + (st.min === n ? ' aria-pressed="true" style="background:#25283b;color:#fff"' : '') + '>≥' + n + ' 票</button>';
+    }
+    return '<div class="pad"><div class="sec-head"><h3>峰谷点位确认</h3>' +
+      '<span class="more" id="cqCount">读取中…</span></div>' +
+      '<div class="btn-row" style="gap:6px;margin-bottom:10px">' + btn(1) + btn(2) + btn(3) + btn(5) +
+      '<button class="btn ghost mini" data-act="curator-confirm-reload">刷新</button></div>' +
+      '<div id="confirmQueue" class="card tight"><div class="empty">正在读取…</div></div>' +
+      '<p class="hint" style="margin-top:10px">众包只提供信号：在这里采纳后才会写回名称与类型。' +
+      '已发布点位采纳后仍保持 published，不会退回草稿。</p></div>';
+  }
+  function loadConfirmQueue() {
+    var st = confirmQueueState();
+    var box = document.getElementById('confirmQueue');
+    var cnt = document.getElementById('cqCount');
+    if (!box) return;
+    box.innerHTML = '<div class="empty">正在读取…</div>';
+    window.API.ja('/api/admin/point-confirmations?minConfirm=' + st.min).then(function (rows) {
+      st.rows = rows || [];
+      if (cnt) cnt.textContent = st.rows.length + ' 条待处理';
+      if (!st.rows.length) {
+        box.innerHTML = '<div class="empty">这个票数下没有待确认的点位。调低阈值或等更多用户参与。</div>';
+        return;
+      }
+      box.innerHTML = st.rows.map(function (r) {
+        var km = (r.forward_m / 1000).toFixed(2);
+        var name = r.name || (km + ' km 处点位');
+        var sug = r.top_suggested_name ? '<i>建议名：' + esc(r.top_suggested_name) + '</i>' : '<i>还没有名称建议</i>';
+        return '<div class="cqrow" data-point="' + esc(r.point_id) + '">' +
+          '<div class="cqhead"><b>' + esc(name) + '</b>' +
+          '<span>' + esc(r.route_name || r.slug) + ' · ' + esc(r.point_type) + ' · ' + km + ' km</span></div>' +
+          '<div class="cqvotes">确认 ' + r.confirm_votes + ' · 位置偏 ' + r.relocate_votes +
+          ' · 不是 ' + r.reject_votes + '</div>' +
+          '<div class="cqtags">' + sug + '</div>' +
+          '<div class="btn-row" style="gap:6px;margin-top:8px">' +
+          '<button class="btn coral mini" data-act="curator-confirm-accept" data-point="' + esc(r.point_id) +
+          '" data-name="' + esc(r.top_suggested_name || r.name || '') + '" data-type="' + esc(r.point_type) +
+          '" data-km="' + km + '" data-slug="' + esc(r.slug) + '">采纳</button>' +
+          '<button class="btn ghost mini" data-act="curator-confirm-reject" data-point="' + esc(r.point_id) +
+          '" data-slug="' + esc(r.slug) + '">驳回</button>' +
+          '<a class="btn ghost mini" href="#/trails/' + esc(r.slug) + '">看线路</a>' +
+          '</div></div>';
+      }).join('');
+    }).catch(function (err) {
+      var code = err && err.message && err.message.indexOf('403') >= 0 ? 'FORBIDDEN' : 'ERR';
+      box.innerHTML = '<div class="empty">' +
+        (code === 'FORBIDDEN'
+          ? '需要「路线资料审核员」权限。让管理员执行：<br><code>INSERT INTO system_roles (user_id, role) VALUES (你的 userId, &quot;route_curator&quot;)</code>'
+          : '读取失败，请先登录后重试。') + '</div>';
+      if (cnt) cnt.textContent = '无法读取';
+    });
+  }
+  function confirmQueueView() {
+    setTimeout(loadConfirmQueue, 0);
+    return confirmQueueShell();
+  }
+  function curatorAdopt(pointId, body, okText) {
+    return window.API.ja('/api/admin/point-confirmations/' + encodeURIComponent(pointId) + '/adopt',
+      { method: 'POST', body: JSON.stringify(body) }).then(function () {
+        U.toast(okText || '已处理');
+        loadConfirmQueue();
+      }).catch(function () { U.toast('操作失败，检查权限或稍后重试'); });
+  }
+  function curatorAcceptSheet(btn) {
+    var pointId = btn.getAttribute('data-point');
+    var name = btn.getAttribute('data-name') || '';
+    var type = btn.getAttribute('data-type') || 'waist';
+    var km = btn.getAttribute('data-km') || '';
+    var types = [['start', '起点'], ['end', '终点'], ['peak', '峰顶'], ['valley', '谷地'],
+      ['saddle', '垭口'], ['waist', '山腰'], ['supply', '补给点'], ['village', '村庄'], ['landmark', '地标']];
+    U.openSheet('<h3>采纳点位 #' + esc(pointId) + '</h3>' +
+      '<div class="sh-sub">里程 ' + esc(km) + ' km · 采纳后写回公开数据</div>' +
+      '<form class="cq-form">' +
+      '<label class="feedback-field">名称<input name="name" maxlength="40" value="' + esc(name) + '" placeholder="留空则保持无名"></label>' +
+      '<label class="feedback-field">类型<select name="pointType">' + types.map(function (t) {
+        return '<option value="' + t[0] + '"' + (t[0] === type ? ' selected' : '') + '>' + t[1] + '</option>';
+      }).join('') + '</select></label>' +
+      '<label class="feedback-field">审核备注<textarea name="note" maxlength="160" placeholder="为什么采纳，或调整了什么"></textarea></label>' +
+      '<button type="button" class="btn coral" data-act="curator-confirm-save" data-point="' + esc(pointId) + '">采纳并写回</button>' +
+      '<button type="button" class="btn ghost" data-act="close">取消</button></form>');
+  }
+  g.EXTRA_VIEWS = Object.assign(g.EXTRA_VIEWS || {}, { 'admin-confirm': confirmQueueView });
+
   g.EXTRA_TITLES = { admin: '维护台', 'admin-p': '管理点位' };
   g.EXTRA_ACTIONS = {
     'trailhead-publish': function (t, o) {
@@ -775,4 +870,32 @@
       U.toast('已发布 · 编号锁定，可以送印了');
     }
   };
+  /* 峰谷确认队列的动作：合并进已有的 EXTRA_ACTIONS（原文件末尾会整体赋值，必须放在其后） */
+  Object.assign(g.EXTRA_ACTIONS, {
+    'curator-confirm-reload': function () { loadConfirmQueue(); },
+    'curator-confirm-threshold': function (el) {
+      var st = confirmQueueState();
+      st.min = Number(el.getAttribute('data-val')) || 3;
+      var view = document.getElementById('view');
+      if (view) view.innerHTML = confirmQueueShell();
+      loadConfirmQueue();
+    },
+    'curator-confirm-accept': function (el) { curatorAcceptSheet(el); },
+    'curator-confirm-save': function (el) {
+      var form = el.closest('.cq-form');
+      if (!form) return;
+      var body = { decision: 'accept',
+        name: (form.querySelector('[name="name"]') || {}).value || '',
+        pointType: (form.querySelector('[name="pointType"]') || {}).value || null,
+        note: (form.querySelector('[name="note"]') || {}).value || '' };
+      el.disabled = true;
+      curatorAdopt(el.getAttribute('data-point'), body, '已采纳').then(function () {
+        U.closeSheet();
+      }).catch(function () { el.disabled = false; });
+    },
+    'curator-confirm-reject': function (el) {
+      curatorAdopt(el.getAttribute('data-point'), { decision: 'reject', note: '管理员驳回' }, '已驳回');
+    }
+  });
+
 })(window);
