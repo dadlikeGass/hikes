@@ -5095,6 +5095,592 @@ def my_king(uid: int = Depends(require_user)):
                    nextNeedKept=nxt["kept"] if nxt else None,
                    nextQuota=nxt["quota"] if nxt else None,
                    canClaimMore=used < lv["quota"])
+
+
+# ==================== 方向化分段难度 V2（从 feat/public-difficulty-h5 移植） ====================
+# 依赖：q/q1/err/engine/text/require_user 均已在本文件上方定义。
+# 公共接口只返回已发布快照；内部分数与候选永不出现在响应里。
+
+_PUBLIC_GRADE_LABELS = {
+    "general": "一般", "general_plus": "一般+", "moderate": "中等",
+    "moderate_plus": "中等+", "hard": "困难", "hard_plus": "困难+",
+    "extreme": "极度困难",
+}
+
+def require_route_curator(uid: int = Depends(require_user)) -> int:
+    if not q1("SELECT 1 AS ok FROM system_roles WHERE user_id = :u AND role IN ('route_curator','place_curator')", u=uid):
+        err(403, "ROUTE_CURATOR_FORBIDDEN", "只有路线资料审核员可以调整分段点位")
+    return uid
+
+
+
+class PublicGradeOut(BaseModel):
+    key: Literal["general", "general_plus", "moderate", "moderate_plus",
+                 "hard", "hard_plus", "extreme"]
+    label: Literal["一般", "一般+", "中等", "中等+", "困难", "困难+", "极度困难"]
+
+
+
+class RoutePointPublicOut(BaseModel):
+    pointId: int
+    stableKey: str
+    name: str | None = None
+    pointType: str
+    forwardKm: float
+    displayKm: float
+    latitude: float
+    longitude: float
+    elevationM: int | None = None
+
+
+
+class SegmentDifficultyPublicOut(BaseModel):
+    segmentId: int
+    stableKey: str
+    displayOrder: int
+    forwardOrder: int
+    reverseOrder: int
+    fromKm: float
+    toKm: float
+    trackFromKm: float
+    trackToKm: float
+    distanceKm: float
+    ascentM: int
+    descentM: int
+    fromPoint: RoutePointPublicOut
+    toPoint: RoutePointPublicOut
+    grade: PublicGradeOut
+    terrainTags: list[str] = Field(default_factory=list)
+
+
+
+class RouteSegmentDifficultiesOut(BaseModel):
+    routeId: int
+    slug: str
+    direction: Literal["forward", "reverse"]
+    segmentationVersion: str
+    modelVersion: str
+    gradeVersion: str
+    publicationVersion: int
+    publishedAt: datetime
+    points: list[RoutePointPublicOut]
+    activeAlerts: list[dict] = Field(default_factory=list)
+    segments: list[SegmentDifficultyPublicOut]
+
+
+
+class SegmentTerrainFeedbackIn(BaseModel):
+    travelDirection: Literal["forward", "reverse"]
+    feedbackType: Literal["long_term", "temporary"] = "long_term"
+    surfaceTypes: list[Literal["cement", "soil", "gravel", "steps"]] = Field(default_factory=list)
+    techniqueTypes: list[Literal["hands", "exposure"]] = Field(default_factory=list)
+    obstacleTypes: list[Literal["fallen-tree"]] = Field(default_factory=list)
+    extent: Literal["few", "partial", "major"]
+    note: str = Field(default="", max_length=500)
+
+
+
+class SegmentTerrainFeedbackReviewIn(BaseModel):
+    decision: Literal["accepted", "rejected"]
+    expiresAt: datetime | None = None
+    note: str = Field(default="", max_length=500)
+
+
+
+class RoutePointReviewPatch(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
+    pointType: Literal["start", "end", "peak", "valley", "saddle", "waist",
+                       "supply", "village", "landmark"] | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    elevationM: int | None = None
+    decision: Literal["keep", "drop"] | None = None
+
+
+
+@app.get("/api/admin/routes/{slug}/points-v2", tags=["路书"], responses={**ERR_401, **ERR_403})
+def admin_route_points_v2(slug: str, uid: int = Depends(require_route_curator)):
+    return [dict(row) for row in q("""SELECT p.id, p.stable_key, p.forward_m, p.forward_order,
+               p.point_type, p.name, p.latitude, p.longitude, p.elevation_m, p.review_status
+          FROM route_points_v2 p JOIN routes r ON r.id = p.route_id
+         WHERE r.slug = :slug AND p.review_status <> 'retired'
+         ORDER BY p.forward_order""", slug=slug)]
+
+
+
+@app.post("/api/admin/routes/{slug}/points-v2", tags=["路书"],
+          responses={**ERR_401, **ERR_403, **ERR_404})
+def create_admin_route_point_v2(slug: str, body: RoutePointReviewPatch,
+                                uid: int = Depends(require_route_curator)):
+    if body.latitude is None or body.longitude is None or body.pointType is None:
+        err(422, "ROUTE_POINT_FIELDS_REQUIRED", "新增点位必须提供类型和经纬度")
+    draft = q1("""SELECT p.id AS publication_id,p.route_id,p.segmentation_version,r.km
+        FROM route_difficulty_publications p JOIN routes r ON r.id=p.route_id
+        WHERE r.slug=:slug AND p.status='draft' ORDER BY p.publication_version DESC LIMIT 1""", slug=slug)
+    if not draft:
+        err(404, "ROUTE_PUBLICATION_DRAFT_NOT_FOUND", "请先创建路线发布草稿")
+    snapped = q1("""SELECT ST_Y(s.geom) AS latitude, ST_X(s.geom) AS longitude,
+            round(ST_LineLocatePoint(r.geom,s.geom)*r.km*1000)::int AS forward_m,
+            ST_Distance(ST_SetSRID(ST_MakePoint(:longitude,:latitude),4326)::geography,
+                        s.geom::geography) AS snap_distance_m
+        FROM routes r CROSS JOIN LATERAL (SELECT ST_ClosestPoint(r.geom,
+            ST_SetSRID(ST_MakePoint(:longitude,:latitude),4326)) AS geom) s WHERE r.slug=:slug""",
+        slug=slug, latitude=body.latitude, longitude=body.longitude)
+    if not snapped or snapped["snap_distance_m"] > 250:
+        err(422, "POINT_OUTSIDE_ROUTE", "点位距离原始轨迹过远")
+    with engine.begin() as conn:
+        point = conn.execute(text("""INSERT INTO route_points_v2
+            (stable_key,route_id,segmentation_version,forward_m,forward_order,point_type,
+             name,latitude,longitude,elevation_m,review_status,source_payload)
+            SELECT :stable_key,:route_id,:version,:forward_m,count(*),:point_type,:name,
+                   :latitude,:longitude,NULL,'candidate',jsonb_build_object('source','h5-curator')
+              FROM route_points_v2 WHERE route_id=:route_id AND segmentation_version=:version
+            RETURNING *"""),
+            {"stable_key": f"{slug}:manual:{snapped['forward_m']}:{body.pointType}",
+             "route_id": draft["route_id"], "version": draft["segmentation_version"],
+             "forward_m": snapped["forward_m"], "point_type": body.pointType,
+             "name": body.name, "latitude": snapped["latitude"],
+             "longitude": snapped["longitude"]}).mappings().one()
+        conn.execute(text("""INSERT INTO route_point_review_audit
+            (route_point_id,actor_id,before_payload,after_payload)
+            VALUES (:id,:actor,'{}'::jsonb,CAST(:after AS jsonb))"""),
+            {"id": point["id"], "actor": uid,
+             "after": json.dumps(dict(point), ensure_ascii=False, default=str)})
+    return dict(point)
+
+
+
+@app.patch("/api/admin/routes/{slug}/points-v2/{point_id}", tags=["路书"],
+           responses={**ERR_401, **ERR_403, **ERR_404})
+def patch_admin_route_point_v2(slug: str, point_id: int, body: RoutePointReviewPatch,
+                               uid: int = Depends(require_route_curator)):
+    before = q1("""SELECT p.*, r.geom AS route_geom, r.km AS route_km,
+                           r.elevation_m AS elevation_m_profile
+        FROM route_points_v2 p JOIN routes r ON r.id = p.route_id
+        WHERE p.id = :point_id AND r.slug = :slug AND p.review_status <> 'published'""",
+                point_id=point_id, slug=slug)
+    if not before:
+        err(404, "ROUTE_POINT_DRAFT_NOT_FOUND", "候选点不存在或已经发布")
+    supplied = body.model_fields_set
+    if ("latitude" in supplied) != ("longitude" in supplied):
+        err(422, "POINT_COORDINATES_INCOMPLETE", "经纬度必须一起提交")
+    values = {
+        "name": before["name"], "point_type": before["point_type"],
+        "latitude": float(before["latitude"]), "longitude": float(before["longitude"]),
+        "elevation_m": before["elevation_m"], "forward_m": before["forward_m"],
+        "review_status": before["review_status"],
+    }
+    if "name" in supplied:
+        values["name"] = body.name
+    if body.pointType is not None:
+        values["point_type"] = body.pointType
+    if "elevationM" in supplied:
+        values["elevation_m"] = body.elevationM
+    if body.decision is not None:
+        values["review_status"] = "kept" if body.decision == "keep" else "dropped"
+    if body.latitude is not None and body.longitude is not None:
+        snapped = q1("""SELECT ST_Y(s.geom) AS latitude, ST_X(s.geom) AS longitude,
+                round(ST_LineLocatePoint(r.geom, s.geom) * r.km * 1000)::int AS forward_m,
+                ST_Distance(ST_SetSRID(ST_MakePoint(:longitude,:latitude),4326)::geography,
+                            s.geom::geography) AS snap_distance_m
+            FROM routes r CROSS JOIN LATERAL (
+                SELECT ST_ClosestPoint(r.geom,
+                    ST_SetSRID(ST_MakePoint(:longitude,:latitude),4326)) AS geom) s
+            WHERE r.slug = :slug""", slug=slug, latitude=body.latitude,
+                     longitude=body.longitude)
+        if not snapped or snapped["snap_distance_m"] > 250:
+            err(422, "POINT_OUTSIDE_ROUTE", "点位距离原始轨迹过远")
+        values.update(latitude=snapped["latitude"], longitude=snapped["longitude"],
+                      forward_m=snapped["forward_m"])
+        if "elevationM" not in supplied:
+            profile = before["elevation_m_profile"] or []
+            if profile:
+                fraction = min(1, max(0, snapped["forward_m"] / (float(before["route_km"]) * 1000)))
+                values["elevation_m"] = round(profile[round(fraction * (len(profile) - 1))])
+    with engine.begin() as conn:
+        after = conn.execute(text("""UPDATE route_points_v2 SET name=:name,
+            point_type=:point_type, latitude=:latitude, longitude=:longitude,
+            elevation_m=:elevation_m, forward_m=:forward_m,
+            review_status=:review_status, updated_at=now() WHERE id=:point_id
+            RETURNING id, stable_key, name, point_type, latitude, longitude,
+                      elevation_m, forward_m, review_status"""),
+            {**values, "point_id": point_id}).mappings().one()
+        conn.execute(text("""INSERT INTO route_point_review_audit
+            (route_point_id, actor_id, before_payload, after_payload)
+            VALUES (:point_id,:actor,CAST(:before_payload AS jsonb),CAST(:after_payload AS jsonb))"""),
+            {"point_id": point_id, "actor": uid,
+             "before_payload": json.dumps(dict(before), ensure_ascii=False, default=str),
+             "after_payload": json.dumps(dict(after), ensure_ascii=False, default=str)})
+        conn.execute(text("""WITH ordered AS (
+            SELECT id, row_number() OVER (ORDER BY forward_m, stable_key) - 1 AS new_order
+              FROM route_points_v2 WHERE route_id=:route_id
+                AND segmentation_version=:segmentation_version AND review_status <> 'published')
+            UPDATE route_points_v2 p SET forward_order=ordered.new_order
+              FROM ordered WHERE p.id=ordered.id"""),
+            {"route_id": before["route_id"],
+             "segmentation_version": before["segmentation_version"]})
+    return dict(after)
+
+
+
+@app.post("/api/admin/route-publications/{publication_id}/publish", tags=["路书"],
+          responses={**ERR_401, **ERR_403, **ERR_404})
+def publish_route_publication(publication_id: int, uid: int = Depends(require_route_curator)):
+    """Validate, allocate permanent point identities/short links, then atomically activate."""
+    with engine.begin() as conn:
+        publication = conn.execute(text("""SELECT * FROM route_difficulty_publications
+            WHERE id=:id AND status='draft' FOR UPDATE"""), {"id": publication_id}).mappings().first()
+        if not publication:
+            err(404, "ROUTE_PUBLICATION_DRAFT_NOT_FOUND", "发布草稿不存在")
+        conn.execute(text("SELECT validate_route_publication(:id)"), {"id": publication_id})
+        conn.execute(text("SELECT pg_advisory_xact_lock(hashtext('route-point-code'))"))
+        rows = conn.execute(text("""SELECT rp.* FROM route_point_publication_items pi
+            JOIN route_points_v2 rp ON rp.id=pi.route_point_id
+            WHERE pi.publication_id=:id ORDER BY pi.display_order FOR UPDATE OF rp"""),
+            {"id": publication_id}).mappings().all()
+        for route_point in rows:
+            existing_id = route_point["existing_point_id"]
+            if existing_id is None:
+                next_number = conn.execute(text("""SELECT coalesce(max(
+                    CASE WHEN code ~ '^BJ-[0-9]{4}$' THEN substring(code from 4)::int END),1040)+1
+                    FROM short_links""")).scalar()
+                code = f"BJ-{next_number:04d}"
+                point_type = ("peak" if route_point["point_type"] == "peak" else
+                              "trailhead" if route_point["point_type"] in ("start", "end") else "junction")
+                existing_id = conn.execute(text("""INSERT INTO points
+                    (code,type,name,route_id,index_in_route,total_in_route,level,altitude,geom,status)
+                    VALUES (:code,:type,:name,:route_id,:idx,:total,'mid',:altitude,
+                      ST_SetSRID(ST_MakePoint(:longitude,:latitude),4326),'published') RETURNING id"""),
+                    {"code": code, "type": point_type, "name": route_point["name"] or "待命名点位",
+                     "route_id": publication["route_id"], "idx": route_point["forward_order"] + 1,
+                     "total": len(rows), "altitude": route_point["elevation_m"],
+                     "longitude": route_point["longitude"], "latitude": route_point["latitude"]}).scalar()
+                conn.execute(text("INSERT INTO short_links (code,point_id) VALUES (:code,:point_id)"),
+                             {"code": code, "point_id": existing_id})
+                conn.execute(text("UPDATE route_points_v2 SET existing_point_id=:point_id WHERE id=:id"),
+                             {"point_id": existing_id, "id": route_point["id"]})
+            elif not conn.execute(text("SELECT 1 FROM short_links WHERE point_id=:point_id"),
+                                  {"point_id": existing_id}).scalar():
+                err(409, "EXISTING_POINT_HAS_NO_SHORT_LINK", "已有点位缺少稳定短链，已停止发布")
+        conn.execute(text("""UPDATE route_points_v2 SET review_status='published'
+            WHERE id IN (SELECT route_point_id FROM route_point_publication_items
+                          WHERE publication_id=:id)"""), {"id": publication_id})
+        conn.execute(text("""UPDATE route_segments_v2 SET status='published'
+            WHERE id IN (SELECT d.segment_id FROM route_difficulty_publication_items i
+                         JOIN segment_difficulty_results d ON d.id=i.difficulty_result_id
+                         WHERE i.publication_id=:id)"""), {"id": publication_id})
+        conn.execute(text("""UPDATE segment_difficulty_results SET status='published'
+            WHERE id IN (SELECT difficulty_result_id FROM route_difficulty_publication_items
+                          WHERE publication_id=:id)"""), {"id": publication_id})
+        conn.execute(text("""UPDATE route_difficulty_publications SET status='retired'
+            WHERE route_id=:route_id AND status='published' AND id<>:id"""),
+            {"route_id": publication["route_id"], "id": publication_id})
+        conn.execute(text("""UPDATE route_difficulty_publications
+            SET status='published',published_at=now(),published_by=:uid WHERE id=:id"""),
+            {"uid": uid, "id": publication_id})
+        conn.execute(text("""INSERT INTO route_publication_audit
+            (publication_id,actor_id,action,after_payload)
+            VALUES (:id,:uid,'publish',jsonb_build_object('status','published'))"""),
+            {"id": publication_id, "uid": uid})
+    return {"id": publication_id, "status": "published"}
+
+
+
+@app.post("/api/segments-v2/{segment_id}/terrain-feedback", tags=["路书"],
+          responses={**ERR_401, **ERR_404})
+def create_segment_terrain_feedback(body: SegmentTerrainFeedbackIn, segment_id: int,
+                                    uid: int = Depends(require_user)):
+    segment = q1("""SELECT s.id FROM route_segments_v2 s
+                     WHERE s.id = :segment_id AND s.status = 'published'
+                       AND EXISTS (
+                         SELECT 1 FROM route_difficulty_publication_items i
+                         JOIN segment_difficulty_results d
+                           ON d.id = i.difficulty_result_id
+                         JOIN route_difficulty_publications p
+                           ON p.id = i.publication_id
+                        WHERE d.segment_id = s.id AND d.status = 'published'
+                          AND p.status = 'published')""",
+                 segment_id=segment_id)
+    if not segment:
+        err(404, "SEGMENT_V2_NOT_FOUND", "分段不存在或尚未发布")
+    with engine.begin() as conn:
+        feedback_id = conn.execute(text("""INSERT INTO segment_terrain_feedback
+            (segment_id, user_id, travel_direction, feedback_type, surface_types, technique_types,
+             obstacle_types, extent, note)
+            VALUES (:segment_id, :user_id, :direction, :feedback_type, CAST(:surfaces AS jsonb),
+                    CAST(:techniques AS jsonb), CAST(:obstacles AS jsonb), :extent, :note)
+            RETURNING id"""), {
+                "segment_id": segment_id, "user_id": uid, "direction": body.travelDirection,
+                "feedback_type": body.feedbackType,
+                "surfaces": json.dumps(body.surfaceTypes),
+                "techniques": json.dumps(body.techniqueTypes),
+                "obstacles": json.dumps(body.obstacleTypes),
+                "extent": body.extent, "note": body.note.strip(),
+            }).scalar()
+    return {"id": feedback_id, "status": "pending"}
+
+
+
+@app.post("/api/admin/terrain-feedback/{feedback_id}/review", tags=["路书"],
+          responses={**ERR_401, **ERR_403, **ERR_404})
+def review_segment_terrain_feedback(feedback_id: int, body: SegmentTerrainFeedbackReviewIn,
+                                    uid: int = Depends(require_route_curator)):
+    before = q1("SELECT * FROM segment_terrain_feedback WHERE id=:id", id=feedback_id)
+    if not before:
+        err(404, "TERRAIN_FEEDBACK_NOT_FOUND", "路况反馈不存在")
+    if before["feedback_type"] == "temporary" and body.decision == "accepted" and not body.expiresAt:
+        err(422, "TEMPORARY_ALERT_EXPIRY_REQUIRED", "临时路况必须设置失效时间")
+    with engine.begin() as conn:
+        after = conn.execute(text("""UPDATE segment_terrain_feedback
+            SET review_status=:decision, expires_at=:expires_at, reviewed_by=:reviewed_by,
+                reviewed_at=now(), review_note=:note WHERE id=:id RETURNING *"""),
+            {"decision": body.decision, "expires_at": body.expiresAt, "reviewed_by": uid,
+             "note": body.note.strip(), "id": feedback_id}).mappings().one()
+        conn.execute(text("""INSERT INTO segment_terrain_feedback_audit
+            (feedback_id,actor_id,action,before_payload,after_payload)
+            VALUES (:id,:actor,:action,CAST(:before AS jsonb),CAST(:after AS jsonb))"""),
+            {"id": feedback_id, "actor": uid, "action": body.decision,
+             "before": json.dumps(dict(before), ensure_ascii=False, default=str),
+             "after": json.dumps(dict(after), ensure_ascii=False, default=str)})
+    return dict(after)
+
+
+
+@app.get("/api/routes/{slug}/segment-difficulties",
+         response_model=RouteSegmentDifficultiesOut, tags=["路书"], responses=ERR_404)
+def get_route_segment_difficulties(slug: str, direction: str = "forward"):
+    """只返回管理员已发布的完整快照；候选分数和内部得分永不进入公开响应。"""
+    if direction not in ("forward", "reverse"):
+        err(422, "INVALID_DIRECTION", "direction 只能是 forward 或 reverse")
+    publication = q1("""SELECT p.id, p.route_id, r.slug, r.km AS route_km, p.segmentation_version,
+                                p.model_version, p.grade_version, p.publication_version,
+                                p.published_at
+                           FROM route_difficulty_publications p
+                           JOIN routes r ON r.id = p.route_id
+                          WHERE r.slug = :slug AND p.status = 'published'
+                            AND p.published_at IS NOT NULL""", slug=slug)
+    if not publication:
+        err(404, "DIFFICULTY_V2_NOT_PUBLISHED", "这条线路尚未发布新版分段难度")
+    point_rows = q("""SELECT rp.id AS point_id, rp.stable_key, rp.name, rp.point_type,
+                              rp.forward_m, rp.latitude, rp.longitude, rp.elevation_m
+                         FROM route_point_publication_items pi
+                         JOIN route_points_v2 rp ON rp.id = pi.route_point_id
+                        WHERE pi.publication_id = :publication_id
+                          AND rp.review_status = 'published'
+                        ORDER BY CASE WHEN :direction = 'forward'
+                                      THEN pi.display_order ELSE -pi.display_order END""",
+                   publication_id=publication["id"], direction=direction)
+    route_length_m = round(float(publication["route_km"]) * 1000)
+    public_points = []
+    points_by_id = {}
+    for point_row in point_rows:
+        point = RoutePointPublicOut(
+            pointId=point_row["point_id"], stableKey=point_row["stable_key"],
+            name=point_row["name"], pointType=point_row["point_type"],
+            forwardKm=round(point_row["forward_m"] / 1000, 3),
+            displayKm=round((point_row["forward_m"] if direction == "forward"
+                             else route_length_m - point_row["forward_m"]) / 1000, 3),
+            latitude=float(point_row["latitude"]), longitude=float(point_row["longitude"]),
+            elevationM=point_row["elevation_m"])
+        public_points.append(point)
+        points_by_id[point.pointId] = point
+    rows = q("""SELECT s.id AS segment_id, s.stable_key, s.forward_order, s.reverse_order,
+                       s.from_m, s.to_m, d.distance_m, d.ascent_m, d.descent_m,
+                       d.published_grade, d.terrain_tags, s.start_point_id, s.end_point_id
+                  FROM route_difficulty_publication_items i
+                  JOIN segment_difficulty_results d ON d.id = i.difficulty_result_id
+                  JOIN route_segments_v2 s ON s.id = d.segment_id
+                 WHERE i.publication_id = :publication_id
+                   AND d.travel_direction = :direction
+                   AND d.status = 'published'
+                   AND s.status = 'published'
+                   AND s.route_id = :route_id
+                   AND s.segmentation_version = :segmentation_version
+                   AND d.model_version = :model_version
+                 ORDER BY CASE WHEN :direction = 'forward'
+                               THEN s.forward_order ELSE s.reverse_order END""",
+             publication_id=publication["id"], direction=direction,
+             route_id=publication["route_id"],
+             segmentation_version=publication["segmentation_version"],
+             model_version=publication["model_version"])
+    expected_count = q1("""SELECT count(DISTINCT d.segment_id) AS count
+          FROM route_difficulty_publication_items i
+          JOIN segment_difficulty_results d ON d.id = i.difficulty_result_id
+         WHERE i.publication_id = :publication_id""",
+                        publication_id=publication["id"])["count"]
+    if not rows or len(rows) != expected_count:
+        err(503, "DIFFICULTY_V2_INCOMPLETE",
+            "已发布分段难度快照不完整，已停止展示以避免方向数据错配")
+    segments = []
+    for row in rows:
+        grade_key = row["published_grade"]
+        if grade_key not in _PUBLIC_GRADE_LABELS:
+            err(500, "INVALID_PUBLISHED_GRADE", "已发布难度数据不完整")
+        start_point = points_by_id.get(row["start_point_id"])
+        end_point = points_by_id.get(row["end_point_id"])
+        if not start_point or not end_point:
+            err(503, "DIFFICULTY_V2_POINTS_INCOMPLETE", "已发布分段端点不完整")
+        from_point = start_point if direction == "forward" else end_point
+        to_point = end_point if direction == "forward" else start_point
+        segments.append(SegmentDifficultyPublicOut(
+            segmentId=row["segment_id"], stableKey=row["stable_key"],
+            displayOrder=(row["forward_order"] if direction == "forward" else row["reverse_order"]),
+            forwardOrder=row["forward_order"], reverseOrder=row["reverse_order"],
+            fromKm=from_point.displayKm, toKm=to_point.displayKm,
+            trackFromKm=round(row["from_m"] / 1000, 3),
+            trackToKm=round(row["to_m"] / 1000, 3),
+            distanceKm=round(row["distance_m"] / 1000, 3),
+            ascentM=row["ascent_m"], descentM=row["descent_m"],
+            fromPoint=from_point, toPoint=to_point,
+            grade=PublicGradeOut(key=grade_key, label=_PUBLIC_GRADE_LABELS[grade_key]),
+            terrainTags=list(row["terrain_tags"] or [])))
+    active_alerts = [dict(alert) for alert in q("""SELECT f.id, f.segment_id AS "segmentId",
+               f.travel_direction AS "travelDirection", f.surface_types AS "surfaceTypes",
+               f.technique_types AS "techniqueTypes", f.obstacle_types AS "obstacleTypes",
+               f.extent, f.note, f.expires_at AS "expiresAt"
+          FROM segment_terrain_feedback f
+          JOIN route_segments_v2 s ON s.id = f.segment_id
+         WHERE s.route_id = :route_id AND f.feedback_type = 'temporary'
+           AND f.review_status = 'accepted' AND f.expires_at > now()
+           AND f.travel_direction = :direction
+         ORDER BY f.reviewed_at DESC""", route_id=publication["route_id"], direction=direction)]
+    return RouteSegmentDifficultiesOut(
+        routeId=publication["route_id"], slug=publication["slug"], direction=direction,
+        segmentationVersion=publication["segmentation_version"],
+        modelVersion=publication["model_version"], gradeVersion=publication["grade_version"],
+        publicationVersion=publication["publication_version"],
+        publishedAt=publication["published_at"], points=public_points,
+        activeAlerts=active_alerts, segments=segments)
+
+
+
+# ==================== 峰谷点位众包确认（C 方案） ====================
+# 用户在真实轨迹上确认「这个点是不是山顶/谷地」。众包只提供信号：
+# 够票数进管理员队列 → 管理员终审 → 进发布批次。绝不由票数自动改公开内容。
+
+
+class RoutePointConfirmationIn(BaseModel):
+    verdict: Literal["confirm", "relocate", "reject"]
+    note: str = ""
+
+
+class RoutePointCandidateOut(BaseModel):
+    pointId: int
+    stableKey: str
+    name: str | None
+    pointType: str
+    forwardKm: float
+    displayKm: float
+    latitude: float
+    longitude: float
+    elevationM: int | None
+    reviewStatus: str
+    votes: dict[str, int]
+    myVerdict: str | None
+
+
+class RoutePointCandidatesOut(BaseModel):
+    slug: str
+    segmentationVersion: str
+    points: list[RoutePointCandidateOut]
+
+
+@app.get("/api/routes/{slug}/point-candidates", response_model=RoutePointCandidatesOut,
+         tags=["路书"], responses=ERR_404)
+def list_route_point_candidates(slug: str, direction: str = "forward",
+                                authorization: str | None = Header(default=None)):
+    """未发布线路的候选峰谷点 + 当前票数。已发布线路不需要这块，返回空列表。"""
+    if direction not in ("forward", "reverse"):
+        err(422, "INVALID_DIRECTION", "direction 只能是 forward 或 reverse")
+    route = q1("SELECT id, km FROM routes WHERE slug=:slug", slug=slug)
+    if not route:
+        err(404, "ROUTE_NOT_FOUND", "线路不存在")
+    rows = q("""SELECT id, stable_key, name, point_type, forward_m, latitude, longitude,
+                       elevation_m, review_status, segmentation_version
+                  FROM route_points_v2
+                 WHERE route_id=:route_id
+                   AND review_status IN ('candidate','kept')
+                 ORDER BY forward_m""", route_id=route["id"])
+    if not rows:
+        return RoutePointCandidatesOut(slug=slug, segmentationVersion="", points=[])
+    total_m = round(float(route["km"]) * 1000)
+    ids = [r["id"] for r in rows]
+    viewer = None
+    if authorization:
+        try:
+            viewer = int(jwt.decode(authorization.split(" ", 1)[1], JWT_SECRET,
+                                    algorithms=[JWT_ALG])["sub"])
+        except Exception:  # noqa: BLE001
+            viewer = None
+    votes: dict[int, dict[str, int]] = {}
+    mine: dict[int, str] = {}
+    for row in q("""SELECT route_point_id, verdict, count(*) AS n
+                      FROM route_point_confirmations
+                     WHERE route_point_id = ANY(:ids)
+                     GROUP BY route_point_id, verdict""", ids=ids):
+        votes.setdefault(row["route_point_id"], {})[row["verdict"]] = int(row["n"])
+    if viewer is not None:
+        for row in q("""SELECT route_point_id, verdict FROM route_point_confirmations
+                         WHERE route_point_id = ANY(:ids) AND user_id=:uid""", ids=ids, uid=viewer):
+            mine[row["route_point_id"]] = row["verdict"]
+    points = []
+    for row in rows:
+        forward_km = round(row["forward_m"] / 1000, 3)
+        display_km = forward_km if direction == "forward" else round((total_m - row["forward_m"]) / 1000, 3)
+        points.append(RoutePointCandidateOut(
+            pointId=row["id"], stableKey=row["stable_key"], name=row["name"],
+            pointType=row["point_type"], forwardKm=forward_km, displayKm=display_km,
+            latitude=float(row["latitude"]), longitude=float(row["longitude"]),
+            elevationM=row["elevation_m"], reviewStatus=row["review_status"],
+            votes=votes.get(row["id"], {}), myVerdict=mine.get(row["id"])))
+    return RoutePointCandidatesOut(slug=slug,
+                                   segmentationVersion=rows[0]["segmentation_version"] or "",
+                                   points=points)
+
+
+@app.post("/api/routes/{slug}/points/{point_id}/confirmations", tags=["路书"],
+          responses={**ERR_401, **ERR_404})
+def submit_route_point_confirmation(slug: str, point_id: int, body: RoutePointConfirmationIn,
+                                    uid: int = Depends(require_user)):
+    """一人一点一票，可改票。只记录，不触发任何公开变更。"""
+    row = q1("""SELECT p.id FROM route_points_v2 p JOIN routes r ON r.id=p.route_id
+                 WHERE p.id=:point_id AND r.slug=:slug
+                   AND p.review_status IN ('candidate','kept')""",
+             point_id=point_id, slug=slug)
+    if not row:
+        err(404, "ROUTE_POINT_NOT_FOUND", "点位不存在或已结束众包确认")
+    note = (body.note or "").strip()[:200]
+    with engine.begin() as conn:
+        conn.execute(text("""INSERT INTO route_point_confirmations
+            (route_point_id, user_id, verdict, note)
+            VALUES (:pid,:uid,:verdict,:note)
+            ON CONFLICT (route_point_id, user_id)
+            DO UPDATE SET verdict=EXCLUDED.verdict, note=EXCLUDED.note, updated_at=now()"""),
+            {"pid": point_id, "uid": uid, "verdict": body.verdict, "note": note})
+        tally = conn.execute(text("""SELECT verdict, count(*) AS n FROM route_point_confirmations
+                                      WHERE route_point_id=:pid GROUP BY verdict"""),
+                             {"pid": point_id}).mappings().all()
+    return {"pointId": point_id, "votes": {r["verdict"]: int(r["n"]) for r in tally}}
+
+
+@app.get("/api/admin/point-confirmations", tags=["路书"], responses={**ERR_401, **ERR_403})
+def admin_point_confirmation_queue(minConfirm: int = 3, uid: int = Depends(require_route_curator)):
+    """够票数的点位进这个队列，管理员据此终审；这里只读，不改数据。"""
+    rows = q("""SELECT p.id AS point_id, p.stable_key, p.name, p.point_type, p.forward_m,
+                       p.review_status, r.slug, r.name AS route_name,
+                       count(*) FILTER (WHERE c.verdict='confirm')  AS confirm_votes,
+                       count(*) FILTER (WHERE c.verdict='relocate') AS relocate_votes,
+                       count(*) FILTER (WHERE c.verdict='reject')   AS reject_votes
+                  FROM route_points_v2 p
+                  JOIN routes r ON r.id = p.route_id
+                  LEFT JOIN route_point_confirmations c ON c.route_point_id = p.id
+                 WHERE p.review_status IN ('candidate','kept')
+                 GROUP BY p.id, p.stable_key, p.name, p.point_type, p.forward_m,
+                          p.review_status, r.slug, r.name
+                HAVING count(*) FILTER (WHERE c.verdict='confirm') >= :min_confirm
+                 ORDER BY confirm_votes DESC, r.slug, p.forward_m""", min_confirm=minConfirm)
+    return [dict(row) for row in rows]
+
 # 挂在最后，避免覆盖 /api 路由。前端产物来自仓库 app/（同一套设计令牌）。
 import pathlib  # noqa: E402
 

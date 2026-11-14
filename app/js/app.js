@@ -1133,7 +1133,9 @@
         '<figcaption>' + esc(t.coverByline || '') + '</figcaption></figure>' : '') +
       '<header class="route-compact-head"><span class="eyebrow">TRAILBOOK</span>' +
       '<h1>' + esc(t.name) + '</h1><p>' + esc(t.city || t.sub || '山野线路') +
-      ' · ' + t.km + ' km · ↗ ' + t.up + ' m' + (t.hours ? ' · 约 ' + esc(t.hours) : '') + '</p></header>' +
+      ' · ' + t.km + ' km · ↗ ' + (t.difficultyV2 && t.difficultyV2.direction === 'reverse' ? t.down : t.up) + ' m' + (t.hours ? ' · 约 ' + esc(t.hours) : '') + '</p></header>' +
+      publicDifficultyControls(t) +
+      publicDifficultyStatus(t) +
       '<div class="route-cover-tools"><span>封面只展示已审核的真实照片；没有照片时不占位。</span>' +
       '<button class="btn ghost mini" data-act="cover-open" data-id="' + esc(t.id) + '">投稿真实封面</button></div>' +
       '<p class="muted" style="font-size:13.5px">' + esc(t.desc) + '</p>' +
@@ -1148,11 +1150,7 @@
       '<button type="button" class="btn ghost" data-act="trk-zoom" data-id="' + esc(t.id) + '" data-val="reset">复位</button>' +
       '<span class="trk-tip">滚轮 / 双指缩放 · 放大后拖动平移</span>' +
       '</div>' +
-      '<div style="display:flex;gap:12px;flex-wrap:wrap;padding:5px 2px 2px;font-size:10.5px;color:var(--ink3)">' +
-      '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#52B44A;margin-right:4px"></i>缓</span>' +
-      '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2563EB;margin-right:4px"></i>中</span>' +
-      '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#9E1B1B;margin-right:4px"></i>陡</span>' +
-      '<span style="margin-left:auto">真实 DEM · 等高距 200→10 m</span></div>' +
+      trackLegend(t) +
       '<div class="tcap"><span>真实地形 · 线路海拔</span>' +
       '<span>' + t.km + ' km · ↗ ' + t.up + ' m</span></div></div>' +
 
@@ -1161,11 +1159,9 @@
       '<div class="profilebox" data-profbox="' + esc(t.id) + '">' + (apiProfileSVG(t) ||
         '<div class="trace-empty">这条线路还没有坡度剖面数据。<button class="btn ghost mini" data-act="reload">重新加载</button></div>') +
       profUIHTML() +
-      '<div style="display:flex;gap:12px;padding:4px 0 2px;font-size:10.5px;color:var(--ink3)">' +
-      '<span style="color:#52B44A">● ≤15% 缓</span><span style="color:#2563EB">● 15–25% 中</span>' +
-      '<span style="color:#9E1B1B">● &gt;25% 陡</span><span style="color:#778396">● 底色透明，地形透过来</span></div>' +
-      apiSlopeTable(t) + '</div>' +
-      ((t.peakList || []).length ? '<div class="card tight" style="margin-top:8px"><b style="font-size:12px">沿途山顶名称</b>' +
+      profileLegend(t) +
+      (t.difficultyV2 ? '' : apiSlopeTable(t)) + '</div>' +
+      (!t.difficultyV2 && (t.peakList || []).length ? '<div class="card tight" style="margin-top:8px"><b style="font-size:12px">沿途山顶名称</b>' +
         t.peakList.map(function (pk) {
           return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--hair)">' +
             '<span style="flex:1;font-size:12px">' + esc(pk.name || '山顶 · 待命名') + ' · ' + pk.altitude + ' m · ' + pk.km + ' km</span>' +
@@ -1211,9 +1207,12 @@
           }).join('') + (t.canMaintainRoute ? '<button class="btn ghost" style="margin-top:8px" data-act="checkpoint-add" data-id="'+esc(t.id)+'">＋ 添加 CP</button>' : '') + '</div>'
         : '') +
 
-      '<div class="sec-head"><h3>分段路书</h3><span class="more">' +
-      (t.status ? '维护人 ' + esc(t.status.who) + ' ›' : '待维护人确认 ›') + '</span></div>' +
-      '<div class="card tight">' + rows + '</div>' +
+      (t.difficultyV2
+        ? publicSegmentCards(t) + routePointsSection(t)
+        : '<div class="sec-head"><h3>分段路书</h3><span class="more">' +
+          (t.status ? '维护人 ' + esc(t.status.who) + ' ›' : '待维护人确认 ›') + '</span></div>' +
+          '<div class="card tight">' + rows + '</div>' + apiSegTable(t)) +
+      pointConfirmSection(t) +
 
       (t.status
         ? '<div class="card" style="background:var(--blue-bg);box-shadow:none;margin-top:14px">' +
@@ -1291,7 +1290,267 @@
   }
 
   /* ① 轨迹图：按段着色，山顶标海拔 */
+  /* ==================== 方向化分段难度 V2（详情页增量模块） ====================
+     七档名称与颜色只读 public-difficulty.js；两套图例严格分开：
+     地图轨迹/坡度图底部色条 = 分段难度，坡度图折线 = 局部坡度。 */
+  var routeSelection = { pointId: null, segmentId: null };
+  function selectedRouteClass(pointId, segmentId) {
+    return ((pointId && String(routeSelection.pointId) === String(pointId)) ||
+      (segmentId && String(routeSelection.segmentId) === String(segmentId))) ? ' route-point-selected' : '';
+  }
+  function routeDirection() {
+    return window.PUBLIC_DIFFICULTY ? window.PUBLIC_DIFFICULTY.directionFromHash(location.hash) : 'forward';
+  }
+  function gradeLegend() {
+    var pd = window.PUBLIC_DIFFICULTY;
+    if (!pd || !pd.GRADES) return '';
+    return pd.GRADES.map(function (g) {
+      return '<span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' +
+        g.color + ';margin-right:4px"></i>' + esc(g.label) + '</span>';
+    }).join('');
+  }
+  function trackLegend(t) {
+    if (t.difficultyV2) {
+      return '<div class="map-legend" aria-label="分段难度图例"><b>分段难度</b>' + gradeLegend() +
+        '<span class="map-legend-note">颜色＝整段公共难度（已按行走方向重算）· 真实 DEM</span></div>';
+    }
+    return '<div class="map-legend" aria-label="坡度图例"><b>坡度</b>' +
+      '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#52B44A;margin-right:4px"></i>缓</span>' +
+      '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2563EB;margin-right:4px"></i>中</span>' +
+      '<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#9E1B1B;margin-right:4px"></i>陡</span>' +
+      '<span class="map-legend-note">真实 DEM</span></div>';
+  }
+  function profileLegend(t) {
+    var slope = '<div class="legend-row"><b>折线颜色＝局部坡度</b>' +
+      '<span style="color:#52B44A">● ≤15% 缓</span><span style="color:#2563EB">● 15–25% 中</span>' +
+      '<span style="color:#9E1B1B">● &gt;25% 陡</span></div>';
+    if (t.difficultyV2) {
+      var reverse = t.difficultyV2.direction === 'reverse';
+      return '<div class="profile-legend"><p class="legend-axis">横轴＝公里（' +
+        (reverse ? '反向从终点起算' : 'GPX 顺行顺序') + '）· 纵轴＝海拔 m · 拖动红点看位置</p>' + slope +
+        '<div class="legend-row"><b>底部色条＝分段难度</b>' + gradeLegend() + '</div>' +
+        '<p>虚线＝已审核的分段边界，上方编号就是下方卡片里的段号；点某一段可联动轨迹与卡片。</p></div>';
+    }
+    return '<div class="profile-legend"><p class="legend-axis">横轴＝公里 · 纵轴＝海拔 m</p>' + slope +
+      '<p>底色透明，地形透过来。</p></div>';
+  }
+  function publicDifficultyControls(t) {
+    if (!t.difficultyV2) return '';
+    var d = routeDirection();
+    return '<section class="public-difficulty-summary" aria-label="分段难度方向">' +
+      '<div class="difficulty-main"><strong>分段难度</strong><span>已按行走方向重算</span></div>' +
+      '<div class="direction-switch" role="group" aria-label="行走方向">' +
+      '<button data-act="route-direction" data-id="' + esc(t.id) + '" data-val="forward" aria-pressed="' + (d === 'forward') + '">GPX 顺行</button>' +
+      '<button data-act="route-direction" data-id="' + esc(t.id) + '" data-val="reverse" aria-pressed="' + (d === 'reverse') + '">反向</button></div>' +
+      '<p>当前只发布各段等级，不提供整条线路综合等级。</p></section>';
+  }
+  function publicDifficultyStatus(t) {
+    if (t.difficultyV2Pending) {
+      return '<p class="difficulty-status loading" role="status">正在按' +
+        (t.difficultyV2Pending === 'reverse' ? '反向行走' : 'GPX 顺行') + '重算分段难度…</p>';
+    }
+    if (t.difficultyV2Error) {
+      return '<p class="difficulty-status error" role="status">新版分段暂不可用，' +
+        '下面显示的是旧版分段数据；轨迹图、坡度图与留言照常可用。</p>';
+    }
+    return '';
+  }
+  function publicRouteKm(t) {
+    var segs = t.difficultyV2 && t.difficultyV2.segments;
+    if (segs && segs.length) {
+      var far = 0;
+      segs.forEach(function (s) { if (s.toKm > far) far = s.toKm; });
+      if (far > 0) return far;
+    }
+    return t.km;
+  }
+  /* 标注重叠避让：环线首尾点常落在同一点，峰顶又容易挨得近 */
+  function labelPlacer() {
+    var placed = [];
+    return function (x, y, textWidth) {
+      var height = 11, guard = 0;
+      function hits(candidateY) {
+        return placed.some(function (p) {
+          return Math.abs(x - p.x) < (textWidth + p.w) / 2 + 2 &&
+            candidateY - height < p.y && p.y - height < candidateY;
+        });
+      }
+      while (guard < 4 && hits(y)) { y += 12; guard++; }
+      placed.push({ x: x, y: y, w: textWidth });
+      return y;
+    };
+  }
+  function textWidthOf(text, size) { return String(text || '').length * size + 6; }
+  var POINT_TYPE_LABELS = { start: '起点', end: '终点', peak: '峰顶', valley: '谷地',
+    saddle: '垭口', waist: '山腰', supply: '补给点', village: '村庄', landmark: '地标' };
+  function pointTypeLabel(pointType, direction) {
+    if (direction === 'reverse' && pointType === 'start') return '终点';
+    if (direction === 'reverse' && pointType === 'end') return '起点';
+    return POINT_TYPE_LABELS[pointType] || '点位';
+  }
+  function routePointsSection(t) {
+    var data = t.difficultyV2;
+    var points = (data && data.points) || [];
+    if (!points.length) return '';
+    var total = publicRouteKm(t);
+    var selected = points.filter(function (point) {
+      return String(routeSelection.pointId) === String(point.pointId);
+    })[0];
+    var detail = selected ? '<div class="route-point-detail">' +
+      '<b>' + esc(selected.name || (selected.forwardKm.toFixed(2) + ' km 处点位')) + '</b>' +
+      '<dl><dt>类型</dt><dd>' + esc(pointTypeLabel(selected.pointType, data.direction)) + '</dd>' +
+      '<dt>海拔</dt><dd>' + (selected.elevationM ? esc(selected.elevationM) + ' m' : '暂无') + '</dd>' +
+      '<dt>顺行里程</dt><dd>' + selected.forwardKm.toFixed(2) + ' km</dd>' +
+      '<dt>反向里程</dt><dd>' + Math.max(0, total - selected.forwardKm).toFixed(2) + ' km</dd>' +
+      '<dt>名称</dt><dd>' + (selected.name ? '已审核确认' : '尚无已确认名称，按里程显示') + '</dd></dl></div>' : '';
+    return '<div class="sec-head"><h3>沿途点位</h3><span class="more">' + points.length +
+      ' 个 · 均来自已发布版本</span></div>' + detail + '<div class="route-points">' +
+      points.map(function (point) {
+        return '<button class="route-point-row' + selectedRouteClass(point.pointId, null) +
+          '" data-act="route-point-select" data-route-point-id="' + esc(point.pointId) + '">' +
+          '<span class="point-type">' + esc(pointTypeLabel(point.pointType, data.direction)) + '</span>' +
+          '<b>' + esc(point.name || (point.forwardKm.toFixed(2) + ' km 处点位')) + '</b>' +
+          '<span class="point-meta">' + (point.elevationM ? point.elevationM + ' m · ' : '') +
+          '顺行 ' + point.forwardKm.toFixed(2) + ' km · 反向 ' +
+          Math.max(0, total - point.forwardKm).toFixed(2) + ' km</span></button>';
+      }).join('') + '</div>';
+  }
+  function publicSegmentCards(t) {
+    var pd = window.PUBLIC_DIFFICULTY, data = t.difficultyV2, d = data.direction;
+    function alertDisplayOrder(alert) {
+      var segment = data.segments.filter(function (s) { return String(s.segmentId) === String(alert.segmentId); })[0];
+      return segment ? segment.displayOrder : alert.segmentId;
+    }
+    var alerts = (data.activeAlerts || []).length ? '<section class="route-alerts"><div class="sec-head"><h3>当前路线提醒</h3><span class="more">已审核</span></div>' +
+      data.activeAlerts.map(function (alert) { return '<div class="route-alert"><b>第 ' + esc(alertDisplayOrder(alert)) + ' 段</b><span>' + esc(alert.note || '当前存在临时路况') + '</span></div>'; }).join('') + '</section>' : '';
+    return '<section class="public-segments' + (t.difficultyV2Pending ? ' is-pending' : '') + '"><div class="sec-head"><h3>方向化分段难度</h3><span class="more">' +
+      (d === 'reverse' ? '反向行走' : 'GPX 顺行') + '</span></div>' + data.segments.map(function (s) {
+        var from = s.fromKm, to = s.toKm;
+        var fromLabel = (s.fromPoint && s.fromPoint.name) || (from + ' km');
+        var toLabel = (s.toPoint && s.toPoint.name) || (to + ' km');
+        return '<article class="public-segment-card' + selectedRouteClass(null, s.segmentId) + '" data-act="route-segment-select" data-physical-segment-id="' + esc(s.segmentId) + '" style="--difficulty-color:' + pd.colorForGrade(s.grade.key) + '">' +
+          '<div class="segment-grade"><span>' + (d === 'reverse' ? '反向' : '顺行') + '第 ' + s.displayOrder + ' 段</span><strong>' + esc(s.grade.label) + '</strong></div>' +
+          '<div class="segment-body"><b>' + esc(fromLabel) + ' → ' + esc(toLabel) + '</b><span>' + from + '–' + to + ' km · 爬升 ' + s.ascentM + ' m · 下降 ' + s.descentM + ' m</span>' +
+          '<div class="terrain-tags">' + ((s.terrainTags || []).length ? s.terrainTags.map(function (tag) { return '<i>' + esc(tag) + '</i>'; }).join('') : '<i>路况信息待补充</i>') + '</div></div>' +
+          '<button class="terrain-feedback-button" data-act="terrain-feedback" data-id="' + esc(t.id) + '" data-segment-id="' + esc(s.segmentId) + '" data-no="' + s.displayOrder + '" data-direction="' + d + '">反馈这段路况</button></article>';
+      }).join('') + '</section>' + alerts;
+  }
+  /* ---------- 众包确认：未发布线路的候选峰谷点 ---------- */
+  function pointConfirmSection(t) {
+    var cand = t.pointCandidates;
+    if (!cand || !(cand.points || []).length) return '';
+    var reverse = routeDirection() === 'reverse';
+    return '<section class="point-confirm"><div class="sec-head"><h3>帮忙核对这条线的峰谷</h3>' +
+      '<span class="more">' + cand.points.length + ' 个待确认</span></div>' +
+      '<p class="point-confirm-note">这条线路的分段还没定稿。你只需要回答"这个位置对不对"，' +
+      '不需要判断难度。够票数后由管理员终审，不会因为投票直接改变公开内容。</p>' +
+      '<div class="route-points">' + cand.points.map(function (point) {
+        var votes = point.votes || {};
+        var km = reverse ? point.displayKm : point.forwardKm;
+        return '<div class="route-point-row point-confirm-row">' +
+          '<span class="point-type">' + esc(pointTypeLabel(point.pointType, cand.direction || 'forward')) + '</span>' +
+          '<b>' + esc(point.name || (Number(km).toFixed(2) + ' km 处点位')) + '</b>' +
+          '<span class="point-meta">' + (point.elevationM ? point.elevationM + ' m · ' : '') +
+          '里程 ' + Number(km).toFixed(2) + ' km · 确认 ' + (votes.confirm || 0) +
+          ' / 位置偏 ' + (votes.relocate || 0) + ' / 不是 ' + (votes.reject || 0) +
+          (point.myVerdict ? ' · 我已投：' + ({ confirm: '这里对', relocate: '位置偏了', reject: '不是峰谷' }[point.myVerdict] || point.myVerdict) : '') +
+          '</span>' +
+          '<button class="btn ghost mini" data-act="point-confirm" data-id="' + esc(t.id) + '" data-route-point-id="' + esc(point.pointId) + '" data-name="' + esc(point.name || '') + '">我来确认</button></div>';
+      }).join('') + '</div></section>';
+  }
+  function pointConfirmSheet(button) {
+    if (window.API.accountState !== 'authenticated') { sheetSignup('point-confirm'); return; }
+    U.openSheet('<h3>确认这个点位</h3>' +
+      '<div class="sh-sub">' + esc(button.getAttribute('data-name') || '这个点位') + '</div>' +
+      '<form class="point-confirm-form" data-route="' + esc(button.getAttribute('data-id')) + '" data-point-id="' + esc(button.getAttribute('data-route-point-id')) + '">' +
+      '<fieldset><legend>你的判断</legend>' +
+      '<label><input type="radio" name="verdict" value="confirm" checked> 位置和类型都对</label>' +
+      '<label><input type="radio" name="verdict" value="relocate"> 位置偏了（应该在别的里程上）</label>' +
+      '<label><input type="radio" name="verdict" value="reject"> 这里不是峰顶/谷地</label></fieldset>' +
+      '<label class="feedback-field">补充说明（可选）<textarea name="note" maxlength="160" placeholder="例如：其实在 6.1 km 处的鞍部"></textarea></label>' +
+      '<p class="hint">众包只提供信号：够票数后由管理员终审，不会直接改变公开内容。</p>' +
+      '<button type="button" class="btn coral" data-act="point-confirm-submit">提交</button>' +
+      '<button type="button" class="btn ghost" data-act="close">取消</button></form>');
+  }
+  function terrainFeedbackSheet(button) {
+    if (window.API.accountState !== 'authenticated') { sheetSignup('feedback'); return; }
+    var no = button.getAttribute('data-no'), sid = button.getAttribute('data-segment-id');
+    var direction = button.getAttribute('data-direction');
+    U.openSheet('<h3>第 ' + esc(no) + ' 段 · 路况反馈</h3>' +
+      '<div class="terrain-feedback-notice">请只填写实际看到的长期地形；临时天气和封路请选"临时路况"。</div>' +
+      '<form class="terrain-feedback-form" data-segment-id="' + esc(sid) + '" data-direction="' + esc(direction) + '">' +
+      '<label class="feedback-field">信息类型<select name="feedbackType"><option value="long_term">长期路况 / 技术特征</option><option value="temporary">临时天气 / 封路 / 施工</option></select></label>' +
+      '<fieldset><legend>主要路面</legend><label><input type="radio" name="surface" value="cement"> 水泥 / 铺装</label><label><input type="radio" name="surface" value="soil"> 土路</label><label><input type="radio" name="surface" value="gravel"> 碎石</label><label><input type="radio" name="surface" value="steps"> 石阶</label></fieldset>' +
+      '<fieldset><legend>通过方式（可多选）</legend><label><input type="checkbox" name="technique" value="hands"> 需要用手辅助</label><label><input type="checkbox" name="technique" value="exposure"> 临崖 / 暴露</label><label><input type="checkbox" name="technique" value="fallen-tree"> 倒木或障碍</label></fieldset>' +
+      '<label class="feedback-field">影响范围<select name="extent"><option value="few">少量</option><option value="partial">部分</option><option value="major">主要路段</option></select></label>' +
+      '<label class="feedback-field">补充说明<textarea name="note" maxlength="160" placeholder="只描述你实际看到的路况"></textarea></label>' +
+      '<p class="hint">提交后进入待审核队列，不会立即改变公开难度；管理员核验后才可能进入下一版发布。</p>' +
+      '<button type="button" class="btn coral" data-act="terrain-feedback-submit">提交审核</button>' +
+      '<button type="button" class="btn ghost" data-act="close">取消</button></form>');
+  }
+  /* V2 相关的点击动作，集中一处；返回 true 表示已处理 */
+  function handleV2Act(act, t) {
+    if (act === 'route-direction') {
+      location.hash = window.PUBLIC_DIFFICULTY.withDirection(location.hash, t.getAttribute('data-val'));
+      return true;
+    }
+    if (act === 'route-point-select') {
+      routeSelection.pointId = t.getAttribute('data-route-point-id');
+      routeSelection.segmentId = null;
+      render();
+      return true;
+    }
+    if (act === 'route-segment-select') {
+      routeSelection.segmentId = t.getAttribute('data-physical-segment-id');
+      routeSelection.pointId = null;
+      render();
+      return true;
+    }
+    if (act === 'terrain-feedback') { terrainFeedbackSheet(t); return true; }
+    if (act === 'point-confirm') { pointConfirmSheet(t); return true; }
+    if (act === 'point-confirm-submit') {
+      var pf = t.closest('.point-confirm-form');
+      var verdict = (pf.querySelector('[name="verdict"]:checked') || {}).value || 'confirm';
+      var noteEl = pf.querySelector('[name="note"]');
+      t.disabled = true;
+      window.API.submitPointConfirmation(pf.getAttribute('data-route'),
+        pf.getAttribute('data-point-id'), { verdict: verdict, note: (noteEl || {}).value || '' })
+        .then(function () {
+          U.closeSheet();
+          U.toast('已记录，谢谢你帮忙核对');
+          var target = trail(pf.getAttribute('data-route'));
+          if (target) { target.pointCandidates = null; }
+          render();
+        }).catch(function () { t.disabled = false; U.toast('提交失败，请先登录后再试'); });
+      return true;
+    }
+    if (act === 'terrain-feedback-submit') {
+      if (window.API.accountState !== 'authenticated') { U.closeSheet(); sheetSignup('feedback'); return true; }
+      var form = t.closest('.terrain-feedback-form');
+      function picked(name) {
+        return Array.prototype.map.call(form.querySelectorAll('[name="' + name + '"]:checked'),
+          function (input) { return input.value; });
+      }
+      var body = { travelDirection: form.getAttribute('data-direction'),
+        feedbackType: (form.querySelector('[name="feedbackType"]') || {}).value || 'long_term',
+        surfaceTypes: picked('surface'), techniqueTypes: picked('technique'),
+        obstacleTypes: picked('technique').filter(function (v) { return v === 'fallen-tree'; }),
+        extent: (form.querySelector('[name="extent"]') || {}).value || 'few',
+        note: (form.querySelector('[name="note"]') || {}).value || '' };
+      t.disabled = true;
+      window.API.ja('/api/segments-v2/' + encodeURIComponent(form.getAttribute('data-segment-id')) +
+        '/terrain-feedback', { method: 'POST', body: JSON.stringify(body) }).then(function () {
+          U.closeSheet(); U.toast('已收到，将交由管理员核验');
+        }).catch(function () { t.disabled = false; U.toast('提交失败，请稍后重试'); });
+      return true;
+    }
+    return false;
+  }
+
   function apiTrackSVG(t, compact) {
+    var publicSegments = !compact && t.difficultyV2 ? t.difficultyV2.segments : null;
+    var routeKm = publicRouteKm(t);
+    var reverseDirection = !compact && !!t.difficultyV2 && t.difficultyV2.direction === 'reverse';
     if (t.coordinates && t.coordinates.length > 1) {
       var coords = t.coordinates, bounds = t.terrainBounds, W = compact ? 200 : 380, H = compact ? 120 : 210, n = coords.length;
       if (!bounds) {
@@ -1326,13 +1585,37 @@
       var outline = '';
       for (var oi = 0; oi < n; oi++) { var oq = geoP(oi); outline += (oi ? 'L' : 'M') + oq[0].toFixed(1) + ' ' + oq[1].toFixed(1); }
       svg += '<path class="trk-area" d="' + outline + ' Z" fill="#2563EB" fill-opacity=".12" stroke="none"/>';
-      (t.segments || []).forEach(function (sg) {
-        var a=Math.max(0,Math.round(sg.from_km/t.km*(n-1))), b=Math.min(n-1,Math.round(sg.to_km/t.km*(n-1))), d='';
+      var paintedSegments = publicSegments || (t.segments || []);
+      paintedSegments.forEach(function (sg, sgIndex) {
+        var fromKm = publicSegments ? sg.trackFromKm : sg.from_km;
+        var toKm = publicSegments ? sg.trackToKm : sg.to_km;
+        var a=Math.max(0,Math.round(fromKm/routeKm*(n-1))), b=Math.min(n-1,Math.round(toKm/routeKm*(n-1))), d='';
+        /* 首段从头、末段到尾强制对齐：短段按比例取整会缩成一个点 */
+        if (sgIndex === 0) a = 0;
+        if (sgIndex === paintedSegments.length - 1) b = n - 1;
         for(var i=a;i<=b;i++){var q=geoP(i);d+=(i===a?'M':'L')+q[0].toFixed(1)+' '+q[1].toFixed(1);}
-        svg+='<path d="'+d+'" fill="none" stroke="#fff" stroke-width="'+(compact?7:10)+'" stroke-linecap="round" stroke-linejoin="round"/>';
-        svg+='<path d="'+d+'" fill="none" stroke="'+(sg.difficulty_applicable === false ? '#64748b' : (LV_C[sg.level]||'#22242E'))+'" stroke-width="'+(compact?4:6)+'" stroke-linecap="round" stroke-linejoin="round"/>';
+        var color = publicSegments
+          ? window.PUBLIC_DIFFICULTY.colorForGrade(sg.grade.key)
+          : (sg.difficulty_applicable === false ? '#64748b' : (LV_C[sg.level]||'#22242E'));
+        var onSegment = !!publicSegments && String(routeSelection.segmentId) === String(sg.segmentId);
+        svg+='<path d="'+d+'" fill="none" stroke="#fff" stroke-width="'+(compact?7:(onSegment?16:10))+'" stroke-linecap="round" stroke-linejoin="round"/>';
+        svg+='<path d="'+d+'" fill="none" stroke="'+color+'" stroke-width="'+(compact?4:(onSegment?9:6))+'" stroke-linecap="round" stroke-linejoin="round"'+
+          (publicSegments?' class="route-map-segment" data-act="route-segment-select" data-physical-segment-id="'+esc(sg.segmentId)+'"':'')+'/>';
       });
-      var start=geoP(0), end=geoP(n-1), rad=compact?4:6;
+      if (publicSegments && (t.difficultyV2.points || []).length) {
+        var placeMapLabel = labelPlacer();
+        (t.difficultyV2.points || []).forEach(function (point) {
+          var pointIndex = Math.max(0, Math.min(n - 1, Math.round(point.forwardKm / routeKm * (n - 1))));
+          var pq = geoP(pointIndex), selected = selectedRouteClass(point.pointId, null);
+          /* 公共页只写管理员确认过的名称；没有名称就只留定位圆点 */
+          var labelY = point.name ? placeMapLabel(pq[0], pq[1] - 9, textWidthOf(point.name, 7)) : null;
+          svg += '<g class="route-map-point' + selected + '" data-act="route-point-select" data-route-point-id="' + esc(point.pointId) + '" tabindex="0" role="button">' +
+            '<circle cx="' + pq[0].toFixed(1) + '" cy="' + pq[1].toFixed(1) + '" r="6"/>' +
+            (point.name ? '<text x="' + pq[0].toFixed(1) + '" y="' + labelY.toFixed(1) + '" text-anchor="middle">' + esc(point.name) + '</text>' : '') +
+            '</g>';
+        });
+      }
+      var start=geoP(reverseDirection ? n-1 : 0), end=geoP(reverseDirection ? 0 : n-1), rad=compact?4:6;
       svg+='<circle cx="'+start[0]+'" cy="'+start[1]+'" r="'+rad+'" fill="#39A875" stroke="#fff" stroke-width="2"/>';
       svg+='<circle cx="'+end[0]+'" cy="'+end[1]+'" r="'+rad+'" fill="#FF5298" stroke="#fff" stroke-width="2"/>';
       svg += '</g>';
@@ -1368,7 +1651,7 @@
       o += '<path d="' + d + '" fill="none" stroke="' + (sg.difficulty_applicable === false ? '#64748b' : (LV_C[sg.level] || '#999')) +
         '" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>';
     });
-    (t.peakList || []).forEach(function (pk) {
+    (publicSegments ? [] : (t.peakList || [])).forEach(function (pk) {
       var q = P(Math.round(pk.km / t.km * n));
       o += '<circle cx="' + q[0].toFixed(1) + '" cy="' + q[1].toFixed(1) + '" r="6.5" fill="#22242E"/>' +
         '<text x="' + q[0].toFixed(1) + '" y="' + (q[1] - 11).toFixed(1) +
@@ -1588,6 +1871,16 @@
   function apiProfileSVG(t) {
     var hasElevation = (t.elevationM || []).length >= 2;
     var sg = slopeBands(t), prof = sg.prof;
+    var publicSegments = t.difficultyV2 ? t.difficultyV2.segments : null;
+    var reverseDirection = !!t.difficultyV2 && t.difficultyV2.direction === 'reverse';
+    var routeKm = publicRouteKm(t);
+    var placeProfileLabel = labelPlacer();
+    if (reverseDirection) {
+      prof = prof.slice().reverse();
+      sg.bands = sg.bands.slice().reverse().map(function (b) {
+        return Object.assign({}, b, { from: prof.length - 1 - b.to, to: prof.length - 1 - b.from });
+      });
+    }
     if (prof.length < 2) return '';
     var W = 380, H = 178, L = 40, R = 8, T = 24, B = 30, n = prof.length;
     var min = hasElevation ? Math.floor(Math.min.apply(null, prof) / 100) * 100 : 0;
@@ -1603,7 +1896,7 @@
       o += '<path d="M' + L + ' ' + gy.toFixed(1) + 'H' + (W - R) + '" stroke="#dce5e3" stroke-width="1"/>' +
         (hasElevation ? '<text x="2" y="' + (gy + 3).toFixed(1) + '" font-size="8" fill="#718096">' + alt + 'm</text>' : '');
     }
-    o += '<text x="' + L + '" y="13" font-size="9" fill="#718096">坡度图 · 颜色 = 该段坡度（纵轴：海拔 m）</text>';
+    /* 顶部说明移到 HTML 图例：SVG 这一行留给分段编号 */
     /* 数据部分套一个裁剪矩形：详情页首次进入时把宽度从 0 拉到 W，
        坡度曲线就像"从左往右长出来"。JS 没跑起来时矩形就是满宽，图照常完整显示。 */
     o += '<defs><clipPath id="profClip"><rect class="prof-clip" x="0" y="0" width="' + W + '" height="' + H + '"/></clipPath></defs>';
@@ -1615,11 +1908,46 @@
       var d = '';
       for (var i = b.from; i <= b.to; i++) d += (i === b.from ? 'M' : 'L') + X(i).toFixed(1) + ' ' + Y(prof[i]).toFixed(1);
       o += '<path d="' + d + '" fill="none" stroke="' + b.color + '" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>';
+      /* 折线颜色只说脚下陡不陡；底部色条由分段难度画，两套图例不混 */
+      if (publicSegments) return;
       var x0 = X(b.from), x1 = X(b.to);
       o += '<rect x="' + x0.toFixed(1) + '" y="' + (H - 8) + '" width="' + Math.max(1, x1 - x0).toFixed(1) +
         '" height="6" rx="3" fill="' + b.color + '"/>';
     });
-    (t.peakList || []).forEach(function (pk) {
+    if (publicSegments) {
+      var barY = H - 9;
+      publicSegments.forEach(function (s) {
+        /* fromKm/toKm 已经是"当前方向"的展示里程，直接用，别再减总里程 */
+        var bx0 = L + s.fromKm / routeKm * (W - L - R), bx1 = L + s.toKm / routeKm * (W - L - R);
+        var onSegment = String(routeSelection.segmentId) === String(s.segmentId);
+        if (onSegment) o += '<rect x="' + bx0.toFixed(1) + '" y="' + T + '" width="' + Math.max(1, bx1 - bx0).toFixed(1) +
+          '" height="' + (barY - T) + '" fill="#2563eb" opacity=".08"/>';
+        o += '<line x1="' + bx0.toFixed(1) + '" y1="' + T + '" x2="' + bx0.toFixed(1) + '" y2="' + barY +
+          '" stroke="#9aabc2" stroke-width=".8" stroke-dasharray="3 3"/>';
+        o += '<rect x="' + bx0.toFixed(1) + '" y="' + barY + '" width="' + Math.max(1, bx1 - bx0).toFixed(1) +
+          '" height="7" fill="' + window.PUBLIC_DIFFICULTY.colorForGrade(s.grade.key) + '"' +
+          (onSegment ? ' stroke="#25283b" stroke-width="1.6"' : '') + '/>';
+        o += '<text x="' + ((bx0 + bx1) / 2).toFixed(1) + '" y="21" text-anchor="middle" font-size="8.5" ' +
+          'font-weight="700" fill="' + (onSegment ? '#25283b' : '#7c879b') + '">' + esc(s.displayOrder) + '</text>';
+      });
+    }
+    if (publicSegments && (t.difficultyV2.points || []).length) {
+      (t.difficultyV2.points || []).forEach(function (point) {
+        var pointKm = point.displayKm;
+        var pointIndex = Math.max(0, Math.min(n - 1, Math.round(pointKm / routeKm * (n - 1))));
+        var px = L + pointKm / routeKm * (W - L - R), py = Y(prof[pointIndex]);
+        o += '<g class="route-profile-point' + selectedRouteClass(point.pointId, null) + '" data-act="route-point-select" data-route-point-id="' + esc(point.pointId) + '" tabindex="0" role="button">' +
+          '<line x1="' + px.toFixed(1) + '" y1="' + T + '" x2="' + px.toFixed(1) + '" y2="' + (H - B) + '"/>' +
+          '<circle cx="' + px.toFixed(1) + '" cy="' + py.toFixed(1) + '" r="4"/>';
+        if (point.name) {
+          var labelY = placeProfileLabel(px, Math.max(T + 6, py - 8), textWidthOf(point.name, 7));
+          o += '<text x="' + px.toFixed(1) + '" y="' + labelY.toFixed(1) + '" text-anchor="middle">' + esc(point.name) + '</text>';
+        }
+        o += '</g>';
+      });
+    }
+    /* V2 线路的点位来自 difficultyV2.points；旧 peakList 标注会带出"山顶待命名" */
+    (publicSegments ? [] : (t.peakList || [])).forEach(function (pk) {
       var x = L + pk.km / t.km * (W - L - R), i = Math.max(0, Math.min(n - 1, Math.round(pk.km / t.km * (n - 1)))), y = Y(prof[i]);
       o += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="3.5" fill="#ff5298" stroke="#fff" stroke-width="1.5"/>' +
         '<text x="' + x.toFixed(1) + '" y="' + Math.max(21, y - 7).toFixed(1) + '" text-anchor="middle" font-size="7.5" font-weight="700" fill="#26324d">' +
@@ -2167,7 +2495,9 @@
       save: '把这条到此一游记录存到你名下，换手机也不丢',
       claim: '认领山头并维护留言板需要一个账号',
       collaboration: '申请协助维护这块山顶留言板需要一个账号',
-      browse: '注册后可保存你走过和关注的线路，继续探索时也能找回'
+      browse: '注册后可保存你走过和关注的线路，继续探索时也能找回',
+      feedback: '路况反馈要追溯到具体分段并进入审核队列，所以需要一个账号',
+      'point-confirm': '峰谷确认会记到具体账号名下，避免刷票影响这条线路'
     }[why] || '这部分需要登录后才能用';
     U.openSheet(
       '<h3>注册或登录</h3><div class="sh-sub">' + esc(reason) + '。</div>' +
@@ -4411,6 +4741,35 @@
             ? '路书加载失败，请重试<br><button class="btn ghost" data-act="reload" style="margin-top:12px">重新加载</button>'
             : '正在加载路书…') + '</div>';
         } else {
+          var wantedDir = routeDirection();
+          if (currentTrail && window.API && window.API.loadSegmentDifficulties &&
+              currentTrail.difficultyV2Direction !== wantedDir &&
+              currentTrail.difficultyV2Pending !== wantedDir) {
+            /* 旧数据先留着、只标 pending：切方向时不要掉回旧坡度分段再跳回来 */
+            currentTrail.difficultyV2Pending = wantedDir;
+            currentTrail.difficultyV2Error = false;
+            window.API.loadSegmentDifficulties(r.id, wantedDir).then(function (result) {
+              currentTrail.difficultyV2 = result;
+              currentTrail.difficultyV2Direction = wantedDir;
+              currentTrail.difficultyV2Pending = null;
+              if (parse().name === 'trail' && parse().id === currentTrail.id) render();
+            }).catch(function () {
+              currentTrail.difficultyV2 = null;
+              currentTrail.difficultyV2Error = true;
+              currentTrail.difficultyV2Direction = wantedDir;
+              currentTrail.difficultyV2Pending = null;
+              if (parse().name === 'trail' && parse().id === currentTrail.id) render();
+            });
+          }
+          if (currentTrail && !currentTrail.difficultyV2 && window.API && window.API.loadPointCandidates &&
+              !currentTrail.pointCandidatesLoading && !currentTrail.pointCandidates) {
+            currentTrail.pointCandidatesLoading = true;
+            window.API.loadPointCandidates(r.id, wantedDir).then(function (result) {
+              currentTrail.pointCandidates = result;
+              currentTrail.pointCandidatesLoading = false;
+              if (parse().name === 'trail' && parse().id === currentTrail.id) render();
+            }).catch(function () { currentTrail.pointCandidatesLoading = false; });
+          }
           html = trailDetailView(r.id);
         }
         break;
@@ -4585,6 +4944,8 @@
     var id = t.getAttribute('data-id');
     var type = t.getAttribute('data-type');
     var val = t.getAttribute('data-val');
+    /* V2：方向切换 / 分段与点位联动 / 路况反馈 / 峰谷众包确认 */
+    if (typeof handleV2Act === 'function' && handleV2Act(act, t)) return;
     /* 统一申请入口：旧的自建山头 / 认领 / 协作入口全部收口到这一页。
        它们不再在浏览器里当场创建点位或授予身份。 */
     if (act === 'king-open' || act === 'king-new' || act === 'become-master' ||

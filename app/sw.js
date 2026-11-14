@@ -1,7 +1,7 @@
 /* Offline shell for already visited pages. Private API responses are never cached. */
-const SHELL_CACHE = 'hikes-shell-v10-44';
+const SHELL_CACHE = 'hikes-shell-v11-difficulty-v2';
 const PUBLIC_CACHE = 'hikes-public-v10-44';
-const SHELL = ['./', './index.html', './css/app.css', './css/redesign.css',
+const SHELL = ['./', './index.html', './css/app.css', './css/redesign.css', './js/public-difficulty.js',
   './js/data.js', './js/ui.js', './js/track.js', './js/api.js',
   './js/offline-store.js', './js/king-applications.js', './js/vendor/jsqr.js',
   './js/locate.js', './js/trail-motion.js', './js/app.js', './js/admin.js',

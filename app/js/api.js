@@ -281,6 +281,25 @@
     }
 
     var detailRequests = {};
+    /* 方向化分段难度：独立请求，404/异常一律回退旧版，不让整页失败 */
+    g.API.loadSegmentDifficulties = function (slug, direction) {
+      direction = direction === 'reverse' ? 'reverse' : 'forward';
+      return j('/api/routes/' + encodeURIComponent(slug) +
+        '/segment-difficulties?direction=' + direction).then(function (response) {
+          return g.PUBLIC_DIFFICULTY ? g.PUBLIC_DIFFICULTY.normalizeResponse(response) : response;
+        });
+    };
+    /* 未发布线路的候选峰谷点（众包确认用）。拿不到就当没有，不影响页面。 */
+    g.API.loadPointCandidates = function (slug, direction) {
+      direction = direction === 'reverse' ? 'reverse' : 'forward';
+      return j('/api/routes/' + encodeURIComponent(slug) +
+        '/point-candidates?direction=' + direction);
+    };
+    g.API.submitPointConfirmation = function (slug, pointId, body) {
+      return ja('/api/routes/' + encodeURIComponent(slug) + '/points/' +
+        encodeURIComponent(pointId) + '/confirmations',
+        { method: 'POST', body: JSON.stringify(body) });
+    };
     g.API.loadRouteDetail = function (slug, force) {
       var trail = H.trails.find(function (item) { return item.id === slug; });
       if (!trail || (trail.detailLoaded && !force)) return Promise.resolve(trail);
