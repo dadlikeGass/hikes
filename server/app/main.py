@@ -5600,7 +5600,7 @@ def list_route_point_candidates(slug: str, direction: str = "forward",
                        elevation_m, review_status, segmentation_version
                   FROM route_points_v2
                  WHERE route_id=:route_id
-                   AND review_status IN ('candidate','kept')
+                   AND review_status = 'candidate'
                  ORDER BY forward_m""", route_id=route["id"])
     if not rows:
         return RoutePointCandidatesOut(slug=slug, segmentationVersion="", points=[])
@@ -5646,7 +5646,7 @@ def submit_route_point_confirmation(slug: str, point_id: int, body: RoutePointCo
     """一人一点一票，可改票。只记录，不触发任何公开变更。"""
     row = q1("""SELECT p.id FROM route_points_v2 p JOIN routes r ON r.id=p.route_id
                  WHERE p.id=:point_id AND r.slug=:slug
-                   AND p.review_status IN ('candidate','kept')""",
+                   AND p.review_status = 'candidate'""",
              point_id=point_id, slug=slug)
     if not row:
         err(404, "ROUTE_POINT_NOT_FOUND", "点位不存在或已结束众包确认")
@@ -5675,12 +5675,53 @@ def admin_point_confirmation_queue(minConfirm: int = 3, uid: int = Depends(requi
                   FROM route_points_v2 p
                   JOIN routes r ON r.id = p.route_id
                   LEFT JOIN route_point_confirmations c ON c.route_point_id = p.id
-                 WHERE p.review_status IN ('candidate','kept')
+                 WHERE p.review_status = 'candidate'
                  GROUP BY p.id, p.stable_key, p.name, p.point_type, p.forward_m,
                           p.review_status, r.slug, r.name
                 HAVING count(*) FILTER (WHERE c.verdict='confirm') >= :min_confirm
                  ORDER BY confirm_votes DESC, r.slug, p.forward_m""", min_confirm=minConfirm)
     return [dict(row) for row in rows]
+
+
+
+class RoutePointAdoptIn(BaseModel):
+    decision: Literal["accept", "reject"]
+    pointType: Literal["start", "end", "peak", "valley", "saddle", "waist",
+                       "supply", "village", "landmark"] | None = None
+    name: str | None = None
+    note: str = ""
+
+
+@app.post("/api/admin/point-confirmations/{point_id}/adopt", tags=["路书"],
+          responses={**ERR_401, **ERR_403, **ERR_404})
+def adopt_point_confirmation(point_id: int, body: RoutePointAdoptIn,
+                             uid: int = Depends(require_route_curator)):
+    """管理员终审：采纳确认 / 驳回。只改点位状态与审计，不自动发布。
+
+    采纳后点位变成 'kept'（进待发布池）；真正对外生效仍需生成分段并走发布批次。
+    """
+    before = q1("""SELECT p.*, r.slug FROM route_points_v2 p JOIN routes r ON r.id=p.route_id
+                    WHERE p.id=:pid AND p.review_status = 'candidate'""",
+                pid=point_id)
+    if not before:
+        err(404, "ROUTE_POINT_NOT_FOUND", "点位不存在或已处理")
+    new_status = "kept" if body.decision == "accept" else "dropped"
+    new_type = body.pointType or before["point_type"]
+    new_name = body.name if body.name is not None else before["name"]
+    with engine.begin() as conn:
+        conn.execute(text("""UPDATE route_points_v2
+                SET review_status=:status, point_type=:ptype, name=:name, updated_at=now()
+              WHERE id=:pid"""),
+            {"status": new_status, "ptype": new_type, "name": new_name, "pid": point_id})
+        conn.execute(text("""INSERT INTO route_point_review_audit
+                (route_point_id, actor_id, before_payload, after_payload)
+                VALUES (:pid,:actor,CAST(:b AS jsonb),CAST(:a AS jsonb))"""),
+            {"pid": point_id, "actor": uid,
+             "b": json.dumps({k: str(v) for k, v in dict(before).items()}, ensure_ascii=False),
+             "a": json.dumps({"review_status": new_status, "point_type": new_type,
+                              "name": new_name, "note": body.note}, ensure_ascii=False)})
+    return {"pointId": point_id, "reviewStatus": new_status,
+            "pointType": new_type, "name": new_name, "slug": before["slug"]}
 
 # 挂在最后，避免覆盖 /api 路由。前端产物来自仓库 app/（同一套设计令牌）。
 import pathlib  # noqa: E402
