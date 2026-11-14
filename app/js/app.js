@@ -1881,100 +1881,145 @@
       });
     }
     if (prof.length < 2) return '';
-    var W = 380, H = 200, L = 40, R = 8, T = 30, B = 28, n = prof.length;
+
+    /* ---- 画布与留白：底部要同时容纳里程刻度、分段编号和难度色带 ---- */
+    var W = 380, H = 214, L = 34, R = 10, T = 22, B = publicSegments ? 58 : 34, n = prof.length;
+    var baseY = H - B;                        /* 地形剪影的基线 */
     var rawMin = hasElevation ? Math.min.apply(null, prof) : 0;
     var rawMax = hasElevation ? Math.max.apply(null, prof) : 1;
     var rawSpan = Math.max(1, rawMax - rawMin);
-    /* 档位按该线路自身跨度自适应，避免大跨度永远只有 4~5 条网格线 */
     var step = rawSpan <= 300 ? 50 : rawSpan <= 500 ? 100 : rawSpan <= 1000 ? 200 : 250;
-    /* 底部按整百取整（不跟着档位跳到 0），顶部从底部逐档递增到超过最高点，再取一档 */
     var min = hasElevation ? Math.floor(rawMin / 100) * 100 : 0;
     var max = min + step;
-    if (hasElevation) {
-      while (max <= rawMax) max += step;
-    }
+    if (hasElevation) { while (max <= rawMax) max += step; }
     if (max <= rawMax) max = rawMax + step;
+
     function X(i) { return L + i / (n - 1) * (W - L - R); }
-    function Y(v) { return H - B - (v - min) / (max - min) * (H - T - B); }
-    var line = prof.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' ');
+    function XK(km) { return L + Math.max(0, Math.min(routeKm, km)) / routeKm * (W - L - R); }
+    function Y(v) { return baseY - (v - min) / (max - min) * (baseY - T); }
+
     var o = '<svg data-prof-id="' + esc(t.id) + '" viewBox="0 0 ' + W + ' ' + H + '" ' +
-      'preserveAspectRatio="none" style="display:block;width:100%;height:200px">';
+      'preserveAspectRatio="none" style="display:block;width:100%;height:214px" role="img" ' +
+      'aria-label="海拔剖面图">';
+    o += '<defs><clipPath id="profClip"><rect class="prof-clip" x="0" y="0" width="' + W +
+      '" height="' + H + '"/></clipPath></defs>';
+
+    /* ---- 极简网格：只留几条水平参考线，标签走左侧、字号压到 7 ---- */
     for (var alt = min; alt <= max; alt += step) {
       var gy = Y(alt);
-      o += '<path d="M' + L + ' ' + gy.toFixed(1) + 'H' + (W - R) + '" stroke="#dce5e3" stroke-width="1"/>' +
-        (hasElevation ? '<text x="2" y="' + (gy + 3).toFixed(1) + '" font-size="8" fill="#718096">' + alt + 'm</text>' : '');
+      o += '<line x1="' + L + '" y1="' + gy.toFixed(1) + '" x2="' + (W - R) + '" y2="' + gy.toFixed(1) +
+        '" stroke="#eef2f1" stroke-width="1"/>';
+      if (hasElevation) {
+        o += '<text x="' + (L - 6) + '" y="' + (gy + 2.6).toFixed(1) + '" text-anchor="end" ' +
+          'font-size="7" fill="#a7b3bd">' + alt + '</text>';
+      }
     }
-    /* 顶部说明移到 HTML 图例：SVG 这一行留给分段编号 */
-    /* 数据部分套一个裁剪矩形：详情页首次进入时把宽度从 0 拉到 W，
-       坡度曲线就像"从左往右长出来"。JS 没跑起来时矩形就是满宽，图照常完整显示。 */
-    o += '<defs><clipPath id="profClip"><rect class="prof-clip" x="0" y="0" width="' + W + '" height="' + H + '"/></clipPath></defs>';
+
     o += '<g class="prof-body" clip-path="url(#profClip)">';
-    /* 轨迹覆盖的区域：只铺一层透明的淡色（不遮地形），形状一眼可见 */
-    o += '<path d="' + line + ' L' + X(n - 1).toFixed(1) + ' ' + (H - B) + ' L' + X(0).toFixed(1) +
-      ' ' + (H - B) + ' Z" fill="#2563EB" fill-opacity=".08" stroke="none"/>';
+
+    /* ---- 地形剪影：逐坡度带填充，顶边用同色实线勾一下（UTMB 的读法） ---- */
     sg.bands.forEach(function (b) {
-      var d = '';
-      for (var i = b.from; i <= b.to; i++) d += (i === b.from ? 'M' : 'L') + X(i).toFixed(1) + ' ' + Y(prof[i]).toFixed(1);
-      o += '<path d="' + d + '" fill="none" stroke="' + b.color + '" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>';
-      /* 折线颜色只说脚下陡不陡；底部色条由分段难度画，两套图例不混 */
-      if (publicSegments) return;
-      var x0 = X(b.from), x1 = X(b.to);
-      o += '<rect x="' + x0.toFixed(1) + '" y="' + (H - 8) + '" width="' + Math.max(1, x1 - x0).toFixed(1) +
-        '" height="6" rx="3" fill="' + b.color + '"/>';
+      var d = 'M' + X(b.from).toFixed(1) + ' ' + baseY.toFixed(1);
+      for (var i = b.from; i <= b.to; i++) d += 'L' + X(i).toFixed(1) + ' ' + Y(prof[i]).toFixed(1);
+      d += 'L' + X(b.to).toFixed(1) + ' ' + baseY.toFixed(1) + 'Z';
+      o += '<path d="' + d + '" fill="' + b.color + '" fill-opacity=".26" stroke="none"/>';
+      /* 顶边单独描一条，坡度变化处自然断开 */
+      var top = '';
+      for (var k = b.from; k <= b.to; k++) top += (k === b.from ? 'M' : 'L') + X(k).toFixed(1) + ' ' + Y(prof[k]).toFixed(1);
+      o += '<path class="prof-top" d="' + top + '" fill="none" stroke="' + b.color +
+        '" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"/>';
     });
+    /* 基线 */
+    o += '<line x1="' + L + '" y1="' + baseY.toFixed(1) + '" x2="' + (W - R) + '" y2="' + baseY.toFixed(1) +
+      '" stroke="#dfe7e4" stroke-width="1"/>';
+
+    /* ---- 分段边界：一条浅虚线 + 顶部段号（不再占用说明行） ---- */
     if (publicSegments) {
-      var barY = H - 9;
       publicSegments.forEach(function (s) {
-        /* fromKm/toKm 已经是"当前方向"的展示里程，直接用，别再减总里程 */
-        var bx0 = L + s.fromKm / routeKm * (W - L - R), bx1 = L + s.toKm / routeKm * (W - L - R);
         var onSegment = String(routeSelection.segmentId) === String(s.segmentId);
-        if (onSegment) o += '<rect x="' + bx0.toFixed(1) + '" y="' + T + '" width="' + Math.max(1, bx1 - bx0).toFixed(1) +
-          '" height="' + (barY - T) + '" fill="#2563eb" opacity=".08"/>';
-        o += '<line x1="' + bx0.toFixed(1) + '" y1="' + T + '" x2="' + bx0.toFixed(1) + '" y2="' + barY +
-          '" stroke="#9aabc2" stroke-width=".8" stroke-dasharray="3 3"/>';
-        o += '<rect x="' + bx0.toFixed(1) + '" y="' + barY + '" width="' + Math.max(1, bx1 - bx0).toFixed(1) +
-          '" height="7" fill="' + window.PUBLIC_DIFFICULTY.colorForGrade(s.grade.key) + '"' +
-          (onSegment ? ' stroke="#25283b" stroke-width="1.6"' : '') + '/>';
-        o += '<text x="' + ((bx0 + bx1) / 2).toFixed(1) + '" y="21" text-anchor="middle" font-size="8.5" ' +
-          'font-weight="700" fill="' + (onSegment ? '#25283b' : '#7c879b') + '">' + esc(s.displayOrder) + '</text>';
+        var x0 = XK(s.fromKm), x1 = XK(s.toKm);
+        if (onSegment) {
+          o += '<rect x="' + x0.toFixed(1) + '" y="' + T + '" width="' +
+            Math.max(1, x1 - x0).toFixed(1) + '" height="' + (baseY - T) + '" fill="#1f3a30" opacity=".06"/>';
+        }
+        o += '<line class="prof-boundary" x1="' + x0.toFixed(1) + '" y1="' + T + '" x2="' + x0.toFixed(1) +
+          '" y2="' + baseY.toFixed(1) + '" stroke="#c3d2cd" stroke-width=".7" stroke-dasharray="2 3"/>';
+        o += '<text class="prof-segnum" x="' + ((x0 + x1) / 2).toFixed(1) + '" y="' + (T - 6) +
+          '" text-anchor="middle" font-size="8" font-weight="800" fill="' +
+          (onSegment ? '#1f3a30' : '#9aa7b4') + '">' + esc(s.displayOrder) + '</text>';
       });
     }
+
+    /* ---- 关键点：细竖线 + 曲线上的圆点 + 上方的名字标签 ---- */
     if (publicSegments && (t.difficultyV2.points || []).length) {
       (t.difficultyV2.points || []).forEach(function (point) {
-        var pointKm = point.displayKm;
-        var pointIndex = Math.max(0, Math.min(n - 1, Math.round(pointKm / routeKm * (n - 1))));
-        var px = L + pointKm / routeKm * (W - L - R), py = Y(prof[pointIndex]);
-        o += '<g class="route-profile-point' + selectedRouteClass(point.pointId, null) + '" data-act="route-point-select" data-route-point-id="' + esc(point.pointId) + '" tabindex="0" role="button">' +
-          '<line x1="' + px.toFixed(1) + '" y1="' + T + '" x2="' + px.toFixed(1) + '" y2="' + (H - B) + '"/>' +
-          '<circle cx="' + px.toFixed(1) + '" cy="' + py.toFixed(1) + '" r="4"/>';
+        var km = point.displayKm;
+        var idx = Math.max(0, Math.min(n - 1, Math.round(km / routeKm * (n - 1))));
+        var px = XK(km), py = Y(prof[idx]);
+        var on = String(routeSelection.pointId) === String(point.pointId);
+        /* 竖直连接线放在分组外：分组内的 line 会被旧 CSS 染成粉色高亮 */
+        o += '<line x1="' + px.toFixed(1) + '" y1="' + py.toFixed(1) + '" x2="' + px.toFixed(1) +
+          '" y2="' + baseY.toFixed(1) + '" stroke="#cfdad5" stroke-width=".7"/>';
+        o += '<g class="route-profile-point' + (on ? ' route-point-selected' : '') +
+          '" data-act="route-point-select" data-route-point-id="' + esc(point.pointId) + '" tabindex="0" role="button">' +
+          '<circle cx="' + px.toFixed(1) + '" cy="' + py.toFixed(1) + '" r="' + (on ? 3.6 : 2.6) + '"/>';
         if (point.name) {
-          var labelY = placeProfileLabel(px, Math.max(T + 6, py - 8), textWidthOf(point.name, 7));
-          o += '<text x="' + px.toFixed(1) + '" y="' + labelY.toFixed(1) + '" text-anchor="middle">' + esc(point.name) + '</text>';
+          var labelY = placeProfileLabel(px, Math.max(T + 8, py - 7), textWidthOf(point.name, 6.6));
+          o += '<text x="' + px.toFixed(1) + '" y="' + labelY.toFixed(1) + '" text-anchor="middle">' +
+            esc(point.name) + '</text>';
         }
         o += '</g>';
       });
+    } else {
+      /* 旧版线路：仍用山顶标注 */
+      (t.peakList || []).forEach(function (pk) {
+        var px = XK(pk.km), idx = Math.max(0, Math.min(n - 1, Math.round(pk.km / routeKm * (n - 1))));
+        var py = Y(prof[idx]);
+        o += '<circle cx="' + px.toFixed(1) + '" cy="' + py.toFixed(1) + '" r="2.6" fill="#c83773" stroke="#fff" stroke-width="1"/>';
+        if (pk.name) {
+          var ly = placeProfileLabel(px, Math.max(T + 8, py - 7), textWidthOf(pk.name, 6.6));
+          o += '<text x="' + px.toFixed(1) + '" y="' + ly.toFixed(1) + '" text-anchor="middle">' + esc(pk.name) + '</text>';
+        }
+      });
     }
-    /* V2 线路的点位来自 difficultyV2.points；旧 peakList 标注会带出"山顶待命名" */
-    (publicSegments ? [] : (t.peakList || [])).forEach(function (pk) {
-      var x = L + pk.km / t.km * (W - L - R), i = Math.max(0, Math.min(n - 1, Math.round(pk.km / t.km * (n - 1)))), y = Y(prof[i]);
-      o += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="3.5" fill="#ff5298" stroke="#fff" stroke-width="1.5"/>' +
-        '<text x="' + x.toFixed(1) + '" y="' + Math.max(21, y - 7).toFixed(1) + '" text-anchor="middle" font-size="7.5" font-weight="700" fill="#26324d">' +
-        esc(pk.name || (pk.candidate_name ? '待确认：' + pk.candidate_name : '山顶待命名')) +
-        (pk.elevation_m || pk.altitude ? ' · ' + (pk.elevation_m || pk.altitude) + 'm' : '') + '</text>';
-    });
-    /* 打卡点在坡度图上的位置：一条虚线，一眼看出补给点落在上坡还是下坡 */
+
+    /* ---- 打卡点（赛事） ---- */
     (t.checkpoints || []).forEach(function (cp) {
-      var x = L + (cp.km / t.km) * (W - L - R);
-      o += '<line x1="' + x.toFixed(1) + '" y1="' + T + '" x2="' + x.toFixed(1) + '" y2="' + (H - B) +
-        '" stroke="#3455F5" stroke-width="1" stroke-dasharray="2 3" opacity=".6"/>';
-      o += '<circle cx="' + x.toFixed(1) + '" cy="' + (H - B - 3) + '" r="2.7" fill="#3455F5"/>';
-      if (cp.name) o += '<text x="' + x.toFixed(1) + '" y="' + (H - B - 7) + '" text-anchor="middle" font-size="6.7" fill="#3455F5">' + esc(cp.name) + '</text>';
+      var px = reverseDirection ? XK(routeKm - cp.km) : XK(cp.km);
+      o += '<line x1="' + px.toFixed(1) + '" y1="' + T + '" x2="' + px.toFixed(1) + '" y2="' + baseY.toFixed(1) +
+        '" stroke="#3455F5" stroke-width=".8" stroke-dasharray="2 3" opacity=".55"/>';
+      o += '<circle cx="' + px.toFixed(1) + '" cy="' + (baseY - 3) + '" r="2.2" fill="#3455F5"/>';
     });
     o += '</g>';
-    /* 交互层要用的几何参数（拖动红点算里程 / 海拔）：挂在全局注册表上，不塞 DOM 属性。 */
+
+    /* ---- 里程刻度：底部一排，间距按总里程取整 ---- */
+    var tickKm = routeKm <= 5 ? 1 : routeKm <= 12 ? 2 : routeKm <= 30 ? 5 : 10;
+    for (var kk = 0; kk <= routeKm + 0.001; kk += tickKm) {
+      var tx = XK(kk);
+      o += '<line x1="' + tx.toFixed(1) + '" y1="' + baseY.toFixed(1) + '" x2="' + tx.toFixed(1) +
+        '" y2="' + (baseY + 3) + '" stroke="#d6dfdb" stroke-width="1"/>';
+      o += '<text x="' + tx.toFixed(1) + '" y="' + (baseY + 12) + '" text-anchor="' +
+        (kk === 0 ? 'start' : 'middle') + '" font-size="7" fill="#a7b3bd">' + (Math.round(kk * 10) / 10) + '</text>';
+    }
+    o += '<text x="' + (W - R) + '" y="' + (baseY + 12) + '" text-anchor="end" font-size="7" fill="#a7b3bd">km</text>';
+
+    /* ---- 底部分段难度色带（与地图同一套七档色） ---- */
+    if (publicSegments) {
+      var barY = baseY + 18, barH = 7;
+      publicSegments.forEach(function (s) {
+        var x0 = XK(s.fromKm), x1 = XK(s.toKm);
+        var onSegment = String(routeSelection.segmentId) === String(s.segmentId);
+        o += '<rect class="prof-segbar" x="' + (x0 + 0.6).toFixed(1) + '" y="' + (barY + (onSegment ? -1.5 : 0)) +
+          '" width="' + Math.max(1, x1 - x0 - 1.2).toFixed(1) + '" height="' + (onSegment ? barH + 3 : barH) +
+          '" rx="1.5" fill="' + window.PUBLIC_DIFFICULTY.colorForGrade(s.grade.key) + '"/>';
+      });
+      o += '<text x="' + L + '" y="' + (barY + barH + 9) + '" font-size="7" fill="#a7b3bd">分段难度</text>';
+    }
+
+    /* 交互层要用的几何参数（拖动红点算里程 / 海拔） */
     window.HIKES_PROF = window.HIKES_PROF || {};
     window.HIKES_PROF[t.id] = { prof: prof, min: min, max: max, W: W, H: H,
-      L: L, R: R, T: T, B: B, km: t.km, n: n, hasElevation: hasElevation };
+      L: L, R: R, T: T, B: B, km: routeKm, n: n, hasElevation: hasElevation };
     return o + '</svg>';
   }
 

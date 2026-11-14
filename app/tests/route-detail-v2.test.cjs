@@ -107,13 +107,15 @@ test('public point labels fall back to nothing instead of 待命名', () => {
   assert.match(app, /pointTypeLabel\(point\.pointType, data\.direction\)/);
 });
 
-test('profile bottom bar uses segment difficulty and forward display km once', () => {
+test('profile chart is a UTMB-style silhouette with a segment difficulty bar', () => {
   const app = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
-  // 后端已按方向换算 fromKm/toKm，前端不能再减一次总里程
-  assert.match(app, /var bx0 = L \+ s\.fromKm \/ routeKm/);
+  assert.match(app, /fill-opacity="\.26"/);
+  assert.match(app, /class="prof-top"/);
+  assert.match(app, /class="prof-segbar"/);
+  assert.match(app, /window\.PUBLIC_DIFFICULTY\.colorForGrade\(s\.grade\.key\)/);
   assert.doesNotMatch(app, /routeKm - s\.toKm/);
-  assert.match(app, /fill="' \+ window\.PUBLIC_DIFFICULTY\.colorForGrade\(s\.grade\.key\)/);
-  assert.match(app, /if \(publicSegments\) return;/);
+  assert.match(app, /class="prof-segnum"/);
+  assert.match(app, /tickKm/);
 });
 
 test('direction switch keeps the page on V2 and explains loading plus fallback', () => {

@@ -1410,3 +1410,11 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{
 .point-chip-info{margin-top:6px;padding:10px 12px;border-radius:12px;background:#f6f9fb;display:flex;flex-direction:column;gap:3px}
 .point-chip-info b{font-size:13.5px;color:#25283b}
 .point-chip-info span{font-size:11.5px;color:#7c879b}
+
+/* UTMB 风格坡度图：地形剪影 + 克制坐标 + 底部分段色带 */
+.profilebox svg{overflow:visible}
+.route-profile-point text{font-size:6.6px;font-weight:700;fill:#33415e;paint-order:stroke;stroke:#fff;stroke-width:2.2px}
+.route-profile-point circle{fill:#fff;stroke:#1f3a30;stroke-width:1.4}
+.route-profile-point.route-point-selected circle{fill:#1f3a30;stroke:#fff;stroke-width:2}
+.prof-segbar{transition:opacity .15s}
+.public-segment-card.route-point-selected ~ .profilebox .prof-segbar{opacity:.6}
