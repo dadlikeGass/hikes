@@ -2495,14 +2495,10 @@
           '<div class="empty"><span class="big">🔍</span>当前筛选条件下，这个榜里没有山头，' +
           '换个城市或海拔档试试。</div>';
       }
-      var why = (window.API && window.API.hotError)
-        ? '接口 /api/peaks/hot 报错：' + esc(window.API.hotError)
-        : '接口返回了空列表';
       return '<div class="sec-head"><h3>热门登顶榜</h3>' +
         '<span class="more">本周打卡 + 关注 ›</span></div>' +
-        '<div class="empty"><span class="big">📡</span>' + why + '<br>' +
-        '<span style="font-size:12.5px">如果刚才还好好的，多半是页面还是旧的——' +
-        '重新加载一次就好</span><br>' +
+        '<div class="empty"><span class="big">📡</span>热门榜暂时没读上来。<br>' +
+        '<span style="font-size:12.5px">网络恢复后重新加载一次就好</span><br>' +
         '<button class="btn ghost" style="margin-top:12px" data-act="reload">重新加载</button></div>';
     }
     return '<div class="sec-head" id="page-peakHot"><h3>热门登顶榜</h3>' +
