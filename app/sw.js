@@ -1,5 +1,5 @@
 /* Offline shell for already visited pages. Private API responses are never cached. */
-const SHELL_CACHE = 'hikes-shell-v12-email-auth';
+const SHELL_CACHE = 'hikes-shell-v13-home-copy';
 const PUBLIC_CACHE = 'hikes-public-v10-45';
 const SHELL = ['./', './index.html', './css/app.css', './css/redesign.css', './js/public-difficulty.js',
   './js/data.js', './js/ui.js', './js/track.js', './js/api.js',

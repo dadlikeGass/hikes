@@ -799,7 +799,7 @@
       '<button type="button" class="ck-btn ck-gps" data-act="nearby" aria-label="定位打卡">' +
       U.icon('pin') + '<b>定位打卡</b><em data-ck-note>' + esc(nearbyNote()) + '</em></button>' +
       '</div>' +
-      '<p class="ck-tip">山顶、山脚各打一次，自动算出登顶用时；只打一个会提醒你补另一个。</p>' +
+      '<p class="ck-tip">山脚一张「出发」，山顶一张「登顶」——这座山就有你的登顶用时。</p>' +
       '</div></div>' +
       '<div class="pad"><div class="sec-head"><h3>我的山峰</h3></div>' +
       (!homeData ? '<div class="empty">正在读取到访记录…</div>' : summary === null ?
