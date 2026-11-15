@@ -2615,8 +2615,10 @@
     return '#/me';
   }
 
-  function requestAuth(mode, username, password, nickname) {
-    var body = { username: username, password: password };
+  function requestAuth(mode, account, password, nickname) {
+    var body = mode === 'register'
+      ? { email: account, password: password }
+      : { username: account, password: password };
     if (mode === 'register' && nickname) body.nickname = nickname;
     return window.API.guestToken().then(function (guestToken) {
       return window.API.timedFetch('/api/auth/' + mode, {
@@ -2699,10 +2701,14 @@
       '" data-act="auth-mode" data-val="register">注册</button></div>' +
       (expired ? '<div class="auth-note" role="status">登录已过期，请重新登录。</div>' : '') +
       '<form id="authForm" class="card auth-form" data-mode="' + (register ? 'register' : 'login') + '" novalidate>' +
-      '<div class="field"><label for="authUser">用户名</label>' +
-      '<input id="authUser" name="username" type="text" autocomplete="username" maxlength="32" ' +
-      'aria-describedby="authUserHelp" required>' +
-      '<div class="auth-help" id="authUserHelp">3–32 位英文字母、数字或下划线</div></div>' +
+      (register
+        ? '<div class="field"><label for="authEmail">邮箱</label>' +
+          '<input id="authEmail" name="email" type="email" inputmode="email" autocomplete="email" ' +
+          'maxlength="254" required>' +
+          '<div class="auth-help">用于登录和找回密码，注册后会发一封验证邮件</div></div>'
+        : '<div class="field"><label for="authUser">邮箱或用户名</label>' +
+          '<input id="authUser" name="username" type="text" autocomplete="username" maxlength="254" required>' +
+          '<div class="auth-help">填注册时用的邮箱或用户名都可以</div></div>') +
       (register ? '<div class="field"><label for="authNickname">昵称 <small>可选</small></label>' +
         '<input id="authNickname" name="nickname" type="text" autocomplete="nickname" maxlength="32">' +
         '<div class="auth-help">不填时显示用户名</div></div>' : '') +
@@ -2717,13 +2723,15 @@
       (register ? '创建账号' : '登录') + '</button>' +
       '<div class="auth-legal">' + (register
         ? '注册即表示你同意 <a href="/terms.html" target="_blank">《用户协议》</a>和<a href="/privacy.html" target="_blank">《隐私政策》</a>。'
-        : '还没有账号？<button type="button" class="auth-link" data-act="auth-mode" data-val="register">立即注册</button>') +
+        : '<button type="button" class="auth-link" data-act="auth-forgot-open">忘记密码？</button>' +
+          ' · 还没有账号？<button type="button" class="auth-link" data-act="auth-mode" data-val="register">立即注册</button>') +
       '</div></form></div>';
   }
 
   function submitAuthPage(form) {
     var mode = form.getAttribute('data-mode') === 'register' ? 'register' : 'login';
-    var username = (document.getElementById('authUser') || {}).value || '';
+    var identifier = (document.getElementById('authUser') || {}).value || '';
+    var email = (document.getElementById('authEmail') || {}).value || '';
     var password = (document.getElementById('authPassword') || {}).value || '';
     var nickname = (document.getElementById('authNickname') || {}).value || '';
     var password2 = (document.getElementById('authPassword2') || {}).value || '';
@@ -2733,8 +2741,10 @@
       if (errorEl) errorEl.textContent = message;
       if (submit) submit.disabled = false;
     }
-    if (!/^[A-Za-z0-9_]{3,32}$/.test(username.trim())) {
-      fail('用户名需为 3–32 位英文字母、数字或下划线。');
+    var account = (mode === 'register' ? email : identifier).trim();
+    if (!account) { fail(mode === 'register' ? '请填写邮箱。' : '请填写邮箱或用户名。'); return; }
+    if (!EMAIL_INPUT_RE.test(account) && (mode === 'register' || account.indexOf('@') >= 0)) {
+      fail('邮箱格式不对，请检查后再试。');
       return;
     }
     if (!password) { fail('请填写密码。'); return; }
@@ -2751,15 +2761,16 @@
     }
     var oldGuestToken = null;
     try { oldGuestToken = localStorage.getItem('hikes.guest.token'); } catch (e) { /* ignore */ }
-    requestAuth(mode, username.trim(), password, nickname.trim())
+    requestAuth(mode, account, password, nickname.trim())
       .then(function (data) {
-        return commitAuthSession(data, mode, oldGuestToken, username.trim(), nickname.trim());
+        return commitAuthSession(data, mode, oldGuestToken, account, nickname.trim());
       })
       .then(function (result) {
         U.closeSheet();
         U.toast(result.draftSyncFailed ? '已登录；草稿保存在本机，联网后可重试' :
           '已登录，到访与草稿已保存');
         location.hash = authNext();
+        if (mode === 'register' && EMAIL_INPUT_RE.test(account)) openVerifySheet(account);
       })
       .catch(function (error) {
         fail(error && error.message || '注册或登录失败，请稍后重试');
@@ -3818,7 +3829,7 @@
           '<button data-act="board-vote" data-id="' + cid + '" data-val="like" aria-label="点赞">👍 ' + x.c.claps + '</button></div>' +
           (boardOpen[cid] ? '<div class="board-replies">' + (replies ? (replies.length ? replies.map(function (r) {
             return '<div class="board-reply"><b>' + esc(r.nickname || '山友') + '</b><p>' + esc(r.text) + '</p><time>' + esc(new Date(r.created_at).toLocaleString()) + '</time></div>';
-          }).join('') : '<p class="muted">还没有回复，来说一句吧。</p>') : '<p>正在加载回复…</p>') +
+          }).join('') : '<p class="sh-sub">还没有回复，来说一句吧。</p>') : '<p>正在加载回复…</p>') +
           '<label class="board-reply-label" for="reply-' + cid + '">回复这条留言</label><textarea id="reply-' + cid + '" maxlength="200" placeholder="写下你的回复"></textarea><button class="btn coral" data-act="board-reply-send" data-id="' + cid + '">发送回复</button></div>' : '') + '</article></section>';
       }).join('') + '</div>' : '<div class="empty board-empty"><span class="big">⛰</span>' +
         (boardFollow === 'visited' ? '你去过的山头还没有留言。' : boardFollow === 'want' ? '你想去的山头还没有留言。' : '还没有留言。') +
@@ -5040,6 +5051,103 @@
   trkWireTrack();
   function on(act, fn) { return { act: act, fn: fn }; }
 
+  /* ===== 邮箱验证 / 找回密码（无页面改造，全部走底部弹层） ===== */
+  var EMAIL_INPUT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+  function authPost(path, payload) {
+    return window.API.timedFetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function (response) {
+      return response.json().catch(function () { return {}; }).then(function (data) {
+        if (response.ok) return data;
+        var error = data && (data.error || (data.detail && data.detail.error));
+        var failure = new Error((error && error.message) || '操作失败，请稍后再试');
+        failure.status = response.status;
+        failure.code = error && error.code;
+        throw failure;
+      });
+    });
+  }
+
+  function verifySheetHtml(address) {
+    return '<div><h3>验证邮箱</h3>' +
+      '<p class="sh-sub">验证码已发送到 ' + esc(address) + '，30 分钟内有效。没收到可以点下方重新发送。</p>' +
+      '<div class="field"><label for="verifyCode">验证码</label>' +
+      '<input id="verifyCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></div>' +
+      '<div id="verifyMsg" class="auth-note" role="alert" aria-live="polite"></div>' +
+      '<button class="btn coral" data-act="auth-verify-submit" data-val="' + esc(address) + '">验证</button>' +
+      '<button class="btn ghost" style="margin-top:9px" data-act="auth-verify-resend" data-val="' +
+      esc(address) + '">重新发送</button></div>';
+  }
+
+  function forgotSheetHtml() {
+    return '<div><h3>找回密码</h3>' +
+      '<p class="sh-sub">填注册邮箱，我们会发一个验证码，用它重设密码。</p>' +
+      '<div class="field"><label for="forgotEmail">邮箱</label>' +
+      '<input id="forgotEmail" type="email" inputmode="email" autocomplete="email" maxlength="254"></div>' +
+      '<div id="forgotMsg" class="auth-note" role="alert" aria-live="polite"></div>' +
+      '<button class="btn coral" data-act="auth-forgot-send">发送验证码</button></div>';
+  }
+
+  function resetSheetHtml(address) {
+    return '<div><h3>设置新密码</h3>' +
+      '<p class="sh-sub">验证码已发送到 ' + esc(address) + '。</p>' +
+      '<div class="field"><label for="resetCode">验证码</label>' +
+      '<input id="resetCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></div>' +
+      '<div class="field"><label for="resetPassword">新密码</label>' +
+      '<input id="resetPassword" type="password" autocomplete="new-password" maxlength="128"></div>' +
+      '<div class="auth-help" style="margin-top:-5px">密码至少 12 位</div>' +
+      '<div id="resetMsg" class="auth-note" role="alert" aria-live="polite"></div>' +
+      '<button class="btn coral" data-act="auth-reset-submit" data-val="' + esc(address) + '">重设密码</button></div>';
+  }
+
+  function authMsg(id, message) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = message || '';
+  }
+
+  window.AUTH_ACTIONS = {
+    'auth-forgot-open': function () { U.openSheet(forgotSheetHtml(), true); },
+    'auth-forgot-send': function () {
+      var address = ((document.getElementById('forgotEmail') || {}).value || '').trim();
+      if (!EMAIL_INPUT_RE.test(address)) { authMsg('forgotMsg', '邮箱格式不对。'); return; }
+      authPost('/api/auth/forgot', { email: address }).then(function () {
+        U.openSheet(resetSheetHtml(address), true);
+        U.toast('验证码已发送，请查收邮件');
+      }).catch(function (err) { authMsg('forgotMsg', err.message); });
+    },
+    'auth-reset-submit': function (t, d) {
+      var code = ((document.getElementById('resetCode') || {}).value || '').trim();
+      var password = (document.getElementById('resetPassword') || {}).value || '';
+      if (code.length < 4) { authMsg('resetMsg', '请填写邮件里的验证码。'); return; }
+      if (password.length < 12) { authMsg('resetMsg', '密码至少需要 12 位。'); return; }
+      authPost('/api/auth/reset', { email: d.val, code: code, newPassword: password }).then(function () {
+        U.closeSheet();
+        location.hash = '#/login';
+        U.toast('密码已更新，用新密码登录');
+      }).catch(function (err) { authMsg('resetMsg', err.message); });
+    },
+    'auth-verify-submit': function (t, d) {
+      var code = ((document.getElementById('verifyCode') || {}).value || '').trim();
+      if (code.length < 4) { authMsg('verifyMsg', '请填写邮件里的验证码。'); return; }
+      authPost('/api/auth/verify-email', { email: d.val, code: code }).then(function () {
+        U.closeSheet();
+        U.toast('邮箱已验证');
+      }).catch(function (err) { authMsg('verifyMsg', err.message); });
+    },
+    'auth-verify-resend': function (t, d) {
+      authPost('/api/auth/resend-verify', { email: d.val }).then(function () {
+        authMsg('verifyMsg', '已重新发送，请查收邮件（10 分钟内最多 3 次）。');
+      }).catch(function (err) { authMsg('verifyMsg', err.message); });
+    }
+  };
+
+  function openVerifySheet(address) {
+    U.openSheet(verifySheetHtml(address), true);
+  }
+
   document.addEventListener('change', function (e) {
     if (e.target.id === 'board-search') { boardQuery = e.target.value.trim(); render(); }
     if (e.target.id === 'board-peak-filter') { boardPeakFilter = e.target.value; render(); }
@@ -6059,6 +6167,10 @@
     if (act === 'del-act') {
       S.myActs = S.myActs.filter(function (a) { return a.id !== id; });
       persist(); render(); U.toast('已删除');
+      return;
+    }
+    if (window.AUTH_ACTIONS && window.AUTH_ACTIONS[act]) {
+      window.AUTH_ACTIONS[act](t, { id: id, type: type, val: val });
       return;
     }
     if (window.EXTRA_ACTIONS && window.EXTRA_ACTIONS[act]) {

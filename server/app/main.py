@@ -7,6 +7,8 @@ import io
 import json
 import logging
 import hashlib
+import hmac
+import secrets
 import math
 import mimetypes
 import os
@@ -52,6 +54,7 @@ if (_SERVER_ROOT / "app" / "main.py").is_file():
 from app.checkins import (record_visit, climb_duration_for_peak, CHECKIN_RADIUS_PEAK_M,
                           CHECKIN_RADIUS_OTHER_M, MAX_ACCURACY_M)
 from app.efforts import reconcile_efforts
+from app.mailer import configured as mail_configured, send as send_mail
 from app.letters import public_letter, letter_is_unlocked
 from app.king_routes import build_king_router
 from app.king_service import ServiceError
@@ -394,6 +397,7 @@ class VisitOut(BaseModel):
 
 
 class TokenOut(BaseModel):
+    debugCode: str | None = None
     token: str
     tokenType: str = "Bearer"
     userId: int
@@ -434,7 +438,7 @@ EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
 class RegisterIn(BaseModel):
-    username: str = Field(min_length=3, max_length=32)
+    username: str | None = Field(default=None, max_length=32)
     password: str = Field(min_length=12, max_length=128)
     nickname: str | None = Field(default=None, max_length=32)
     email: str | None = Field(default=None, max_length=254)
@@ -725,8 +729,19 @@ def _validate_auth_input(username: str, email: str | None = None):
           summary="注册用户名密码账号，并原子合并当前游客记录")
 def register(body: RegisterIn, request: Request,
              x_guest_token: str | None = Header(default=None)):
-    username = body.username.strip().lower()
+    username = (body.username or "").strip().lower()
     email = body.email.strip().lower() if body.email else None
+    if not username:
+        if not email:
+            err(400, "USERNAME_REQUIRED", "请填写邮箱或用户名")
+        base = "u" + hashlib.sha256(email.encode("utf-8")).hexdigest()[:10]
+        with engine.begin() as conn:
+            username = base
+            n = 0
+            while conn.execute(text("SELECT 1 FROM users WHERE lower(username)=:u"),
+                               {"u": username}).first():
+                n += 1
+                username = base[:28] + str(n)
     _validate_auth_input(username, email)
     ip_key = _auth_bucket_key("register-ip", _request_ip(request))
     if _auth_rate_limited([ip_key], limit=10, minutes=60):
@@ -750,7 +765,18 @@ def register(body: RegisterIn, request: Request,
             merged = _merge_guest_records(conn, x_guest_token, uid)
     except IntegrityError:
         err(409, "ACCOUNT_EXISTS", "用户名或邮箱已注册")
-    return TokenOut(token=make_token(uid), userId=uid, **merged)
+    debug_code = None
+    if email:
+        try:
+            with engine.begin() as conn:
+                code = _issue_code(conn, email, "verify")
+            _send_verify_code(email, code)
+            if os.getenv("MAIL_DEBUG_CODE") == "1":
+                debug_code = code
+        except Exception:  # noqa: BLE001
+            logging.exception("发送验证邮件失败 email=%s", email)
+    out = TokenOut(token=make_token(uid), userId=uid, **merged)
+    return out.model_copy(update={"debugCode": debug_code}) if debug_code else out
 
 
 @app.post("/api/auth/login", response_model=TokenOut, tags=["认证"],
@@ -758,14 +784,22 @@ def register(body: RegisterIn, request: Request,
           summary="用户名密码登录，并合并当前游客记录")
 def login(body: LoginIn, request: Request,
           x_guest_token: str | None = Header(default=None)):
-    username = body.username.strip().lower()
-    _validate_auth_input(username)
+    identifier = body.username.strip().lower()
+    by_email = "@" in identifier
+    if by_email:
+        if not EMAIL_RE.fullmatch(identifier):
+            err(400, "EMAIL_INVALID", "邮箱格式无效")
+    else:
+        _validate_auth_input(identifier)
     ip = _request_ip(request)
     ip_key = _auth_bucket_key("login-ip", ip)
-    user_key = _auth_bucket_key("login-user", username)
+    user_key = _auth_bucket_key("login-user", identifier)
     if _auth_rate_limited([ip_key, user_key], limit=5, minutes=15):
         err(429, "RATE_LIMITED", "登录尝试过多，请 15 分钟后再试")
-    user = q1("SELECT id, password_hash FROM users WHERE lower(username) = :u", u=username)
+    if by_email:
+        user = q1("SELECT id, password_hash FROM users WHERE lower(email) = :u", u=identifier)
+    else:
+        user = q1("SELECT id, password_hash FROM users WHERE lower(username) = :u", u=identifier)
     valid = False
     if user and user["password_hash"]:
         try:
@@ -848,6 +882,140 @@ def wechat_login(body: WechatLoginIn, request: Request,
     except IntegrityError:
         err(409, "WECHAT_ACCOUNT_CONFLICT", "微信身份已关联其他账号，请联系平台处理")
     return TokenOut(token=make_token(uid), userId=uid, **merged)
+
+
+# ==================== 邮箱验证码 / 找回密码 ====================
+CODE_TTL_MINUTES = 30
+CODE_MAX_ATTEMPTS = 5
+
+
+def _norm_email(value: str | None) -> str:
+    return (value or "").strip().lower()
+
+
+def _code_hash(email: str, purpose: str, code: str) -> str:
+    return hashlib.sha256(f"{email}|{purpose}|{code}|{JWT_SECRET}".encode()).hexdigest()
+
+
+def _issue_code(conn, email: str, purpose: str) -> str:
+    """生成 6 位码写入 auth_codes（旧码作废），返回明文码用于发信。"""
+    code = f"{secrets.randbelow(10 ** 6):06d}"
+    conn.execute(text("""UPDATE auth_codes SET consumed_at=now()
+                          WHERE lower(email)=:e AND purpose=:p AND consumed_at IS NULL"""),
+                 {"e": email, "p": purpose})
+    conn.execute(text("""INSERT INTO auth_codes (email, purpose, code_hash, expires_at)
+        VALUES (:e, :p, :h, now() + (:ttl || ' minutes')::interval)"""),
+                 {"e": email, "p": purpose, "h": _code_hash(email, purpose, code),
+                  "ttl": CODE_TTL_MINUTES})
+    return code
+
+
+def _check_code(conn, email: str, purpose: str, code: str) -> bool:
+    row = conn.execute(text("""SELECT id, code_hash, attempts FROM auth_codes
+        WHERE lower(email)=:e AND purpose=:p AND consumed_at IS NULL AND expires_at > now()
+        ORDER BY created_at DESC LIMIT 1"""), {"e": email, "p": purpose}).mappings().first()
+    if not row:
+        return False
+    if row["attempts"] >= CODE_MAX_ATTEMPTS:
+        return False
+    if hmac.compare_digest(row["code_hash"], _code_hash(email, purpose, code)):  # type: ignore[attr-defined]
+        conn.execute(text("UPDATE auth_codes SET consumed_at=now() WHERE id=:id"), {"id": row["id"]})
+        return True
+    conn.execute(text("UPDATE auth_codes SET attempts=attempts+1 WHERE id=:id"), {"id": row["id"]})
+    return False
+
+
+def _send_verify_code(email: str, code: str) -> bool:
+    return send_mail(email, "到此一游 · 邮箱验证码",
+                     f"你的验证码是 {code}，{CODE_TTL_MINUTES} 分钟内有效。\n如果不是你本人操作，忽略这封邮件即可。")
+
+
+class EmailOnlyIn(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+
+
+class EmailCodeIn(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+    code: str = Field(min_length=4, max_length=8)
+
+
+class PasswordResetIn(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+    code: str = Field(min_length=4, max_length=8)
+    newPassword: str = Field(min_length=12, max_length=128)
+
+
+@app.post("/api/auth/verify-email", tags=["认证"], summary="用邮件里的验证码激活邮箱")
+def verify_email(body: EmailCodeIn, request: Request):
+    email = _norm_email(body.email)
+    if not EMAIL_RE.fullmatch(email):
+        err(400, "EMAIL_INVALID", "邮箱格式无效")
+    ip_key = _auth_bucket_key("verify-ip", _request_ip(request))
+    if _auth_rate_limited([ip_key], limit=20, minutes=60):
+        err(429, "RATE_LIMITED", "尝试过于频繁，请稍后再试")
+    _auth_record_attempt([ip_key], minutes=60)
+    with engine.begin() as conn:
+        if not _check_code(conn, email, "verify", body.code.strip()):
+            err(400, "CODE_INVALID", "验证码不对或已过期")
+        conn.execute(text("UPDATE users SET email_verified_at=now() WHERE lower(email)=:e"),
+                     {"e": email})
+    return {"ok": True, "email": email}
+
+
+@app.post("/api/auth/resend-verify", tags=["认证"], summary="重发邮箱验证码")
+def resend_verify(body: EmailOnlyIn, request: Request):
+    email = _norm_email(body.email)
+    if not EMAIL_RE.fullmatch(email):
+        err(400, "EMAIL_INVALID", "邮箱格式无效")
+    ip_key = _auth_bucket_key("resend-ip", _request_ip(request))
+    mail_key = _auth_bucket_key("resend-mail", email)
+    if _auth_rate_limited([ip_key, mail_key], limit=3, minutes=10):
+        err(429, "RATE_LIMITED", "发送过于频繁，请 10 分钟后再试")
+    _auth_record_attempt([ip_key, mail_key], minutes=10)
+    with engine.begin() as conn:
+        exists = conn.execute(text("SELECT 1 FROM users WHERE lower(email)=:e"), {"e": email}).first()
+        code = _issue_code(conn, email, "verify") if exists else None
+    if code:
+        _send_verify_code(email, code)
+    return {"ok": True}          # 不暴露邮箱是否注册
+
+
+@app.post("/api/auth/forgot", tags=["认证"], summary="发送重置密码验证码")
+def forgot_password(body: EmailOnlyIn, request: Request):
+    email = _norm_email(body.email)
+    if not EMAIL_RE.fullmatch(email):
+        err(400, "EMAIL_INVALID", "邮箱格式无效")
+    ip_key = _auth_bucket_key("forgot-ip", _request_ip(request))
+    mail_key = _auth_bucket_key("forgot-mail", email)
+    if _auth_rate_limited([ip_key, mail_key], limit=3, minutes=10):
+        err(429, "RATE_LIMITED", "发送过于频繁，请 10 分钟后再试")
+    _auth_record_attempt([ip_key, mail_key], minutes=10)
+    with engine.begin() as conn:
+        exists = conn.execute(text("SELECT 1 FROM users WHERE lower(email)=:e"), {"e": email}).first()
+        code = _issue_code(conn, email, "reset") if exists else None
+    if code:
+        send_mail(email, "到此一游 · 重置密码",
+                  f"你的重置验证码是 {code}，{CODE_TTL_MINUTES} 分钟内有效。\n如果不是你本人操作，忽略这封邮件即可。")
+    return {"ok": True}          # 永远 200，避免枚举账号
+
+
+@app.post("/api/auth/reset", tags=["认证"], summary="用验证码重置密码")
+def reset_password(body: PasswordResetIn, request: Request):
+    email = _norm_email(body.email)
+    ip_key = _auth_bucket_key("reset-ip", _request_ip(request))
+    if _auth_rate_limited([ip_key], limit=10, minutes=60):
+        err(429, "RATE_LIMITED", "尝试过于频繁，请稍后再试")
+    _auth_record_attempt([ip_key], minutes=60)
+    encoded = password_hasher.hash(body.newPassword)
+    with engine.begin() as conn:
+        if not _check_code(conn, email, "reset", body.code.strip()):
+            err(400, "CODE_INVALID", "验证码不对或已过期")
+        updated = conn.execute(text("""UPDATE users SET password_hash=:p, email_verified_at=coalesce(email_verified_at, now())
+                                        WHERE lower(email)=:e RETURNING id"""),
+                               {"p": encoded, "e": email}).first()
+        if not updated:
+            err(400, "CODE_INVALID", "验证码不对或已过期")
+    return {"ok": True}
 
 
 @app.get("/api/me/account", response_model=AccountOut, tags=["认证"], responses=ERR_401,
