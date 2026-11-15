@@ -2,7 +2,9 @@
 import logging
 import os
 import smtplib
+from email.headerregistry import Address
 from email.message import EmailMessage
+from email.utils import parseaddr
 
 
 def configured() -> bool:
@@ -20,7 +22,9 @@ def send(to: str, subject: str, body: str) -> bool:
     password = os.getenv("SMTP_PASS", "").strip()
     sender = os.getenv("SMTP_FROM", user or "no-reply@dcyy.world").strip()
     msg = EmailMessage()
-    msg["From"] = sender
+    display, address = parseaddr(sender)
+    msg["From"] = (Address(display_name=display, addr_spec=address) if display and address
+                   else (address or sender))
     msg["To"] = to
     msg["Subject"] = subject
     msg.set_content(body)
