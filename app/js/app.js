@@ -3372,9 +3372,63 @@
       .catch(function () { peakBoards[key] = { error: true }; })
       .then(function () { peakBoardLoading[key] = false; if (parse().name === 'peak') render(); });
   }
+
+  /* 登顶用时榜的一张卡：统计 + Top10 + 我的位置；没有真实数据时用示例数据先展示版式 */
+  function peakBoardMock(courseName) {
+    var leaders = [
+      ['阿峰', 47, '11-08'], ['山猫', 51, '11-09'], ['老周', 55, '11-07'],
+      ['小满', 58, '11-10'], ['疾风', 61, '11-03'], ['林间', 64, '11-11'],
+      ['石阶', 68, '11-02'], ['云边', 72, '11-12'], ['北坡', 75, '11-05'], ['慢跑', 79, '11-01']
+    ].map(function (r, i) {
+      return { rank: i + 1, nickname: r[0], durationS: r[1] * 60, date: r[2] };
+    });
+    return {
+      course: { name: courseName || '主峰路线' },
+      board: {
+        sampleSize: 128, fastestS: 47 * 60, averageS: 72 * 60,
+        rankingAvailable: true, leaders: leaders, mock: true,
+        myBest: { rank: 23, durationS: 66 * 60, percentile: 82, date: '11-06' }
+      }
+    };
+  }
+  function fmtDur(sec) {
+    if (!sec && sec !== 0) return '—';
+    var m = Math.round(sec / 60);
+    return m >= 60 ? Math.floor(m / 60) + ' 小时 ' + (m % 60) + ' 分' : m + ' 分钟';
+  }
+  function peakBoardCard(item) {
+    var board = item.board || {};
+    var real = !board.mock && (board.sampleSize || 0) > 0;
+    var data = real ? board : peakBoardMock(item.course && item.course.name).board;
+    var rows = (data.leaders || []).slice(0, 10);
+    return '<div class="card peak-board-card">' +
+      '<div class="pbhead"><b>' + esc(item.course.name) + '</b>' +
+      (real ? '' : '<span class="pbdemo">示例数据</span>') + '</div>' +
+      '<div class="pbstats">' +
+      '<span><i>登顶人数</i><b>' + (data.sampleSize || 0) + '</b></span>' +
+      '<span><i>最快用时</i><b>' + fmtDur(data.fastestS) + '</b></span>' +
+      '<span><i>平均用时</i><b>' + fmtDur(data.averageS) + '</b></span>' +
+      '</div>' +
+      (data.myBest
+        ? '<div class="pbme">我的最好成绩 <b>' + fmtDur(data.myBest.durationS) + '</b>' +
+          (data.myBest.rank ? ' · 第 ' + data.myBest.rank + ' 名' : '') +
+          (data.myBest.percentile ? ' · 快过 ' + data.myBest.percentile + '% 的人' : '') + '</div>'
+        : '<div class="pbme pbme-none">还没留下用时，走到山顶按一次「我也到了」就会进榜</div>') +
+      (data.rankingAvailable && rows.length
+        ? '<div class="pblist">' + rows.map(function (r) {
+            return '<div class="pbrow"><span class="pbrank">' + r.rank + '</span>' +
+              '<b>' + esc(r.nickname) + '</b><span class="pbtime">' + fmtDur(r.durationS) + '</span>' +
+              '<span class="pbdate">' + esc(r.date || '') + '</span></div>';
+          }).join('') + '</div>'
+        : '<div class="hint">满 ' + (data.minSample || 3) + ' 人有效成绩后显示名次。</div>') +
+      '</div>';
+  }
+
   function peakBoardHTML(p) {
+    /* 还没有路线身份/成绩时，用示例数据把版式先立起来（带「示例数据」标识） */
     if (!p.mountainId) return '<div class="sec-head"><h3>登顶用时榜</h3></div>' +
-      '<div class="empty">这座山的路线身份仍待核实。</div>';
+      peakBoardCard({ course: { name: p.name || '主峰路线' }, board: {} }) +
+      '<div class="hint">这座山的路线身份仍待核实，以上为版式示例。</div>';
     var key = p.mountainId + ':' + peakBoardWindow;
     if (!peakBoards[key]) loadPeakBoard(p.mountainId);
     var data = peakBoards[key];
@@ -3385,17 +3439,9 @@
     return '<div class="sec-head"><h3>登顶用时榜</h3></div><div class="btn-row">' + tabs + '</div>' +
       (!data ? '<div class="empty">正在读取路线成绩…</div>' : data.error ?
         '<div class="empty">用时榜暂时无法读取，打卡不受影响。</div>' : data.length ?
-        data.map(function (item) {
-          var board = item.board;
-          return '<div class="card"><b>' + esc(item.course.name) + '</b>' +
-            (board.myBest ? '<div class="hint">我的用时 ' + Math.round(board.myBest.durationS / 60) +
-              ' 分钟' + (board.myBest.rank ? ' · 第 ' + board.myBest.rank + ' 名' : '') + '</div>' : '') +
-            (board.rankingAvailable ? board.leaders.map(function (r) {
-              return '<div class="rowlink"><span class="em">' + r.rank + '</span><div class="tx"><b>' +
-                esc(r.nickname) + '</b><span>' + Math.round(r.durationS / 60) + ' 分钟 · ' + esc(r.date) +
-                '</span></div></div>';
-            }).join('') : '<div class="hint">有效样本不足 8 人，暂不显示名次。</div>') + '</div>';
-        }).join('') : '<div class="empty">登顶路线尚未核实，暂不开放用时榜。</div>');
+        data.map(peakBoardCard).join('') :
+        peakBoardCard({ course: { name: p.name || '主峰路线' }, board: {} }) +
+        '<div class="hint">这条登顶路线还没有成绩数据，以上为版式示例。</div>');
   }
   function peakView(id) {
     var p = peak(id);
@@ -3411,7 +3457,12 @@
     var selfBuilt = p.origin === 'user';        /* 用户自己上传 GPX 建的点位 */
     var isJunction = p.type === 'junction';     /* 自建的岔路点位也走这个页面模板 */
     return (
-      '<div class="hero tall">' + U.scene(p.id) +
+      '<div class="hero tall hero-blank">' +
+      (p.coverUrl
+        ? '<img class="peak-cover" src="' + esc(p.coverUrl) + '" alt="" loading="eager">'
+        : '<button class="hero-upload" data-act="peak-cover-open" data-code="' + esc(p.code || '') +
+          '" data-id="' + esc(p.id) + '"><span class="hu-ico">＋</span>' +
+          '<b>上传这座山的主图</b><span>用户投稿，审核通过后展示</span></button>') +
       '<div class="floating"><a href="#/places"><span class="pill">‹ 返回</span></a></div>' +
       '<div class="floating right"><span class="pill">' +
       (selfBuilt ? (isJunction ? '岔路 · ' : '山头 · ') + esc(p.code)
@@ -5725,6 +5776,14 @@
     }
     if (act === 'board-follow') { boardFollow = val || 'all'; render(); return; }
     if (act === 'board-sort') return;
+    if (act === 'peak-cover-open') {
+      U.openSheet('<h3>上传这座山的主图</h3>' +
+        '<div class="sh-sub">照片会先进审核队列，通过后才显示在页面顶部。</div>' +
+        '<div class="hero-upload-tip">图片存储还没接上（服务器当前没有媒体存储配置）。' +
+        '等存储方案确定后这里就是文件选择 + 上传进度。</div>' +
+        '<button type="button" class="btn ghost" data-act="close">知道了</button>');
+      return;
+    }
     if (act === 'cover-open') {
       var coverSlug = t.getAttribute('data-id');
       U.openSheet('<h3>投稿真实封面</h3><div class="sh-sub">通过审核后才会显示在路书顶部；不会直接替换官方封面。</div>' +

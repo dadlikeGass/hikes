@@ -1948,19 +1948,25 @@ def effort_leaderboard(courseId: int, window: Literal["week", "month", "year", "
     scores = sorted(rows, key=lambda r: (r["duration_s"], r["user_id"]))
     uid = require_user(authorization) if authorization else None
     mine = next((r for r in scores if r["user_id"] == uid), None)
-    enough = course["ranking_enabled"] and len(scores) >= 8
+    # 早期样本少，门槛从 8 人降到 3 人，否则榜单长期空着
+    enough = bool(course["ranking_enabled"]) and len(scores) >= 3
     def rank(row):
         return 1 + sum(other["duration_s"] < row["duration_s"] for other in scores)
     def public_row(row, ranked):
         return {"nickname": row["nickname"], "durationS": row["duration_s"],
                 "date": row["local_end"].date().isoformat(),
                 "rank": rank(row) if ranked else None}
-    leaders = [public_row(r, True) for r in scores if rank(r) <= 3] if enough else []
+    leaders = [public_row(r, True) for r in scores if rank(r) <= 10] if enough else []
     my_row = public_row(mine, enough) if mine else None
-    if my_row is not None:
-        my_row["percentile"] = round(100 * sum(r["duration_s"] > mine["duration_s"] for r in scores) / len(scores)) if enough else None
-    return {"courseId": courseId, "window": window, "sampleSize": len(scores),
-            "rankingAvailable": enough, "leaders": leaders, "myBest": my_row}
+    if my_row is not None and scores:
+        my_row["percentile"] = round(
+            100 * sum(r["duration_s"] > mine["duration_s"] for r in scores) / len(scores)) if enough else None
+    total = len(scores)
+    return {"courseId": courseId, "window": window, "sampleSize": total,
+            "fastestS": scores[0]["duration_s"] if total else None,
+            "averageS": round(sum(r["duration_s"] for r in scores) / total) if total else None,
+            "rankingAvailable": enough, "leaders": leaders, "myBest": my_row,
+            "minSample": 3}
 
 
 @app.get("/api/me/leaderboard-settings", response_model=dict, tags=["我"])
@@ -5679,10 +5685,13 @@ def admin_point_confirmation_queue(minConfirm: int = 3, uid: int = Depends(requi
                        count(*) FILTER (WHERE c.verdict='relocate') AS relocate_votes,
                        count(*) FILTER (WHERE c.verdict='reject')   AS reject_votes,
                        mode() WITHIN GROUP (ORDER BY c.suggested_name)
-                         FILTER (WHERE c.suggested_name IS NOT NULL) AS top_suggested_name
+                         FILTER (WHERE c.suggested_name IS NOT NULL) AS top_suggested_name,
+                       array_agg(DISTINCT coalesce(u.username, 'user#' || c.user_id))
+                         FILTER (WHERE c.user_id IS NOT NULL) AS contributors
                   FROM route_points_v2 p
                   JOIN routes r ON r.id = p.route_id
                   LEFT JOIN route_point_confirmations c ON c.route_point_id = p.id
+                  LEFT JOIN users u ON u.id = c.user_id
                  WHERE (p.review_status = 'candidate'
                         OR (p.review_status = 'published' AND p.name IS NULL))
                  GROUP BY p.id, p.stable_key, p.name, p.point_type, p.forward_m,

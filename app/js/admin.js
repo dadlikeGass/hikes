@@ -536,6 +536,9 @@
           '<div class="cqvotes">确认 ' + r.confirm_votes + ' · 位置偏 ' + r.relocate_votes +
           ' · 不是 ' + r.reject_votes + '</div>' +
           '<div class="cqtags">' + sug + '</div>' +
+          '<div class="cqwho">' + (Array.isArray(r.contributors) && r.contributors.length
+            ? '提议人：' + r.contributors.map(function (n) { return '@' + esc(n); }).join('、')
+            : '还没有人提交判断') + '</div>' +
           '<div class="btn-row" style="gap:6px;margin-top:8px">' +
           '<button class="btn coral mini" data-act="curator-confirm-accept" data-point="' + esc(r.point_id) +
           '" data-name="' + esc(r.top_suggested_name || r.name || '') + '" data-type="' + esc(r.point_type) +
